@@ -1,0 +1,17 @@
+.DS_Store
+.agent-state/
+.letta/
+node_modules/
+dist/
+coverage/
+
+.env
+.env.*
+!.env.example
+.mcp.json
+
+*.log
+*.state.json
+*.events.ndjson
+*.bak
+*.bak-*
