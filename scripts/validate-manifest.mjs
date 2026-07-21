@@ -17,6 +17,9 @@ const packagePath = resolve(repoRoot, "package.json");
 const errors = [];
 
 const EXPECTED_MODS = [
+  "./mods/mahiro-user-timestamps.ts",
+  "./mods/mahiro-goal.ts",
+  "./mods/mahiro-code-evidence.ts",
   "./mods/rtk-control.ts",
   "./mods/statusline.tsx",
   "./mods/mahiro-mcp-proxy.js",
@@ -254,7 +257,7 @@ if (packageJson) {
   if (!Array.isArray(packageJson.files)) {
     addError("package.json files must be an allowlist array.");
   } else {
-    for (const allowedPath of ["README.md", "MOD.md", "mods"]) {
+    for (const allowedPath of ["README.md", "MOD.md", "THIRD_PARTY_NOTICES.md", "LICENSES", "mods"]) {
       if (!packageJson.files.includes(allowedPath)) addError(`package.json files must include ${JSON.stringify(allowedPath)}.`);
     }
   }

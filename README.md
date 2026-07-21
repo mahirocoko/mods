@@ -1,6 +1,6 @@
 # Mahiro Letta Mods
 
-Private, inspectable Letta Code mods that Mahiro uses across local projects.
+Private, inspectable Letta Code workflow and runtime mods that Mahiro uses across local projects.
 
 This repository is the canonical source. Runtime state, logs, caches, diagnostics, and installed copies stay under `~/.letta/` and are never committed.
 
@@ -8,11 +8,118 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 
 | Entry | Surface | Purpose |
 | --- | --- | --- |
+| `mods/mahiro-user-timestamps.ts` | `turn_start` | Adds safe local/IANA timestamp metadata and one visible block to each real user turn without timestamping synthetic workflow reminders. |
+| `mods/mahiro-goal.ts` | `/mh-goal`, busy-safe `/mh-goal-status`, `mh_get_goal`, `mh_create_goal`, `mh_update_goal`, `turn_start` | Structured conversation goal with DoD criteria, evidence, blockers, revision guards, and human verification gates. |
+| `mods/mahiro-code-evidence.ts` | `/mh-evidence`, `mh_get_code_evidence`, `mh_collect_code_evidence`, `mh_record_code_evidence` | Bounded read-only Git evidence with separate staged/unstaged/untracked/base lanes, stale-proof external records, conservative verdicts, and explicit Goal handoff. |
 | `mods/rtk-control.ts` | `/rtk`, `tool_start` | Opt-in RTK status, savings, suggestions, and command rewriting. Default mode is Off. |
 | `mods/statusline.tsx` | order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, conversation activity, context, MemFS, RTK, model, reasoning, and backend state. |
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
 
 Agent Halo is not duplicated here. Its canonical mod remains in the separate [`agent-halo`](https://github.com/mahirocoko/agent-halo) repository and is installed by that project.
+
+## User timestamp ownership
+
+The published `@letta-ai/user-timestamps@0.1.0` artifact is older than its
+canonical repository fix and throws on each `turn_start` because it combines
+`dateStyle`/`timeStyle` with `timeZoneName`. This bundle carries the attributed
+fixed behavior as `mahiro-user-timestamps.ts`.
+
+Only one timestamp owner may be enabled. After this entry passes installation
+and reload verification, keep the official package installed but disabled:
+
+```bash
+letta mods disable npm:@letta-ai/user-timestamps
+```
+
+The adapted handler runs before Mahiro Goal, returns a composable input
+transform, and timestamps the real user message without timestamping the
+synthetic Goal reminder.
+
+## Code Evidence
+
+Phase 2 adds repository proof without turning the mod into a coding harness or
+security overlay:
+
+```text
+/mh-evidence collect /path/to/repo
+/mh-evidence status /path/to/repo
+/mh-evidence report /path/to/repo
+/mh-evidence clear <revision> /path/to/repo
+/mh-evidence unlock --force
+```
+
+The agent normally uses `mh_collect_code_evidence`, records already-performed
+checks with `mh_record_code_evidence`, then explicitly attaches selected proof
+to Goal criteria through `mh_update_goal`. Collection runs only fixed read-only
+Git commands and stores paths/status/counts—not full diffs or file contents.
+Recollection invalidates earlier check records for verdict/handoff purposes.
+`evidence_ready` is not human verification and never completes a Goal.
+Caller-recorded proof is restricted to bounded single-line summaries,
+references, and command labels; multiline/raw-diff-shaped payloads are refused.
+
+Runtime state lives at:
+
+```text
+~/.letta/mods/mahiro-code-evidence.state.json
+```
+
+Do not record secrets or private raw logs in evidence summaries/references.
+
+## Mahiro Goal dogfood
+
+Phase 1 deliberately coexists with the official `@letta-ai/goal-mode` package:
+
+```text
+/goal     official Goal Mode
+/mh-goal  Mahiro's structured workflow goal
+```
+
+The two mods use different command/tool names and separate state files. Mahiro
+Goal never reads, migrates, or mutates `goal-mode.state.json` automatically.
+
+```text
+/mh-goal status
+/mh-goal-status  # transient TUI panel; works while the agent is busy
+/mh-goal pause
+/mh-goal resume
+/mh-goal verify criterion-02 Foreground behavior accepted
+/mh-goal complete
+/mh-goal replace 7 A revised objective
+/mh-goal unlock --force  # abandoned-lock recovery only
+```
+
+Agent-owned criteria must have concrete evidence before they can be `claimed`.
+Human-owned criteria remain incomplete until Mahiro runs `/mh-goal verify`.
+Normal completion fails while required criteria or blockers remain;
+`/mh-goal complete --force` is an explicit human-only override.
+
+`/mh-goal status` remains the detailed idle command. While the main agent is
+working, `/mh-goal-status` is a separate read-only `runWhenBusy` command that
+returns immediately, writes nothing to the transcript, and shows a compact
+10-second panel. It is registered only on hosts with panel UI, so desktop or
+headless listeners do not advertise a command they cannot render.
+
+State is stored at `~/.letta/mods/mahiro-goal.state.json` with atomic mode-0600
+writes and an ownership-checked cross-process mutation lock. The state key
+combines agent and conversation identity, plus workspace for raw `default`
+lanes, so unrelated agents/projects do not merge.
+
+The owner-token lock directory is never reclaimed merely because it is old:
+another process may still own it. If a crashed process leaves a lock behind,
+confirm no live mutation is running before `/mh-goal unlock --force` atomically
+quarantines it. Completed goals are immutable;
+clear or explicitly replace them. Every replacement requires the latest
+revision shown by `/mh-goal status`.
+
+Goal evidence/history may contain private paths, commands, URLs, or review
+notes. They remain local runtime state but may enter tool output/transcripts;
+never put credentials or secret values in evidence summaries or references.
+
+Architecture and provenance:
+
+- [`docs/workflow-ecosystem.md`](docs/workflow-ecosystem.md)
+- [`docs/upstream-adaptations.md`](docs/upstream-adaptations.md)
+- [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
 
 ## Requirements
 
@@ -97,6 +204,8 @@ Then run `/reload`.
 These are examples of runtime-only paths and must not become source files:
 
 - `~/.letta/mods/rtk-control.state.json`
+- `~/.letta/mods/mahiro-goal.state.json`
+- `~/.letta/mods/mahiro-goal.state.json.lock`
 - `~/.letta/mcp.json`
 - `~/.letta/mcp-proxy/cache.json`
 - `~/.letta/mods/diagnostics/`

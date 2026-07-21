@@ -1,8 +1,8 @@
 {
   "name": "@mahirocoko/letta-mods",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "Mahiro's private installable Letta Code mod bundle.",
+  "description": "Mahiro's private workflow, code evidence, timestamps, RTK, statusline, and MCP mods for Letta Code.",
   "license": "UNLICENSED",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
@@ -24,6 +24,8 @@
   "files": [
     "README.md",
     "MOD.md",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSES",
     "mods"
   ],
   "repository": {
@@ -33,6 +35,9 @@
   "letta": {
     "manifestVersion": 1,
     "mods": [
+      "./mods/mahiro-user-timestamps.ts",
+      "./mods/mahiro-goal.ts",
+      "./mods/mahiro-code-evidence.ts",
       "./mods/rtk-control.ts",
       "./mods/statusline.tsx",
       "./mods/mahiro-mcp-proxy.js"

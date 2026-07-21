@@ -31,3 +31,31 @@ The repository-owned MCP source was subsequently hardened before the initial com
 
 Official `@letta-ai/*` packages remain third-party managed installs and are not vendored here.
 
+## Source-attributed adaptations
+
+`mods/mahiro-goal.ts` is a behaviorally expanded adaptation of
+`@letta-ai/goal-mode@0.1.0`, not an installed-file promotion. The pinned upstream
+source is commit `27859c3771177a4e431ace91a4780b0e154abae1`, SHA-256
+`c94c9b06e3547b379427ec8c482ab742898a351dcb7028e9180ccfb2abec5590`,
+licensed Apache-2.0. The official installed source matched that hash at the
+adaptation checkpoint and remains independently enabled during dogfood.
+
+The exact Keep / Adapt / Reject boundary is recorded in
+`docs/upstream-adaptations.md`; package attribution is in
+`THIRD_PARTY_NOTICES.md`.
+
+`mods/mahiro-user-timestamps.ts` adapts the current canonical fix from
+`@letta-ai/user-timestamps@0.1.0`. Canonical commit
+`c28d70fc490c7e59123e33ae73b064f9c75ddd27` hashes to
+`242a70d7a144ef6acd8a27dd3417bd23192be5981b078a32ec1dbf8b5245e70a`.
+The published/installed npm artifact remains version `0.1.0` but hashes to
+`21ba4eda9c7374e7f3cdd0b2c00d18e7033ab504174be5d5d72114e030558805`
+and contains the invalid `timeZoneName` combination. It should remain installed
+but disabled once Mahiro ownership passes reload verification.
+
+`mods/mahiro-code-evidence.ts` adapts selected evidence-first contracts from
+`@letta-ai/cruise-code@0.1.0-alpha.1`, source commit
+`5acfc823849ab7e5b401ab74f1c6158fdb4da7c6`, SHA-256
+`90dd87993de9529b02d5d33dcabc85e74f09ea92e7ccfb9fbb829186db52acd3`,
+Apache-2.0. Plan Mode and Code Outline Enforce were inspected only as bounded
+design references; they are not installed or duplicated by this bundle.

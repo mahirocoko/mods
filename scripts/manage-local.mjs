@@ -37,6 +37,9 @@ const bundleSource = "npm:@mahirocoko/letta-mods";
 const gitBundleSource = "git:https://github.com/mahirocoko/mods";
 const legacyMcpSource = "npm:mahiro-mcp-proxy";
 const entries = [
+  "./mods/mahiro-user-timestamps.ts",
+  "./mods/mahiro-goal.ts",
+  "./mods/mahiro-code-evidence.ts",
   "./mods/rtk-control.ts",
   "./mods/statusline.tsx",
   "./mods/mahiro-mcp-proxy.js",
@@ -357,9 +360,10 @@ async function createBackup(registry) {
 async function createInstallStage() {
   const stageRoot = await mkdtemp(join(tmpdir(), "mahiro-letta-mods-"));
   try {
-    for (const name of ["package.json", "README.md", "MOD.md"]) {
+    for (const name of ["package.json", "README.md", "MOD.md", "THIRD_PARTY_NOTICES.md"]) {
       await copyPath(join(repositoryRoot, name), join(stageRoot, name));
     }
+    await copyPath(join(repositoryRoot, "LICENSES"), join(stageRoot, "LICENSES"));
     await copyPath(join(repositoryRoot, "mods"), join(stageRoot, "mods"));
     return stageRoot;
   } catch (error) {
@@ -532,7 +536,7 @@ async function install() {
     }
     if (!finalBundles[0].enabled) throw new Error("Installed bundle is not enabled");
     if (!exactEntries(finalBundles[0].entries)) {
-      throw new Error("Installed bundle does not register the exact three manifest entries");
+      throw new Error("Installed bundle does not register the exact six manifest entries");
     }
     if (finalRegistry.packages.some((pkg) => pkg.source === legacyMcpSource)) {
       throw new Error(`Legacy package remains registered: ${legacyMcpSource}`);
