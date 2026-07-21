@@ -11,6 +11,7 @@ const entries = [
   "mods/mahiro-user-timestamps.ts",
   "mods/mahiro-goal.ts",
   "mods/mahiro-code-evidence.ts",
+  "mods/mahiro-ux-workflow.ts",
   "mods/rtk-control.ts",
   "mods/statusline.tsx",
   "mods/mahiro-mcp-proxy.js",
@@ -816,6 +817,263 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
   if (typeof noUiDisposer === "function") noUiDisposer();
 }
 
+function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
+  const source = readFileSync(join(repositoryRoot, "mods/mahiro-ux-workflow.ts"), "utf8");
+  const goalStateBefore = readFileSync(process.env.MAHIRO_GOAL_STATE_PATH, "utf8");
+  const codeEvidenceStateBefore = readFileSync(process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH, "utf8");
+  assert(!/from\s+["'][^"']*(?:mahiro-goal|mahiro-code-evidence)/.test(source), "UX workflow must not import Goal or Code Evidence internals");
+  assert(!/node:child_process|\bexecFile\b|\bspawn\b|\breaddirSync\b|turn_start|openPanel/.test(source), "UX workflow must not execute commands, scan files, register turn events, or open panels");
+  assert(source.includes("Agent must invoke the frontend-design skill") && source.includes("mh_update_goal"), "UX workflow output must preserve the frontend-design and separate Goal attachment boundary");
+  assert(source.includes("caller-supplied coordination metadata") && source.includes("not proof that the skill ran"), "UX workflow must not overclaim a trusted frontend-design invocation receipt");
+
+  const expectedPackageEntries = [
+    "./mods/mahiro-user-timestamps.ts",
+    "./mods/mahiro-goal.ts",
+    "./mods/mahiro-code-evidence.ts",
+    "./mods/mahiro-ux-workflow.ts",
+    "./mods/rtk-control.ts",
+    "./mods/statusline.tsx",
+    "./mods/mahiro-mcp-proxy.js",
+  ];
+  const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
+  assert(packageJson.version === "0.5.0", "Phase 3 package version must be 0.5.0");
+  assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Phase 3 package must use the exact seven-entry order");
+  assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact seven-entry package");
+
+  const missingDiagnostics = [];
+  const missing = activate({ capabilities: {}, diagnostics: { report: (item) => missingDiagnostics.push(item) } });
+  assert(missing === undefined, "UX workflow must fail closed without commands or tools capability");
+  assert(missingDiagnostics.some(({ message }) => String(message).includes("requires commands or tools")), "UX workflow must explain missing capabilities");
+  const commandsOnly = [];
+  const commandsOnlyDisposer = activate({ capabilities: { commands: true }, commands: { register(definition) { commandsOnly.push(definition); return () => {}; } } });
+  assert(commandsOnly.map(({ id }) => id).join(",") === "mh-ux", "commands-only hosts must receive only /mh-ux");
+  if (typeof commandsOnlyDisposer === "function") commandsOnlyDisposer();
+  const toolsOnly = [];
+  const toolsOnlyDisposer = activate({ capabilities: { tools: true }, tools: { register(definition) { toolsOnly.push(definition); return () => {}; } } });
+  assert(toolsOnly.map(({ name }) => name).join(",") === "mh_get_ux_workflow,mh_create_ux_workflow,mh_update_ux_workflow", "tools-only hosts must receive exactly the three UX tools");
+  if (typeof toolsOnlyDisposer === "function") toolsOnlyDisposer();
+
+  const commands = [];
+  const tools = [];
+  const cleanupOrder = [];
+  let eventRegistrations = 0;
+  let panelRegistrations = 0;
+  const disposer = activate({
+    capabilities: { commands: true, tools: true, events: { turns: true }, ui: { panels: true } },
+    commands: { register(definition) { commands.push(definition); return () => cleanupOrder.push(`command:${definition.id}`); } },
+    tools: { register(definition) { tools.push(definition); return () => cleanupOrder.push(`tool:${definition.name}`); } },
+    events: { on() { eventRegistrations += 1; return () => {}; } },
+    ui: { openPanel() { panelRegistrations += 1; return { close() {} }; } },
+  });
+  assert(commands.length === 1 && commands[0].id === "mh-ux", "UX workflow must register exactly /mh-ux");
+  assert(tools.map(({ name }) => name).join(",") === "mh_get_ux_workflow,mh_create_ux_workflow,mh_update_ux_workflow", "UX workflow must register exactly three ordered namespaced tools");
+  assert(tools.every(({ run }) => run.length === 1) && commands[0].run.length === 1, "UX workflow tools and command must use one-context run(ctx)");
+  assert(eventRegistrations === 0 && panelRegistrations === 0, "UX workflow must not register a turn event or panel");
+  assert(!tools.find(({ name }) => name === "mh_update_ux_workflow").parameters.properties.action.enum.some((action) => action.includes("approve")), "model update schema must not expose human approvals");
+  assert(testing && typeof testing.acquireStateLock === "function", "UX workflow isolated test seam must be available");
+
+  const command = commands[0];
+  const get = tools.find(({ name }) => name === "mh_get_ux_workflow");
+  const create = tools.find(({ name }) => name === "mh_create_ux_workflow");
+  const update = tools.find(({ name }) => name === "mh_update_ux_workflow");
+  const context = { agent: { id: "agent-ux" }, conversation: { id: "conversation-ux" }, cwd: join(testRoot, "ux-workspace") };
+  mkdirSync(context.cwd, { recursive: true });
+
+  const unscoped = command.run({ args: "status", cwd: context.cwd });
+  assert(unscoped.success === false && unscoped.output.includes("agent identity"), "UX workflow must require explicit agent and conversation identity");
+  const missingWorkspace = command.run({ agent: context.agent, conversation: context.conversation, args: "status" });
+  assert(missingWorkspace.success === false && missingWorkspace.output.includes("workspace"), "UX workflow must require explicit workspace instead of falling back to process cwd");
+  const initial = create.run({ ...context, args: { summary: "Coordinate a focused product UX change" } }).workflow;
+  assert(initial.revision === 1 && initial.stage === "frame", "UX workflow creation must start revision 1 at frame");
+  assert((statSync(testing.statePath).mode & 0o777) === 0o600, "UX workflow state must use mode 0600");
+  assert(get.run({ ...context, args: {} }).coordinator_boundary.join(" ").includes("frontend-design"), "UX workflow reads must require the frontend-design bridge");
+
+  const stateAfterCreate = readFileSync(testing.statePath, "utf8");
+  let duplicateBlocked = false;
+  try { create.run({ ...context, args: { summary: "Duplicate" } }); }
+  catch (error) { duplicateBlocked = String(error).includes("already exists"); }
+  assert(duplicateBlocked && readFileSync(testing.statePath, "utf8") === stateAfterCreate, "one active UX run per scope must be enforced without mutation");
+
+  const oldOwner = testing.acquireStateLock();
+  let secondOwnerBlocked = false;
+  try { testing.acquireStateLock(); } catch (error) { secondOwnerBlocked = String(error).includes("busy in another Letta process"); }
+  assert(secondOwnerBlocked, "UX owner-token lock must reject a second mutation owner");
+  assert(testing.forceUnlock() === true, "UX force unlock must quarantine an abandoned owner");
+  const successor = testing.acquireStateLock();
+  testing.releaseStateLock(oldOwner);
+  assert(existsSync(successor.tokenPath), "an old UX lock owner must not remove its successor");
+  testing.releaseStateLock(successor);
+  mkdirSync(testing.lockPath, { mode: 0o700 });
+  writeFileSync(join(testing.lockPath, "abandoned-human-owner"), "busy", { mode: 0o600 });
+  const forceUnlockResult = command.run({ ...context, args: "unlock --force" });
+  assert(forceUnlockResult.success !== false && !existsSync(testing.lockPath), "explicit human /mh-ux unlock --force must remove an abandoned lock");
+
+  const framed = update.run({ ...context, args: {
+    action: "set_frame", expected_revision: 1,
+    problem: "The current flow hides the primary decision",
+    audience: "Existing dashboard users",
+    desired_outcome: "Make the primary decision understandable and reversible",
+    constraints: ["Preserve keyboard navigation"],
+  } }).workflow;
+  assert(framed.stage === "discovery" && framed.revision === 2, "set_frame must advance frame to discovery");
+  let staleBlocked = false;
+  try { update.run({ ...context, args: { action: "add_research", expected_revision: 1, kind: "interview", summary: "stale" } }); }
+  catch (error) { staleBlocked = String(error).includes("Stale UX Workflow revision"); }
+  assert(staleBlocked, "UX workflow mutations must reject stale revisions");
+
+  const beforeOversized = readFileSync(testing.statePath, "utf8");
+  let oversizedBlocked = false;
+  try { update.run({ ...context, args: { action: "set_brief", expected_revision: 2, brief: { skill: "frontend-design", mode: "audit", reference: "brief://one", summary: "x".repeat(4001) } } }); }
+  catch (error) { oversizedBlocked = String(error).includes("at most 4000"); }
+  assert(oversizedBlocked && readFileSync(testing.statePath, "utf8") === beforeOversized, "oversized UX artifacts must fail without advancing state");
+
+  const briefInput = { skill: "frontend-design", mode: "repo-grounded direction", reference: "frontend-design://brief/selected", summary: "Selected brief based on the canonical frontend-design workflow" };
+  const briefed = update.run({ ...context, args: { action: "set_brief", expected_revision: 2, brief: briefInput } }).workflow;
+  assert(briefed.brief.skill === "frontend-design" && briefed.revision === 3, "frontend-design brief must be recorded as a structured object");
+  const design = update.run({ ...context, args: { action: "set_phase", expected_revision: 3, phase: "design" } }).workflow;
+  const concept = update.run({ ...context, args: { action: "add_concept", expected_revision: 4, concept_id: "focused-flow", title: "Focused flow", summary: "One clear primary path with preserved escape hatches", tradeoffs: ["Less simultaneous density"] } }).workflow;
+  assert(design.stage === "design" && concept.concepts[0].id === "focused-flow", "valid discovery/design transitions must retain concepts");
+
+  let preApprovalHandoffBlocked = false;
+  try { update.run({ ...context, args: { action: "set_handoff", expected_revision: 5, handoff: {} } }); }
+  catch (error) { preApprovalHandoffBlocked = String(error).includes("human-approved direction"); }
+  assert(preApprovalHandoffBlocked, "handoff must be rejected before human direction approval");
+  const proposed = update.run({ ...context, args: { action: "propose_direction", expected_revision: 5, concept_id: "focused-flow", summary: "Recommend the focused flow" } }).workflow;
+  assert(proposed.stage === "direction_approval" && proposed.revision === 6, "propose_direction must enter the human direction gate");
+  let modelApprovalBlocked = false;
+  try { update.run({ ...context, args: { action: "approve_direction", expected_revision: 6 } }); }
+  catch (error) { modelApprovalBlocked = String(error).includes("Unsupported UX Workflow action"); }
+  assert(modelApprovalBlocked, "model tools must never set human direction approval");
+  const staleApproval = command.run({ ...context, args: "approve direction 5 focused-flow stale" });
+  assert(staleApproval.success === false && staleApproval.output.includes("Stale UX Workflow revision"), "human direction approval must be revision guarded");
+  const approvedDirection = command.run({ ...context, args: "approve direction 6 focused-flow Mahiro selected this direction" });
+  assert(approvedDirection.success !== false, "exact human direction approval must succeed");
+  assert(get.run({ ...context, args: {} }).workflow.stage === "handoff", "human direction approval must advance to handoff");
+
+  const handoffBase = {
+    readiness: "implementation_ready", brief: briefInput,
+    acceptance_criteria: ["Primary choice is obvious", "Keyboard navigation remains intact"],
+    non_goals: ["No data model rewrite"], constraints: ["Preserve route contracts"],
+    open_questions: [{ question: "Does copy need legal review?", blocking: true }],
+    protected_contracts: ["Existing route and analytics names"],
+    target_matrix: [{ target: "Dashboard decision panel", intent: "Clarify hierarchy without changing route behavior" }],
+    suggested_checks: [{ kind: "browser", summary: "Check desktop and narrow responsive behavior" }],
+    goal_criterion_refs: ["criterion-02"],
+  };
+  const blockingHandoff = update.run({ ...context, args: { action: "set_handoff", expected_revision: 7, handoff: handoffBase } }).workflow;
+  assert(blockingHandoff.revision === 8 && blockingHandoff.handoff.goal_criterion_refs[0] === "criterion-02", "handoff must retain all CruiseCode-compatible fields and Goal refs");
+  let blockingQuestionStoppedPhase = false;
+  try { update.run({ ...context, args: { action: "set_phase", expected_revision: 8, phase: "implementation" } }); }
+  catch (error) { blockingQuestionStoppedPhase = String(error).includes("blocked by open questions"); }
+  assert(blockingQuestionStoppedPhase, "blocking handoff questions must prevent implementation");
+  const readyHandoff = update.run({ ...context, args: { action: "set_handoff", expected_revision: 8, handoff: { ...handoffBase, open_questions: [{ question: "Legal review may follow prototype", blocking: false }] } } }).workflow;
+  assert(readyHandoff.revision === 9, "handoff may be revised while still in handoff stage");
+  const implementation = update.run({ ...context, args: { action: "set_phase", expected_revision: 9, phase: "implementation" } }).workflow;
+  assert(implementation.stage === "implementation" && implementation.revision === 10, "valid handoff must enter implementation");
+
+  const blocked = update.run({ ...context, args: { action: "add_blocker", expected_revision: 10, summary: "Awaiting final evidence selection" } }).workflow;
+  const blockerId = blocked.blockers[0].id;
+  const beforeInvalidVerdict = readFileSync(testing.statePath, "utf8");
+  let invalidVerdictBlocked = false;
+  try { update.run({ ...context, args: { action: "set_review", expected_revision: 11, verdict: "Looks Good", summary: "invalid", findings: [], evidence_refs: [], code_evidence_refs: [] } }); }
+  catch (error) { invalidVerdictBlocked = String(error).includes("Ready, Needs Revision, or Not Ready"); }
+  assert(invalidVerdictBlocked && readFileSync(testing.statePath, "utf8") === beforeInvalidVerdict, "review verdicts must be exact and rejection must not advance state");
+  const reviewOne = update.run({ ...context, args: {
+    action: "set_review", expected_revision: 11, verdict: "Needs Revision", summary: "Hierarchy needs another pass",
+    findings: [{ severity: "medium", summary: "Secondary action is too prominent", reference: "ux://review/1" }],
+    evidence_refs: ["ux://capture/1"], code_evidence_refs: ["code-evidence://report/r4"],
+  } }).workflow;
+  assert(reviewOne.stage === "review" && reviewOne.review.iteration === 1 && reviewOne.review.codeEvidenceRefs.length === 1, "review must retain bounded UX and Code Evidence references");
+  const nonReadyApproval = command.run({ ...context, args: "approve review 12 should fail" });
+  assert(nonReadyApproval.success === false && nonReadyApproval.output.includes("Only a Ready review"), "non-Ready review must reject human approval");
+  const reviseOne = update.run({ ...context, args: { action: "set_phase", expected_revision: 12, phase: "implementation" } }).workflow;
+  const reviewTwo = update.run({ ...context, args: { action: "set_review", expected_revision: 13, verdict: "Not Ready", summary: "Evidence still incomplete", findings: [], evidence_refs: [], code_evidence_refs: [] } }).workflow;
+  const rejectedReview = command.run({ ...context, args: "reject review 14 Rework once more" });
+  assert(rejectedReview.success !== false && get.run({ ...context, args: {} }).workflow.stage === "implementation", "human review rejection must reopen implementation before the limit");
+  const reviewThree = update.run({ ...context, args: { action: "set_review", expected_revision: 15, verdict: "Ready", summary: "The selected UX direction is ready for human acceptance", findings: [], evidence_refs: ["ux://capture/final"], code_evidence_refs: ["code-evidence://report/final"] } }).workflow;
+  assert(reviewThree.review.iteration === 3 && reviewThree.review.verdict === "Ready", "third review iteration must be the bounded maximum");
+  const rejectAtLimit = command.run({ ...context, args: "reject review 16 would exceed limit" });
+  assert(rejectAtLimit.success === false && rejectAtLimit.output.includes("limited to 3 iterations"), "a fourth review loop must be impossible");
+  const approvedReview = command.run({ ...context, args: "approve review 16 Mahiro accepts the Ready review" });
+  assert(approvedReview.success !== false, "human must be able to approve a Ready review");
+  let blockerCompletionStopped = false;
+  try { update.run({ ...context, args: { action: "complete", expected_revision: 17 } }); }
+  catch (error) { blockerCompletionStopped = String(error).includes("open blockers"); }
+  assert(blockerCompletionStopped, "UX completion must fail while blockers remain");
+  const resolved = update.run({ ...context, args: { action: "resolve_blocker", expected_revision: 17, blocker_id: blockerId } }).workflow;
+  const completed = update.run({ ...context, args: { action: "complete", expected_revision: 18 } }).workflow;
+  assert(resolved.revision === 18 && completed.stage === "complete" && completed.revision === 19, "Ready human-approved blocker-free review must complete only UX state");
+
+  assert(
+    readFileSync(process.env.MAHIRO_GOAL_STATE_PATH, "utf8") === goalStateBefore
+      && readFileSync(process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH, "utf8") === codeEvidenceStateBefore,
+    "full UX flow must not mutate Goal or Code Evidence state",
+  );
+
+  for (const cwd of [join(testRoot, "default-a"), join(testRoot, "default-b")]) {
+    mkdirSync(cwd, { recursive: true });
+    create.run({ agent: { id: "agent-default-ux" }, conversation: { id: "default" }, cwd, args: { summary: `Default UX lane ${cwd}` } });
+  }
+  create.run({ ...context, agent: { id: "agent-other-ux" }, args: { summary: "Other agent UX lane" } });
+  const isolated = testing.readState();
+  assert(Object.keys(isolated.runs).filter((key) => key.includes('"agent-default-ux","default"')).length === 2, "raw default UX lanes must be isolated by workspace");
+  assert(Object.values(isolated.runs).some((run) => run.agentId === "agent-other-ux"), "same conversation IDs from different agents must remain isolated");
+
+  const validStateText = readFileSync(testing.statePath, "utf8");
+  const phaseIncompatible = JSON.parse(validStateText);
+  const mainKey = JSON.stringify(["agent-ux", "conversation-ux", ""]);
+  phaseIncompatible.runs[mainKey].stage = "frame";
+  const phaseIncompatibleText = `${JSON.stringify(phaseIncompatible, null, 2)}\n`;
+  writeFileSync(testing.statePath, phaseIncompatibleText, { mode: 0o600 });
+  const phaseIncompatibleResult = command.run({ ...context, args: "status" });
+  assert(phaseIncompatibleResult.success === false && phaseIncompatibleResult.output.includes("artifacts ahead of frame"), "phase-incompatible stored artifacts must fail closed");
+  writeFileSync(testing.statePath, validStateText, { mode: 0o600 });
+
+  for (const stage of ["frame", "discovery", "design", "direction_approval", "handoff"]) {
+    const counterMismatch = JSON.parse(validStateText);
+    const run = counterMismatch.runs[mainKey];
+    run.stage = stage;
+    run.review = null;
+    run.reviewIterations = 1;
+    if (stage === "frame") {
+      run.frame = null; run.research = []; run.brief = null; run.concepts = []; run.direction = null; run.handoff = null;
+    } else if (stage === "discovery") {
+      run.concepts = []; run.direction = null; run.handoff = null;
+    } else if (stage === "design") {
+      run.direction = null; run.handoff = null;
+    } else if (stage === "direction_approval") {
+      run.handoff = null;
+      run.direction.approval = { status: "pending", note: null, at: null, actor: null };
+    }
+    const counterMismatchText = `${JSON.stringify(counterMismatch, null, 2)}\n`;
+    writeFileSync(testing.statePath, counterMismatchText, { mode: 0o600 });
+    const counterMismatchResult = command.run({ ...context, args: "status" });
+    assert(counterMismatchResult.success === false && counterMismatchResult.output.includes("review counter"), `${stage} state must reject a future review iteration counter`);
+  }
+  writeFileSync(testing.statePath, validStateText, { mode: 0o600 });
+
+  const malformed = JSON.parse(validStateText);
+  malformed.runs[mainKey].handoff.open_questions[0].blocking = "yes";
+  malformed.runs[mainKey].review.findings = Array.from({ length: 25 }, () => ({ severity: "low", summary: "bounded", reference: null }));
+  const malformedText = `${JSON.stringify(malformed, null, 2)}\n`;
+  writeFileSync(testing.statePath, malformedText, { mode: 0o600 });
+  const malformedResult = command.run({ ...context, args: "status" });
+  assert(malformedResult.success === false && readFileSync(testing.statePath, "utf8") === malformedText, "malformed nested UX state must fail closed and remain preserved");
+  writeFileSync(testing.statePath, "{invalid-json", { mode: 0o600 });
+  const corruptResult = command.run({ ...context, args: "status" });
+  assert(corruptResult.success === false && readFileSync(testing.statePath, "utf8") === "{invalid-json", "corrupt UX state must remain untouched for recovery");
+  writeFileSync(testing.statePath, validStateText, { mode: 0o600 });
+
+  const revisionlessClear = command.run({ ...context, args: "clear" });
+  const staleClear = command.run({ ...context, args: "clear 18" });
+  assert(revisionlessClear.success === false && staleClear.success === false, "human UX clear must require the exact current revision");
+  const cleared = command.run({ ...context, args: "clear 19" });
+  assert(cleared.success !== false && get.run({ ...context, args: {} }).workflow === null, "human UX clear must accept the exact current revision");
+
+  if (typeof disposer === "function") disposer();
+  assert(cleanupOrder.join(",") === "tool:mh_update_ux_workflow,tool:mh_create_ux_workflow,tool:mh_get_ux_workflow,command:mh-ux", "UX workflow cleanup must dispose all registrations in reverse order");
+}
+
 function checkStatuslineRegistration(activate) {
   const eventNames = [];
   let panelOptions = null;
@@ -878,11 +1136,15 @@ const previousGoalTesting = process.env.MAHIRO_GOAL_TESTING;
 const previousTimestampTesting = process.env.MAHIRO_TIMESTAMPS_TESTING;
 const previousCodeEvidenceStatePath = process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH;
 const previousCodeEvidenceTesting = process.env.MAHIRO_CODE_EVIDENCE_TESTING;
+const previousUxWorkflowStatePath = process.env.MAHIRO_UX_WORKFLOW_STATE_PATH;
+const previousUxWorkflowTesting = process.env.MAHIRO_UX_WORKFLOW_TESTING;
 process.env.MAHIRO_GOAL_STATE_PATH = join(testRoot, "state.json");
 process.env.MAHIRO_GOAL_TESTING = "1";
 process.env.MAHIRO_TIMESTAMPS_TESTING = "1";
 process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH = join(testRoot, "code-evidence-state.json");
 process.env.MAHIRO_CODE_EVIDENCE_TESTING = "1";
+process.env.MAHIRO_UX_WORKFLOW_STATE_PATH = join(testRoot, "ux-workflow-state.json");
+process.env.MAHIRO_UX_WORKFLOW_TESTING = "1";
 
 try {
   const activations = new Map();
@@ -910,6 +1172,11 @@ try {
     testingSurfaces.get("mods/mahiro-code-evidence.ts"),
     testRoot,
   );
+  checkMahiroUxWorkflowRegistration(
+    activations.get("mods/mahiro-ux-workflow.ts"),
+    testingSurfaces.get("mods/mahiro-ux-workflow.ts"),
+    testRoot,
+  );
   checkMcpPermissionGuard(activations.get("mods/mahiro-mcp-proxy.js"));
   checkRtkRegistration(activations.get("mods/rtk-control.ts"));
   checkStatuslineRegistration(activations.get("mods/statusline.tsx"));
@@ -926,5 +1193,9 @@ try {
   else process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH = previousCodeEvidenceStatePath;
   if (previousCodeEvidenceTesting === undefined) delete process.env.MAHIRO_CODE_EVIDENCE_TESTING;
   else process.env.MAHIRO_CODE_EVIDENCE_TESTING = previousCodeEvidenceTesting;
+  if (previousUxWorkflowStatePath === undefined) delete process.env.MAHIRO_UX_WORKFLOW_STATE_PATH;
+  else process.env.MAHIRO_UX_WORKFLOW_STATE_PATH = previousUxWorkflowStatePath;
+  if (previousUxWorkflowTesting === undefined) delete process.env.MAHIRO_UX_WORKFLOW_TESTING;
+  else process.env.MAHIRO_UX_WORKFLOW_TESTING = previousUxWorkflowTesting;
   await rm(testRoot, { recursive: true, force: true });
 }

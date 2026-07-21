@@ -40,6 +40,7 @@ const entries = [
   "./mods/mahiro-user-timestamps.ts",
   "./mods/mahiro-goal.ts",
   "./mods/mahiro-code-evidence.ts",
+  "./mods/mahiro-ux-workflow.ts",
   "./mods/rtk-control.ts",
   "./mods/statusline.tsx",
   "./mods/mahiro-mcp-proxy.js",
@@ -246,7 +247,7 @@ async function status() {
         (entry) => entry === "mods/mahiro-mcp-proxy.js" || entry === "./mods/mahiro-mcp-proxy.js",
       );
       const comparison = sourceEntry
-        ? await fileComparison(entryPath(pkg, sourceEntry), sourceHashes[entries[2]])
+        ? await fileComparison(entryPath(pkg, sourceEntry), sourceHashes["./mods/mahiro-mcp-proxy.js"])
         : { state: "missing-entry", hash: null };
       console.log(
         `  ${pkg.source}: ${comparison.state}; enabled=${pkg.enabled}; root=${packageRoot(pkg)}`,
@@ -299,7 +300,7 @@ async function assertSafeLegacy(sourceHashes, registry) {
     if (!sourceEntry) {
       throw new Error(`${legacyMcpSource} package has no recognized mod entry`);
     }
-    const comparison = await fileComparison(entryPath(pkg, sourceEntry), sourceHashes[entries[2]]);
+    const comparison = await fileComparison(entryPath(pkg, sourceEntry), sourceHashes["./mods/mahiro-mcp-proxy.js"]);
     if (comparison.state !== "matching") {
       throw new Error(
         `Refusing to remove changed active legacy MCP source: ${entryPath(pkg, sourceEntry)}`,
@@ -536,7 +537,7 @@ async function install() {
     }
     if (!finalBundles[0].enabled) throw new Error("Installed bundle is not enabled");
     if (!exactEntries(finalBundles[0].entries)) {
-      throw new Error("Installed bundle does not register the exact six manifest entries");
+      throw new Error("Installed bundle does not register the exact seven manifest entries");
     }
     if (finalRegistry.packages.some((pkg) => pkg.source === legacyMcpSource)) {
       throw new Error(`Legacy package remains registered: ${legacyMcpSource}`);

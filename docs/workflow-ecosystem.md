@@ -13,10 +13,15 @@ Mods                   Letta runtime state, commands, tools, events, and gates
 Memory                 durable preferences and learned corrections
 ```
 
-`frontend-design` remains the canonical portable design procedure. A future UX
-mod may coordinate stages, durable artifacts, handoffs, and evidence while
-asking the agent to use that skill; it must not duplicate or silently replace
-the skill's design doctrine.
+`frontend-design` remains the canonical portable design procedure. The Phase 3
+UX Workflow mod coordinates stages, durable artifacts, handoffs, review, and
+human gates while requiring the agent to invoke that skill; it does not
+duplicate or silently replace the skill's design doctrine.
+
+Letta exposes no trusted skill-invocation receipt. The recorded
+`frontend-design` reference is explicit caller attestation, not proof of
+execution or visual quality; human direction approval remains the runtime
+authority boundary.
 
 `control-room-goals` owns the portable Goal drafting/application procedure.
 After Mahiro explicitly approves a packet, the agent applies it itself: prefer
@@ -27,11 +32,15 @@ revision gates, evidence, blockers, and completion audit; the skill owns when
 and how the agent should use those surfaces. Human-owned criteria remain
 Mahiro-verified only.
 
-## Shared run model
+## Focused run models
 
-Phase 1 keeps the run model owner-local inside `mods/mahiro-goal.ts`. Extract a
-shared workflow-core module only after UX or Code Evidence creates real reuse.
-The current schema already reserves the important ownership boundaries:
+Goal, Code Evidence, and UX Workflow retain owner-local schemas and no shared
+core. Their overlapping revision/lock patterns are intentionally repeated
+because their invariants and state ownership differ. Integrations use public
+handoff output: UX/Code Evidence suggest bounded references, and the agent
+selects what to attach through `mh_update_goal`.
+
+The Goal schema reserves these ownership boundaries:
 
 - one human-owned objective
 - conversation and agent scope
@@ -54,8 +63,11 @@ The current schema already reserves the important ownership boundaries:
    manual proof; invalidates old proof on recollection; and returns a
    criterion-ready handoff. The agent—not the evidence mod—attaches selected
    proof with `mh_update_goal`.
-3. **UX Workflow** — decision framing, selective interview/research/ideation,
-   frontend-design bridge, actual implementation handoff schema, and UX review.
+3. **UX Workflow** — active Phase 3. Decision framing, recorded discovery,
+   required `frontend-design` brief, concepts, human direction approval,
+   CruiseCode-compatible implementation handoff, up to three UX review
+   iterations, and human approval only for a `Ready` review. It performs none of
+   the research/design/implementation/check work itself and never changes Goal.
 4. **Code Map** — ccc/exact-symbol/outline guidance plus opt-in large-read
    enforcement, never a security boundary.
 
@@ -73,6 +85,6 @@ blocked   progress cannot continue without resolution
 complete  all required agent claims + human verification + no open blockers
 ```
 
-No future Code Evidence or UX verdict may silently complete the goal. The goal
+No Code Evidence or UX verdict may silently complete the goal. The goal
 runtime performs the final deterministic audit, and Mahiro owns explicit human
 verification gates.

@@ -322,3 +322,70 @@ This documentation edit intentionally makes that revision-4 repository
 snapshot stale. The final dogfood gate is to observe `needs_evidence`, rerun
 checks, recollect, record fresh proof, and attach only the fresh mappings to the
 active Mahiro Goal.
+
+## Phase 3 UX Workflow candidate
+
+Source provenance:
+
+- `@letta-ai/cruise-ux@0.2.0-alpha.1`
+- current source commit `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
+- current source SHA-256
+  `40c5964f616c19afa2c632433781086d40b4df1fcd8cbb0f26ca66915eebcac0`
+- introduced at commit `5acfc823849ab7e5b401ab74f1c6158fdb4da7c6`
+- Apache-2.0 with the complete license retained in `LICENSES/Apache-2.0.txt`
+
+The focused checker proves:
+
+- exact seven-entry package order with UX Workflow immediately after Code
+  Evidence; package, validator, manager, and source checker agree
+- one capability-gated `/mh-ux` command, exactly three namespaced tools,
+  one-context `run(ctx)` / `ctx.args`, reverse cleanup, and fail-closed no-surface
+  activation; no turn event or panel
+- explicit agent/conversation scope, raw `default` workspace isolation,
+  mode-`0600` atomic state, owner-token lock contention, successor-safe release,
+  and explicit human `/mh-ux unlock --force`
+- stale revisions, recursively malformed nested artifacts, oversized lists/text,
+  and corrupt JSON fail closed without overwriting recovery material
+- the required `frontend-design` brief bridge and explicit output instructing the
+  agent to invoke that skill and use `mh_update_goal` separately
+- the recorded skill reference is explicitly caller attestation rather than
+  proof of invocation or visual adequacy
+- pre-approval handoff rejection, exact human direction approval, complete
+  CruiseCode-compatible handoff fields, blocking-question implementation guard,
+  and valid phase transitions
+- review verdict validation, bounded findings/evidence/Code Evidence references,
+  rejection/revision flow, a maximum of three iterations, `Ready`-only human
+  approval, and completion only after approval with no blockers
+- source/runtime isolation from Goal and Code Evidence: no internal imports and
+  no mutation of either state marker during the full UX flow
+
+Pre-reload Phase 3 closure:
+
+- two adversarial review rounds found and closed the non-provable skill receipt
+  claim plus future-artifact/review-counter state inconsistencies
+- final independent verdict: `PASS (VERIFIED)`, no High/Medium findings
+- `git diff --check`, `pnpm check`, and `pnpm pack --dry-run` pass
+- final isolated seven-entry install/status/uninstall passes with
+  `Migration needed: no`
+- `pnpm mods:update` installed the matching `0.5.0` seven-entry bundle; backup:
+  `~/.letta/mods/backups/2026-07-21T07-57-44-974Z-30972`
+- UX source SHA-256:
+  `628c07d16398a9a0ec6cae59476806ba501f0a08edc8c14714bcc15ce728d86a`
+
+Final live Phase 3 runtime evidence:
+
+- reload generated `.letta-mod-mahiro-ux-workflow-628c07d16398a9a0.mjs`
+  from the matching installed source hash
+- `mh-ux-mrud6c0z-83e47bd0` ran frame → discovery → three concepts → human
+  direction approval → implementation-ready handoff → implementation → Ready
+  review → human review approval → UX-only completion at revision 16
+- the recorded `frontend-design` brief remained explicit caller attestation;
+  Mahiro's direction/review commands remained the authority gates
+- Code Evidence reached fresh `evidence_ready` revision 13 and the agent
+  attached selected UX/Code Evidence to Mahiro Goal separately
+- UX state exists at mode `0600`; diagnostics report `errorCount: 0`, with only
+  the expected secondary Agent Halo bridge forwarding warning
+- Mahiro accepted the Phase 3 workflow and human-gate boundary through the
+  dedicated Goal criterion
+
+Commit, push, release, and Phase 4 remain separate operations.

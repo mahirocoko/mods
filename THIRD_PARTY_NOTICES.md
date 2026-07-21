@@ -39,6 +39,27 @@ binding, and an explicit Mahiro Goal handoff boundary.
 
 No endorsement by Letta or the upstream author is implied.
 
+## CruiseUX
+
+`mods/mahiro-ux-workflow.ts` is adapted in part from
+`@letta-ai/cruise-ux` version `0.2.0-alpha.1` in the
+[`letta-ai/mods`](https://github.com/letta-ai/mods) repository.
+
+- Current source commit: `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
+- Current source SHA-256: `40c5964f616c19afa2c632433781086d40b4df1fcd8cbb0f26ca66915eebcac0`
+- Package-introducing commit: `5acfc823849ab7e5b401ab74f1c6158fdb4da7c6`
+- Upstream license: Apache License 2.0; a complete copy is included at
+  `LICENSES/Apache-2.0.txt`.
+
+The Mahiro adaptation keeps a staged UX coordination run, bounded design
+artifacts, implementation handoff, review findings/evidence references, and
+explicit human direction/review gates. It delegates design doctrine to the
+canonical `frontend-design` skill and rejects autonomous research/browser/
+command execution, file scanning, product implementation, and any direct Goal
+or Code Evidence state mutation.
+
+No endorsement by Letta or the upstream author is implied.
+
 ## Letta User Timestamps
 
 `mods/mahiro-user-timestamps.ts` is adapted from

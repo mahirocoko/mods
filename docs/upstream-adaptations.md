@@ -122,8 +122,67 @@ Design references inspected without copying implementation:
 - Direct Goal state mutation or presenting Code Evidence as a security
   boundary.
 
-CruiseUX remains a design reference for the later UX Workflow slice. Any source
-adaptation from it requires a separate pinned ledger before promotion.
+## Mahiro UX Workflow Phase 3
+
+Upstream:
+
+- package: `@letta-ai/cruise-ux@0.2.0-alpha.1`
+- current source commit: `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
+- current source SHA-256:
+  `40c5964f616c19afa2c632433781086d40b4df1fcd8cbb0f26ca66915eebcac0`
+- package-introducing commit: `5acfc823849ab7e5b401ab74f1c6158fdb4da7c6`
+- license: Apache-2.0
+
+### Keep
+
+- A durable staged UX run spanning framing, discovery, design, direction
+  approval, implementation handoff, review, and completion.
+- Structured research, brief, concepts, chosen direction, handoff, review
+  findings, evidence references, and bounded history.
+- Explicit human direction and final review approval instead of model-assumed
+  acceptance.
+- CruiseCode-compatible handoff names for readiness, brief, acceptance
+  criteria, non-goals, constraints, and open questions.
+- Public Letta commands/tools, capability guards, and reverse cleanup.
+
+### Adapt
+
+- Namespace the public surface as `/mh-ux`, `mh_get_ux_workflow`,
+  `mh_create_ux_workflow`, and `mh_update_ux_workflow`; all tools use the real
+  one-context `run(ctx)` / `ctx.args` host contract.
+- Make `frontend-design` the canonical doctrine. Direction approval and handoff
+  require a recorded brief object whose `skill` is exactly `frontend-design`
+  and whose mode/reference/summary remain traceable.
+- Treat that record as caller attestation—not proof of skill execution or
+  visual quality—because no trusted invocation receipt exists; retain explicit
+  human direction approval as the authority boundary.
+- Use one run per explicit agent/conversation identity, with workspace isolation
+  for raw `default` lanes, in global mode-`0600` runtime state. Add fsynced
+  atomic writes, owner-token locks, explicit human force-unlock, recursive
+  fail-closed validation, revision guards, bounded lists/text/history, and
+  corruption preservation.
+- Add protected contracts, target matrix, suggested checks, and Goal criterion
+  references to the handoff. Block implementation until direction is human
+  approved, readiness is prototype/implementation ready, and no handoff
+  question is blocking.
+- Restrict review to three iterations, explicit `Ready` / `Needs Revision` /
+  `Not Ready` verdicts, bounded findings plus UX/Code Evidence references, and
+  human approval only for `Ready`.
+- Keep UX completion local. The agent separately attaches selected UX and Code
+  Evidence through `mh_update_goal`; the UX runtime never claims, verifies,
+  completes, or mutates Goal.
+
+### Reject
+
+- Duplicating `frontend-design` doctrine or auto-designing from runtime state.
+- Executing browser/research/command/file-scan work inside the mod.
+- Implementing product code, editing repositories, or running checks.
+- Importing Mahiro Goal or Code Evidence internals, sharing their state/core, or
+  automatically mutating either state file.
+- Model-callable direction/review approval, silent stage skips, unbounded review
+  loops, or treating a UX verdict as Goal completion.
+- Turn-event reminders or a persistent panel before real use proves either is
+  necessary.
 
 ## Mahiro User Timestamps
 

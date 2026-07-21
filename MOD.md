@@ -1,13 +1,13 @@
 ---
 name: "@mahirocoko/letta-mods"
-description: "Mahiro's private user timestamps, structured workflow goal, bounded code evidence, RTK control, compact statusline, and lazy MCP proxy bundle for Letta Code."
+description: "Mahiro's private user timestamps, structured workflow goal, bounded code evidence, UX coordination, RTK control, compact statusline, and lazy MCP proxy bundle for Letta Code."
 ---
 
 # Mahiro Letta Mods semantics
 
 ## Package boundary
 
-This package activates six independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, and persistent MCP connections.
+This package activates seven independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, and persistent MCP connections.
 
 Installed package files are runtime copies. Edit this repository, validate it, reinstall/update the managed package, and run `/reload` rather than editing files below `~/.letta/mods/packages/`.
 
@@ -45,6 +45,37 @@ Code Evidence returns a criterion-ready handoff but never reads or writes
 Mahiro Goal state. The agent must use `mh_update_goal` to attach selected proof;
 Goal remains the only owner of revisioned criteria, human verification,
 blockers, and completion.
+
+## Mahiro UX Workflow
+
+`mods/mahiro-ux-workflow.ts` registers `/mh-ux` and three namespaced model
+tools. It is a runtime coordinator only: it never researches, browses, scans
+files, runs commands, designs, implements product code, or reads/writes Mahiro
+Goal or Code Evidence state.
+
+The agent must invoke the canonical `frontend-design` skill and record its brief
+object (`skill`, mode, reference, summary) before direction approval or handoff.
+That brief record is caller attestation, not proof of skill execution or visual
+quality; explicit human direction approval remains the authority boundary.
+Stages are frame, discovery, design, direction approval, handoff,
+implementation, review, and complete. Model updates are revision guarded and
+cannot set human approvals. Direction and `Ready` review approval exist only on
+explicit `/mh-ux approve ...` commands; reject/reopen paths remain human-only.
+Review is capped at three iterations.
+
+The handoff uses explicit readiness, brief, acceptance criteria, non-goals,
+constraints, open questions, protected contracts, target matrix, suggested
+checks, and Goal criterion references. Implementation fails closed without an
+approved direction, a prototype/implementation-ready handoff, or while any
+handoff question is blocking. Completion requires a human-approved `Ready`
+review and no blockers, but never changes or completes Goal.
+
+State lives at `~/.letta/mods/mahiro-ux-workflow.state.json`, isolated by
+explicit agent/conversation scope and workspace for raw `default` lanes. It
+uses mode-`0600` fsynced atomic writes, owner-token locking with explicit human
+force-unlock, recursive fail-closed validation, bounded artifacts/history, and
+revision-guarded clear/mutations. The agent must attach selected UX and Code
+Evidence to Goal separately with `mh_update_goal`.
 
 ## Mahiro Goal
 

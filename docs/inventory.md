@@ -59,3 +59,12 @@ but disabled once Mahiro ownership passes reload verification.
 `90dd87993de9529b02d5d33dcabc85e74f09ea92e7ccfb9fbb829186db52acd3`,
 Apache-2.0. Plan Mode and Code Outline Enforce were inspected only as bounded
 design references; they are not installed or duplicated by this bundle.
+
+`mods/mahiro-ux-workflow.ts` adapts runtime coordination contracts from
+`@letta-ai/cruise-ux@0.2.0-alpha.1`. The current source is pinned at commit
+`57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`, source SHA-256
+`40c5964f616c19afa2c632433781086d40b4df1fcd8cbb0f26ca66915eebcac0`;
+the package was introduced at commit
+`5acfc823849ab7e5b401ab74f1c6158fdb4da7c6`. It is Apache-2.0. The adaptation
+keeps staged UX coordination and human gates while making `frontend-design`
+canonical and keeping Goal/Code Evidence state strictly separate.

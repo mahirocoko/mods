@@ -11,6 +11,7 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/mahiro-user-timestamps.ts` | `turn_start` | Adds safe local/IANA timestamp metadata and one visible block to each real user turn without timestamping synthetic workflow reminders. |
 | `mods/mahiro-goal.ts` | `/mh-goal`, busy-safe `/mh-goal-status`, `mh_get_goal`, `mh_create_goal`, `mh_update_goal`, `turn_start` | Structured conversation goal with DoD criteria, evidence, blockers, revision guards, and human verification gates. |
 | `mods/mahiro-code-evidence.ts` | `/mh-evidence`, `mh_get_code_evidence`, `mh_collect_code_evidence`, `mh_record_code_evidence` | Bounded read-only Git evidence with separate staged/unstaged/untracked/base lanes, stale-proof external records, conservative verdicts, and explicit Goal handoff. |
+| `mods/mahiro-ux-workflow.ts` | `/mh-ux`, `mh_get_ux_workflow`, `mh_create_ux_workflow`, `mh_update_ux_workflow` | Revisioned UX coordination from frame through review, with a required `frontend-design` brief, human direction/review gates, bounded handoff/review evidence, and no Goal mutation. |
 | `mods/rtk-control.ts` | `/rtk`, `tool_start` | Opt-in RTK status, savings, suggestions, and command rewriting. Default mode is Off. |
 | `mods/statusline.tsx` | order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, conversation activity, context, MemFS, RTK, model, reasoning, and backend state. |
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
@@ -64,6 +65,46 @@ Runtime state lives at:
 ```
 
 Do not record secrets or private raw logs in evidence summaries/references.
+
+## UX Workflow
+
+Phase 3 adds a runtime coordinator, not an autonomous design or implementation
+engine. The agent must invoke the canonical `frontend-design` skill and record a
+brief object with `skill: frontend-design`, mode, reference, and summary before
+direction approval or handoff.
+
+That recorded skill/brief reference is caller-supplied coordination metadata,
+not proof that the skill executed or that the brief is visually adequate.
+Human direction approval remains the authority boundary.
+
+```text
+/mh-ux status
+/mh-ux approve direction <revision> <concept-id> [note]
+/mh-ux approve review <revision> [note]
+/mh-ux reject direction|review ...
+/mh-ux reopen <revision> [note]
+/mh-ux clear <revision>
+/mh-ux unlock --force
+```
+
+The coordinator enforces `frame → discovery → design → direction_approval →
+handoff → implementation → review → complete`, at most three review
+iterations, and human-only direction/review approvals. Implementation requires
+an approved direction plus a CruiseCode-compatible handoff with readiness,
+brief, acceptance criteria, non-goals, constraints, open questions, protected
+contracts, target matrix, suggested checks, and Goal criterion references.
+Blocking open questions prevent implementation. Only a `Ready` review can be
+human-approved, and completion still requires no open blockers.
+
+The mod does not browse, research, run commands, scan files, design, implement
+product code, or read/write Goal or Code Evidence state. The agent must attach
+selected UX and Code Evidence separately through `mh_update_goal`; UX completion
+never verifies, claims, completes, or changes Goal.
+
+State is isolated per explicit agent/conversation identity, plus workspace for
+raw `default` lanes, at `~/.letta/mods/mahiro-ux-workflow.state.json`. Writes are
+atomic, fsynced, mode `0600`, owner-token locked, revision guarded, recursively
+validated, and corruption preserving.
 
 ## Mahiro Goal dogfood
 
@@ -206,6 +247,8 @@ These are examples of runtime-only paths and must not become source files:
 - `~/.letta/mods/rtk-control.state.json`
 - `~/.letta/mods/mahiro-goal.state.json`
 - `~/.letta/mods/mahiro-goal.state.json.lock`
+- `~/.letta/mods/mahiro-ux-workflow.state.json`
+- `~/.letta/mods/mahiro-ux-workflow.state.json.lock`
 - `~/.letta/mcp.json`
 - `~/.letta/mcp-proxy/cache.json`
 - `~/.letta/mods/diagnostics/`
