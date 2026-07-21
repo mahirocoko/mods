@@ -2,7 +2,7 @@
 
 ## Current reality
 
-The repository root is one installable Letta package with eight manifest entries. This deliberately favors one-command private Git installation and one update source over independent npm publication.
+The repository root is one installable Letta package with nine manifest entries. This deliberately favors one-command private Git installation and one update source over independent npm publication.
 
 ```text
 package.json#letta
@@ -11,12 +11,13 @@ package.json#letta
 ├── mods/mahiro-code-evidence.ts
 ├── mods/mahiro-ux-workflow.ts
 ├── mods/mahiro-code-map.ts
+├── mods/mahiro-execution-run.ts
 ├── mods/rtk-control.ts
 ├── mods/statusline.tsx
 └── mods/mahiro-mcp-proxy.js
 ```
 
-The declared capability list is the union of the eight entries. Runtime behavior still remains independent because each activation function checks the capabilities it needs.
+The declared capability list is the union of the nine entries. Runtime behavior still remains independent because each activation function checks the capabilities it needs.
 
 `mahiro-goal.ts`, `mahiro-code-evidence.ts`, and `mahiro-ux-workflow.ts` each
 own focused state and invariants. Phase 3 deliberately does not extract a shared
@@ -29,6 +30,14 @@ handoffs explicit through public tool output rather than internal imports. See
 bounded routing/read-guidance contract; `ccc`, exact search, outline tools, file
 reads, and verification remain external operations. It does not share a core or
 state with Goal, Code Evidence, or UX Workflow.
+
+`mahiro-execution-run.ts` owns optional execution coordination between planning
+and fresh Code Evidence collection. It records declared lanes, targets,
+one-writer/many-reader ownership, blockers, bounded reports, and handoff packets
+without running or supervising any executor. Main-agent, Letta-subagent, and
+Direct-CLI lanes share one trust model. All session/worktree/path/check/report
+data remains caller-supplied metadata; Goal, UX, Code Evidence, and Code Map
+state stay separate and are never imported or mutated.
 
 ## Why one package
 
@@ -45,9 +54,9 @@ Repository source flows into a managed package below `~/.letta/mods/packages/`. 
 
 Agent Halo remains an external managed source because its mod and install lifecycle are coupled to the Agent Halo bridge/desktop project.
 
-Official `@letta-ai/goal-mode` also remains an independent managed source during
-Mahiro Goal dogfood. The two goal mods have distinct commands, tools, and state;
-there is no automatic migration or cross-write.
+Official `@letta-ai/goal-mode` was an independent managed source during initial
+Mahiro Goal dogfood. Mahiro explicitly removed it after the switchover. There is
+still no automatic migration or cross-write with historical official state.
 
 ## Local migration
 

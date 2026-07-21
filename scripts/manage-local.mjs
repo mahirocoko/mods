@@ -42,6 +42,7 @@ const entries = [
   "./mods/mahiro-code-evidence.ts",
   "./mods/mahiro-ux-workflow.ts",
   "./mods/mahiro-code-map.ts",
+  "./mods/mahiro-execution-run.ts",
   "./mods/rtk-control.ts",
   "./mods/statusline.tsx",
   "./mods/mahiro-mcp-proxy.js",

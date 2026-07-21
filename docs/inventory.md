@@ -29,7 +29,10 @@ The repository-owned MCP source was subsequently hardened before the initial com
 - disabled and timestamped backup mod files
 - MCP config, cache, bearer tokens, environment files, and project-local overrides
 
-Official `@letta-ai/*` packages remain third-party managed installs and are not vendored here.
+Official `@letta-ai/*` sources remain third-party provenance references and are
+not vendored here. The previously installed Goal Mode and User Timestamps
+packages were explicitly removed after Mahiro-owned replacements passed live
+verification.
 
 ## Source-attributed adaptations
 
@@ -38,7 +41,8 @@ Official `@letta-ai/*` packages remain third-party managed installs and are not 
 source is commit `27859c3771177a4e431ace91a4780b0e154abae1`, SHA-256
 `c94c9b06e3547b379427ec8c482ab742898a351dcb7028e9180ccfb2abec5590`,
 licensed Apache-2.0. The official installed source matched that hash at the
-adaptation checkpoint and remains independently enabled during dogfood.
+adaptation checkpoint. Mahiro removed the official package after the dogfood
+switchover; this repository retains the pinned source receipt and attribution.
 
 The exact Keep / Adapt / Reject boundary is recorded in
 `docs/upstream-adaptations.md`; package attribution is in
@@ -48,10 +52,11 @@ The exact Keep / Adapt / Reject boundary is recorded in
 `@letta-ai/user-timestamps@0.1.0`. Canonical commit
 `c28d70fc490c7e59123e33ae73b064f9c75ddd27` hashes to
 `242a70d7a144ef6acd8a27dd3417bd23192be5981b078a32ec1dbf8b5245e70a`.
-The published/installed npm artifact remains version `0.1.0` but hashes to
+The published npm artifact remains version `0.1.0`; the previously installed
+copy hashed to
 `21ba4eda9c7374e7f3cdd0b2c00d18e7033ab504174be5d5d72114e030558805`
-and contains the invalid `timeZoneName` combination. It should remain installed
-but disabled once Mahiro ownership passes reload verification.
+and contains the invalid `timeZoneName` combination. Mahiro removed that package
+after the replacement passed reload verification.
 
 `mods/mahiro-code-evidence.ts` adapts selected evidence-first contracts from
 `@letta-ai/cruise-code@0.1.0-alpha.1`, source commit
@@ -76,3 +81,21 @@ closed-schema, and bounded-output patterns from
 `d4b37430b86fcd2e07af28e40b55d12f48574c660997f8a220d94fd7a3d23a31`,
 Apache-2.0. It deliberately rejects the upstream AST/Ctags/regex/read-file,
 permission-overlay, and enforcement implementation.
+
+`mods/mahiro-execution-run.ts` adapts bounded coordination patterns—not executor
+logic—from `@letta-ai/threadkeeper@0.1.0`,
+`@letta-ai/environment-compass@0.1.0`, and
+`@letta-ai/tool-guard-inspector@0.1.0`. Their pinned commits/source SHA-256s are:
+
+- Threadkeeper `35461e785330115869de1bc7a777b568f957c8e3` /
+  `3b5886629be4c9d204b8d95efd058e15f456268abcc21d39dcff34bc3d739617`
+- Environment Compass `01a3bf35c86c947abc1a374b1c24c89abc28547b` /
+  `3ed5504d780b23126741741d7430e3f5fb1ee18cb68537804f91458cbb161077`
+- Tool Guard Inspector `4f580ee3297e9c311b81ff64c39f9aae7ddf8b7a` /
+  `7dd30efb6bf7830967e59ff8a896f3d9362699b0c7308f990bdb6db7e4e9c2ce`
+
+All are Apache-2.0 and unchanged under current official main
+`57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`. The Mahiro owner keeps only
+scoped operational records, read-only attribution, and narrow receipt patterns;
+it rejects anchors/memory replacement, environment probing, generic permission
+policy, process execution, repository inspection, and verification claims.

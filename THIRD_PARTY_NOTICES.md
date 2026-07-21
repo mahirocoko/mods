@@ -80,6 +80,39 @@ boundaries.
 
 No endorsement by Letta or the upstream author is implied.
 
+## Execution Run pattern references
+
+`mods/mahiro-execution-run.ts` adapts bounded operational-state, read-only
+preflight, and scoped decision-receipt patterns from three packages in the
+[`letta-ai/mods`](https://github.com/letta-ai/mods) repository:
+
+- `@letta-ai/threadkeeper@0.1.0`
+  - upstream package author: HAL
+  - source commit: `35461e785330115869de1bc7a777b568f957c8e3`
+  - source SHA-256: `3b5886629be4c9d204b8d95efd058e15f456268abcc21d39dcff34bc3d739617`
+- `@letta-ai/environment-compass@0.1.0`
+  - upstream package authors: Laura and Justin
+  - source commit: `01a3bf35c86c947abc1a374b1c24c89abc28547b`
+  - source SHA-256: `3ed5504d780b23126741741d7430e3f5fb1ee18cb68537804f91458cbb161077`
+- `@letta-ai/tool-guard-inspector@0.1.0`
+  - upstream package author: Yingzuo Liu
+  - source commit: `4f580ee3297e9c311b81ff64c39f9aae7ddf8b7a`
+  - source SHA-256: `7dd30efb6bf7830967e59ff8a896f3d9362699b0c7308f990bdb6db7e4e9c2ce`
+
+All three sources are Apache-2.0; a complete copy is included at
+`LICENSES/Apache-2.0.txt`. Current official main at
+`57f7a3ef3b4648a1c46b0f922d6df74d11bfa628` has no later changes under these
+package directories.
+
+The Mahiro adaptation keeps bounded scoped records, explicit lifecycle,
+read-only attribution, and narrow audit receipts. It replaces generic anchors,
+environment probing, and global permission classification with an
+executor-neutral coordination contract. It does not run executors, inspect
+repositories, enforce filesystem ownership, mutate other workflow state, or
+present caller reports as verification.
+
+No endorsement by Letta or the upstream authors is implied.
+
 ## Letta User Timestamps
 
 `mods/mahiro-user-timestamps.ts` is adapted from

@@ -1,13 +1,13 @@
 ---
 name: "@mahirocoko/letta-mods"
-description: "Mahiro's private user timestamps, structured workflow goal, bounded code evidence, UX coordination, Code Map guidance, RTK control, compact statusline, and lazy MCP proxy bundle for Letta Code."
+description: "Mahiro's private user timestamps, structured workflow goal, bounded code evidence, UX coordination, Code Map guidance, execution coordination, RTK control, compact statusline, and lazy MCP proxy bundle for Letta Code."
 ---
 
 # Mahiro Letta Mods semantics
 
 ## Package boundary
 
-This package activates eight independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, and persistent MCP connections.
+This package activates nine independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, and persistent MCP connections.
 
 Installed package files are runtime copies. Edit this repository, validate it, reinstall/update the managed package, and run `/reload` rather than editing files below `~/.letta/mods/packages/`.
 
@@ -23,8 +23,8 @@ untouched.
 The formatter uses the canonical safe `dateStyle: "full"` and
 `timeStyle: "long"` combination. The stale published official package adds
 `timeZoneName`, which is incompatible with those style options and throws on
-Node 22+. Do not enable both handlers together; keep the official package
-installed but disabled after the adapted entry passes reload verification.
+Node 22+. Do not enable both handlers together. Mahiro explicitly removed the
+stale official package after the adapted entry passed reload verification.
 
 ## Mahiro Code Evidence
 
@@ -117,10 +117,9 @@ Evidence/history are bounded but may contain private paths, commands, URLs, and
 review notes. Keep credentials and secret values out of goal state and remember
 that model-tool output may enter the conversation transcript.
 
-Mahiro Goal intentionally does not override `/goal`, duplicate official goal
-tool names, or touch `goal-mode.state.json` during dogfood. The official package
-may remain enabled until the adapted workflow has passed real use and an
-explicit switchover is approved.
+Mahiro Goal intentionally does not duplicate official goal tool names or touch
+historical `goal-mode.state.json`. The initial coexistence period is complete;
+Mahiro explicitly removed official Goal Mode after approving the switchover.
 
 ## Mahiro Code Map
 
@@ -138,6 +137,44 @@ bounded; `large_read` must be supplied explicitly with a reason and limits. Its
 result is guidance only—not permission enforcement or a security boundary.
 Code Map has no persistent state and never mutates files, Git, indexes, Goal,
 Code Evidence, or another mod.
+
+## Mahiro Execution Run
+
+`mods/mahiro-execution-run.ts` registers `/mh-run` plus three namespaced model
+tools. It is an optional, executor-neutral coordination ledger for complex
+main-agent, Letta-subagent, Direct-CLI, human, or other external work. Simple
+single-agent edits do not need a run.
+
+One current run is isolated by explicit agent/conversation scope, plus workspace
+for raw `default` lanes. The guarded lifecycle is `plan → ready → active →
+reported → handed_off`; blockers do not replace stage truth and `abandoned` is
+terminal. Every model mutation requires both current run ID and revision.
+Terminal replacement requires explicit replacement fields and starts a new
+revision-1 run linked to its predecessor.
+
+Goal references may be supplied at creation or repaired through the plan-only
+`set_goal_refs` action. `ready` still requires at least one Goal reference;
+after that transition the binding is immutable and the final handoff must use
+the exact declared set.
+
+Targets declare one writer and zero or more readers. Lexical collision checks
+reject duplicate/overlapping writable targets inside the same declared
+worktree, while read-only sharing remains allowed. These records are advisory
+coordination contracts, not filesystem permissions or symlink/repository truth.
+
+Lane sessions, worktrees, executor kinds, reports, changed paths, checks, Goal/
+UX/navigation references, and handoff state are caller attestations. `reported`
+means a bounded report was recorded; `handed_off` means the scope owner consumed
+the report and can collect fresh Code Evidence. Neither means successful,
+verified, accepted, merged, or complete.
+
+The mod never spawns/controls executors, chooses models, submits prompts, reads
+or mutates repositories or other workflow state, runs checks, stores raw logs/
+prompts/transcripts/diffs, enforces permissions, or completes Goal/UX work.
+
+State is stored at `~/.letta/mods/mahiro-execution-run.state.json` with a size
+cap, recursive validation, mode-`0600` fsynced atomic writes, owner-token locks,
+explicit human force-unlock, corruption preservation, and bounded history.
 
 ## RTK control
 

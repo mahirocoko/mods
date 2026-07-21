@@ -13,6 +13,7 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/mahiro-code-evidence.ts` | `/mh-evidence`, `mh_get_code_evidence`, `mh_collect_code_evidence`, `mh_record_code_evidence` | Bounded read-only Git evidence with separate staged/unstaged/untracked/base lanes, stale-proof external records, conservative verdicts, and explicit Goal handoff. |
 | `mods/mahiro-ux-workflow.ts` | `/mh-ux`, `mh_get_ux_workflow`, `mh_create_ux_workflow`, `mh_update_ux_workflow` | Revisioned UX coordination from frame through review, with a required `frontend-design` brief, human direction/review gates, bounded handoff/review evidence, and no Goal mutation. |
 | `mods/mahiro-code-map.ts` | `mh_code_map` | Stateless bounded guidance that routes conceptual discovery to `ccc`, exact symbols/paths/strings to exact search, and outline requests to external bounded outline tooling without reading or indexing source. |
+| `mods/mahiro-execution-run.ts` | `/mh-run`, `mh_get_execution_run`, `mh_create_execution_run`, `mh_update_execution_run` | Optional executor-neutral coordination for complex main-agent, Letta-subagent, Direct-CLI, human, or other work, with declared target ownership, bounded reports, and a Code Evidence intake handoff. |
 | `mods/rtk-control.ts` | `/rtk`, `tool_start` | Opt-in RTK status, savings, suggestions, and command rewriting. Default mode is Off. |
 | `mods/statusline.tsx` | order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, conversation activity, context, MemFS, RTK, model, reasoning, and backend state. |
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
@@ -26,12 +27,10 @@ canonical repository fix and throws on each `turn_start` because it combines
 `dateStyle`/`timeStyle` with `timeZoneName`. This bundle carries the attributed
 fixed behavior as `mahiro-user-timestamps.ts`.
 
-Only one timestamp owner may be enabled. After this entry passes installation
-and reload verification, keep the official package installed but disabled:
-
-```bash
-letta mods disable npm:@letta-ai/user-timestamps
-```
+Only one timestamp owner may be enabled. After the Mahiro-owned handler passed
+live verification, Mahiro explicitly removed the stale official package on
+2026-07-21. Reinstall it only for a deliberate upstream comparison, and never
+enable both handlers together.
 
 The adapted handler runs before Mahiro Goal, returns a composable input
 transform, and timestamps the real user message without timestamping the
@@ -131,17 +130,69 @@ coordination metadata, not trusted receipts. The mod has no state and never
 reads/scans source, indexes a repository, runs a subprocess, generates an
 outline, or mutates source, Git, indexes, Goal, or Code Evidence.
 
-## Mahiro Goal dogfood
+## Execution Run
 
-Phase 1 deliberately coexists with the official `@letta-ai/goal-mode` package:
+Phase 5 adds an optional coordination ledger for implementation that is too
+complex for one short main-agent pass. It is useful for multiple writers,
+external CLI/subagent lanes, several worktrees/targets, cross-turn work, or a
+material handoff into Code Evidence. It is deliberately skipped for simple
+edits.
 
 ```text
-/goal     official Goal Mode
-/mh-goal  Mahiro's structured workflow goal
+/mh-run status
+/mh-run clear <revision>
+/mh-run abandon <revision> [note]
+/mh-run unlock --force
 ```
 
-The two mods use different command/tool names and separate state files. Mahiro
-Goal never reads, migrates, or mutates `goal-mode.state.json` automatically.
+The model uses `mh_get_execution_run`, `mh_create_execution_run`, and
+revision/run-ID-guarded `mh_update_execution_run`. One current run is scoped to
+explicit agent/conversation identity, with workspace isolation for raw
+`default` lanes. The lifecycle is `plan → ready → active → reported →
+handed_off`; blockers are orthogonal and `abandoned` is terminal.
+
+Goal references may be declared when the run is created or corrected with the
+plan-only `set_goal_refs` action before `ready`. This keeps a missing initial
+binding recoverable without weakening the requirement that `ready` has at least
+one explicit Goal reference. After `ready`, Goal references are immutable and
+the final handoff must match them exactly.
+
+Every writable target has one declared writer lane while read-only lanes may
+share targets. Lanes use one contract across main agents, Letta subagents,
+Direct CLI, humans, and other executors. Session/worktree references, paths,
+checks, reports, changed paths, and cross-workflow references are caller-supplied
+coordination metadata—not process truth, filesystem enforcement, or
+verification evidence.
+
+The final Code Evidence intake packet tells the agent which paths/checks/Goal
+criteria were declared and explicitly requires fresh evidence collection.
+`handed_off` means coordination delivery only; it never means verified,
+accepted, merged, or complete.
+
+Execution Run never spawns or controls an executor, chooses a model, creates or
+submits prompts, inspects sessions/worktrees/repositories, reads or edits source,
+runs Git/tests/browser/native work, stores raw transcripts/diffs/logs, enforces
+permissions, or reads/writes another mod's state.
+
+Runtime state lives at:
+
+```text
+~/.letta/mods/mahiro-execution-run.state.json
+```
+
+It uses bounded recursively validated state, mode-`0600` fsynced atomic writes,
+owner-token locking, explicit human force-unlock, corruption preservation, and
+run-ID plus revision stale-caller protection.
+
+## Mahiro Goal ownership
+
+Phase 1 initially coexisted with official `@letta-ai/goal-mode` while the
+Mahiro-owned workflow was dogfooded. After acceptance and a reload-pressure
+audit, Mahiro explicitly removed the official package on 2026-07-21. `/mh-goal`
+and the `mh_*` tools are now the only installed Goal surface from this bundle;
+`/goal` is unavailable unless the official package is deliberately reinstalled.
+Mahiro Goal never reads, migrates, or mutates historical
+`goal-mode.state.json` automatically.
 
 ```text
 /mh-goal status

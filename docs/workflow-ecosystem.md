@@ -75,6 +75,17 @@ The Goal schema reserves these ownership boundaries:
    never permission enforcement or a security boundary. Caller search results
    and Goal/Code Evidence references remain navigation/coordination metadata,
    not verification proof.
+5. **Execution Run** — Phase 5. An optional executor-neutral
+   coordinator for complex main-agent, Letta-subagent, Direct-CLI, human, or
+   other external work. It records declared lanes, targets, one-writer/
+   many-reader ownership, blockers, bounded reports, and the handoff into fresh
+   Code Evidence. It does not execute, supervise, inspect, or verify work.
+
+Execution Run is not a mandatory fifth step for ordinary edits. Use it when
+multiple writers/executors, external CLI sessions, several worktrees/targets,
+cross-turn coordination, or a material implementation handoff justifies the
+extra state. Straightforward work remains `Goal (optional) → implement → Code
+Evidence (when acceptance needs it)`.
 
 Each slice stays a focused mod entry until a second owner proves shared-module
 pressure. Runtime state remains under `~/.letta/`; repository state and installed

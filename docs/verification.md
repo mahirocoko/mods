@@ -479,3 +479,173 @@ Mahiro explicitly accepted the Phase 4 behavior through the human-owned Goal
 criterion after the final workspace-aware live dogfood. All implementation,
 package, runtime, and human acceptance gates are closed. No commit, push,
 release, or Phase 5 is implied.
+
+## Phase 5 Execution Run candidate
+
+Source pattern provenance:
+
+- `@letta-ai/threadkeeper@0.1.0`, commit
+  `35461e785330115869de1bc7a777b568f957c8e3`, source SHA-256
+  `3b5886629be4c9d204b8d95efd058e15f456268abcc21d39dcff34bc3d739617`
+- `@letta-ai/environment-compass@0.1.0`, commit
+  `01a3bf35c86c947abc1a374b1c24c89abc28547b`, source SHA-256
+  `3ed5504d780b23126741741d7430e3f5fb1ee18cb68537804f91458cbb161077`
+- `@letta-ai/tool-guard-inspector@0.1.0`, commit
+  `4f580ee3297e9c311b81ff64c39f9aae7ddf8b7a`, source SHA-256
+  `7dd30efb6bf7830967e59ff8a896f3d9362699b0c7308f990bdb6db7e4e9c2ce`
+- all three are Apache-2.0 and unchanged under current official main
+  `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
+
+Candidate contract:
+
+- optional coordination only; ordinary simple edits do not require a run
+- one revisioned run per explicit agent/conversation scope, plus workspace
+  isolation for raw `default` lanes
+- executor-neutral lanes for main agents, Letta subagents, Direct CLI, humans,
+  and other external executors
+- guarded `plan → ready → active → reported → handed_off` flow with blockers
+  orthogonal and `abandoned` terminal
+- one declared writer and multiple readers per target, with lexical write-path
+  collision checks that are coordination metadata rather than enforcement
+- bounded session/worktree references, reports, changed paths, checks, and
+  cross-workflow refs remain caller attestations, never verification evidence
+- final handoff emits a Code Evidence intake packet requiring fresh collection
+- no executor control, model selection, prompt submission, source/Git/check
+  execution, repository inspection, permission overlay, raw transcript/diff/log
+  retention, cross-mod mutation, Goal/UX completion, commit, push, or release
+
+Implemented source/package evidence:
+
+- `mods/mahiro-execution-run.ts` registers `/mh-run` and three namespaced tools
+  only; commands-only/tools-only/full hosts and reverse cleanup pass
+- the closed schema and runtime gates cover optional main-agent, Letta-subagent,
+  and Direct-CLI lanes; required writer ownership, reader overlap, explicit
+  cross-repo workspace, blockers, reports, handoff, replacement, and failure
+  paths all have focused checks
+- state checks cover raw-`default` workspace isolation, mode `0600`, size/type/
+  symlink/corruption refusal in place, fsynced atomic writes, owner-token locks,
+  successor-safe release, explicit force-unlock, run-ID plus revision guards,
+  bounded history/output, no-op refusal, and hostile metadata rejection
+- pre-dogfood candidate source SHA-256:
+  `03377f00a5e69992e24a8b89f45ecb7b5a27eb58726da4d294b15e04e08d1d47`
+- `pnpm check` passes with `9 mods, 9 capabilities`; `git diff --check` and
+  `pnpm pack --dry-run` pass, and the allowlisted tarball contains all nine mods,
+  package docs/notices, and the complete Apache license
+- final isolated install/status/uninstall passes with the MCP SDK present, all
+  nine hashes matching, `Migration needed: no`, and unrelated runtime-state
+  sentinel preservation
+
+The first independent verifier refuted the candidate on four points: dot-path
+aliases bypassed writable collision checks, direct terminal lane-status updates
+could dead-end before a matching report, final Goal refs were not bound to the
+run declaration, and two docs overstated workspace scoping. The correction
+normalizes dot components before collision/coverage checks, requires terminal
+outcomes through atomic reports, binds handoff/intake Goal refs exactly, and
+states agent/conversation scope plus raw-`default` workspace isolation. Focused
+regressions include parent/dot-alias collisions, optional/non-implement/
+wrong-worktree writers, read/write overlap, failed/cancelled handoff, and
+explicit workspace mismatch. Final independent re-review returned `PASS` with
+no High/Medium/Low findings.
+
+The first real-host create call then caught one over-broad privacy guard: it
+classified the legitimate suggested check `git diff --check` as raw diff/log
+content. The corrected guard permits bounded command names while still
+rejecting actual `diff --git` headers, hunks, controls, bidi, reminders, and raw
+stdout/stderr/error-shaped payloads; focused regression coverage keeps both
+halves of that boundary explicit.
+
+A later continuation dogfood exposed a second recoverability gap before final
+acceptance: a caller could omit optional `goal_refs` at creation, but `ready`
+required a non-empty binding and the model tool had no plan-stage repair action.
+The candidate now exposes revision-guarded `set_goal_refs` only during `plan`.
+Focused checks prove the missing binding blocks `ready`, a non-empty repair then
+allows `ready`, and any post-`ready` rebinding fails closed. The final handoff
+still requires an exact match with the declared Goal references.
+
+The first final independent verifier then found one corrupt-state mismatch not
+covered by ordinary mutation paths: top-level handoff Goal refs were bound
+exactly, but a syntactically valid persisted `code_evidence_intake.goal_refs`
+could differ and still pass state validation. `validateHandoff` now binds both
+the handoff and nested intake refs exactly to the run declaration. A direct
+persisted-state regression proves the mismatch is rejected in place without
+rewriting the recovery material.
+
+Final managed/runtime evidence before Mahiro's human acceptance:
+
+- main-agent run `mh-run-mrurpuoj-f8269d60` reached `handed_off` at revision 10
+  with one required `main_agent` writer, a 13-path report, and a bounded Code
+  Evidence intake. Its report retained the pre-dogfood source hash and verifier,
+  package, isolated-install, and managed-install references as caller metadata,
+  not proof.
+- Letta-subagent run `mh-run-mrurrwnp-7f7d9382` reached `handed_off` at revision
+  10 with one required read-only `letta_subagent` reviewer, no changed paths,
+  and a fresh-evidence handoff. The reviewer found no functional blocker and
+  explicitly preserved the metadata-not-proof boundary.
+- the interrupted earlier Direct CLI scope remained isolated under its original
+  conversation rather than merging into another run. The replacement live run
+  `mh-run-mrusgtjy-9cf61f98` used Codex CLI `gpt-5.6-luna` at medium reasoning,
+  inspected only `docs/workflow-ecosystem.md` and
+  `mods/mahiro-execution-run.ts`, reported no changed paths, and returned
+  `RESULT: PASS` for optional use, common executor trust/transitions, and no
+  executor launch/control.
+- the replacement Direct CLI run exercised the new `set_goal_refs` recovery
+  action against the reloaded real host, then reached `handed_off` at revision
+  11 with a bounded Code Evidence intake and no open blockers.
+- the pane was closed after capture and no matching Direct CLI tmux session or
+  process remained.
+- `pnpm mods:update` installed the final `0.7.0` nine-entry bundle after the
+  verifier correction; backup:
+  `~/.letta/mods/backups/2026-07-21T15-38-32-130Z-36413`
+- post-reload `pnpm mods:status` reports all nine source hashes matching, the
+  MCP SDK present, and `Migration needed: no`; final repository and installed
+  Execution Run SHA-256 both equal
+  `cc3b9dd4781def5554479f8bcf14d3a3ff4e464e61206fb453be1e2aa05b1493`
+- current reload diagnostics report `errorCount: 0` and two bounded host/process
+  warnings: no-panel statusline registration in a listener and secondary Agent
+  Halo bridge forwarding.
+
+The final independent re-verifier returned `PASS` with no High, Medium, or Low
+implementation findings after directly re-running package/check/hash/status
+evidence against source SHA-256
+`cc3b9dd4781def5554479f8bcf14d3a3ff4e464e61206fb453be1e2aa05b1493`.
+It separately preserved the caveat that historical lane reports are coordination
+metadata rather than proof and that a foreground reload/human acceptance remain
+separate runtime gates.
+
+Fresh repository attribution and Goal attachments are collected separately
+after the final source correction. Mahiro's human acceptance remains the only
+human-owned Goal gate. No commit, push, tag, or release is implied.
+
+### Final duplicate-package cleanup and reload-pressure correction
+
+The final foreground reload exposed a host-level React warning rather than an
+Execution Run state failure: `Maximum update depth exceeded`. Source inspection
+showed that Letta Code 0.28.13 publishes external-store snapshots while
+disposing every registered mod capability, plus the surrounding reload
+snapshots. The active v0.7.0 set had 48 registrations; Phase 5 contributed one
+command and three tools, pushing the observed reload path to roughly 52 updates
+where React begins warning. Execution Run itself registers no panel, event,
+timer, or React hook.
+
+Mahiro approved removing the now-redundant official Goal Mode package. He then
+explicitly removed both `npm:@letta-ai/goal-mode@0.1.0` and the stale disabled
+`npm:@letta-ai/user-timestamps@0.1.0`. The Mahiro bundle, MemFS Search, and Agent
+Halo remain installed. After two transition reloads and the final cleanup
+reload:
+
+- both official packages are absent from `~/.letta/mods/packages.json` and their
+  managed package directories are removed
+- `npm:@mahirocoko/letta-mods@0.7.0` remains enabled with all nine hashes
+  matching and `Migration needed: no`
+- the foreground reduced-set reload completed without the React warning. The
+  latest aggregate diagnostics after managed-doc synchronization report
+  `errorCount: 0` and two expected listener/process warnings: no-panel
+  statusline registration and secondary Agent Halo bridge forwarding
+- the reduced-set reload commands completed without another warning being
+  reported in this conversation; explicit foreground confirmation remains
+  Mahiro-owned, and the first transition reload was allowed to dispose the old
+  registry
+
+This is a reversible runtime-ownership cleanup, not removal of upstream
+provenance. `THIRD_PARTY_NOTICES.md`, pinned commits, hashes, and adaptation
+boundaries remain canonical.

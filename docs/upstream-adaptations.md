@@ -25,8 +25,9 @@ Upstream:
 
 ### Adapt
 
-- `/goal` becomes `/mh-goal` during dogfood so the official package can remain
-  enabled without command collision.
+- `/goal` became `/mh-goal` during dogfood so the official package could remain
+  enabled without command collision. After the accepted switchover, Mahiro
+  removed the official package while retaining this provenance record.
 - Generic goal tools become `mh_get_goal`, `mh_create_goal`, and
   `mh_update_goal` with no aliases or hidden override.
 - State moves to `~/.letta/mods/mahiro-goal.state.json` with schema versioning,
@@ -228,6 +229,66 @@ Upstream pattern reference:
   verification from inside the mod.
 - Mutating source, Git, indexes, Goal, Code Evidence, or another mod's state.
 
+## Mahiro Execution Run Phase 5
+
+Upstream pattern references:
+
+- `@letta-ai/threadkeeper@0.1.0`
+  - source commit: `35461e785330115869de1bc7a777b568f957c8e3`
+  - source SHA-256:
+    `3b5886629be4c9d204b8d95efd058e15f456268abcc21d39dcff34bc3d739617`
+- `@letta-ai/environment-compass@0.1.0`
+  - source commit: `01a3bf35c86c947abc1a374b1c24c89abc28547b`
+  - source SHA-256:
+    `3ed5504d780b23126741741d7430e3f5fb1ee18cb68537804f91458cbb161077`
+- `@letta-ai/tool-guard-inspector@0.1.0`
+  - source commit: `4f580ee3297e9c311b81ff64c39f9aae7ddf8b7a`
+  - source SHA-256:
+    `7dd30efb6bf7830967e59ff8a896f3d9362699b0c7308f990bdb6db7e4e9c2ce`
+- current official main: `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
+- license: Apache-2.0 for all three sources
+
+### Keep
+
+- Threadkeeper's bounded, scoped operational records, explicit terminal
+  lifecycle, source attribution, secret rejection, and safe local persistence.
+- Environment Compass's distinction between runtime-observed identity and
+  caller/environment metadata plus concise read-only preflight language.
+- Tool Guard Inspector's narrow decision-receipt scope and explicit statement
+  that one component's audit is not a complete security/compliance record.
+- Public commands/tools, capability guards, closed schemas, and reverse cleanup.
+
+### Adapt
+
+- Replace generic anchors with one optional, revisioned Execution Run per
+  agent/conversation scope, plus workspace isolation for raw `default` lanes.
+- Use executor-neutral lanes for main agents, Letta subagents, Direct CLI,
+  humans, and other external executors without changing trust by executor type.
+- Track declared targets, one-writer/many-reader ownership, bounded session and
+  worktree references, blockers, reports, and changed paths as caller metadata.
+- Gate `plan → ready → active → reported → handed_off`, with blockers
+  orthogonal and `abandoned` terminal. Handed off means ready for fresh Code
+  Evidence, never verified, accepted, merged, or complete.
+- Emit bounded execution handoff and Code Evidence intake packets while keeping
+  Goal, UX Workflow, Code Evidence, and Code Map state strictly separate.
+- Strengthen stale-caller protection with both run ID and revision guards,
+  including terminal replacement and lexical target-collision checks.
+
+### Reject
+
+- Generic conversational anchors, free-text turn injection, hidden global
+  continuity, or treating the run as durable memory/backlog.
+- Environment probing, Git/worktree inspection or mutation, memory sync,
+  network calls, automatic repair, or repository trust claims.
+- A global tool/shell permission policy, interception, command deny list, or
+  security-boundary claim.
+- Spawning/controlling executors, choosing model/provider/effort, submitting
+  prompts, retrying work, or inferring process/session liveness.
+- Reading/searching/editing source; running `ccc`, Git, tests, browser, or native
+  checks; storing raw prompts/transcripts/diffs/logs/secrets.
+- Treating lane reports, checks, changed paths, worktrees, or sessions as
+  verification evidence; mutating or completing another workflow owner.
+
 ## Mahiro User Timestamps
 
 Upstream:
@@ -265,5 +326,7 @@ Upstream:
 
 - Running the stale official npm handler and Mahiro handler simultaneously.
 - Editing the installed official package in place.
-- Removing the official package; keep it disabled for provenance and a future
-  upstream release comparison.
+- Removing the official package was initially deferred during verification.
+  Mahiro explicitly superseded that temporary boundary after the replacement
+  passed live use; future upstream comparison should use the pinned receipt or a
+  deliberate reinstall rather than preserving a stale runtime package.
