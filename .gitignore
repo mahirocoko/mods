@@ -15,3 +15,5 @@ coverage/
 *.events.ndjson
 *.bak
 *.bak-*
+# CocoIndex Code (ccc)
+/.cocoindex_code/

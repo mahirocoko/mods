@@ -68,8 +68,13 @@ The Goal schema reserves these ownership boundaries:
    CruiseCode-compatible implementation handoff, up to three UX review
    iterations, and human approval only for a `Ready` review. It performs none of
    the research/design/implementation/check work itself and never changes Goal.
-4. **Code Map** — ccc/exact-symbol/outline guidance plus opt-in large-read
-   enforcement, never a security boundary.
+4. **Code Map** — active Phase 4. Stateless `mh_code_map` guidance routes
+   semantic/conceptual discovery to `ccc`, exact symbol/path/string lookup to
+   exact search, and outline requests to bounded external outline guidance.
+   Large reads require explicit bounded opt-in, but the result is advisory and
+   never permission enforcement or a security boundary. Caller search results
+   and Goal/Code Evidence references remain navigation/coordination metadata,
+   not verification proof.
 
 Each slice stays a focused mod entry until a second owner proves shared-module
 pressure. Runtime state remains under `~/.letta/`; repository state and installed

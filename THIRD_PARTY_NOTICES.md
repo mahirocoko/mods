@@ -60,6 +60,26 @@ or Code Evidence state mutation.
 
 No endorsement by Letta or the upstream author is implied.
 
+## Code Outline Enforce
+
+`mods/mahiro-code-map.ts` is adapted in part from bounded registration/output
+patterns in `@letta-ai/code-outline-enforce` version `0.2.0` in the
+[`letta-ai/mods`](https://github.com/letta-ai/mods) repository.
+
+- Upstream package author: `letta-code-agent`
+- Source commit: `492c6c6ea5102dc29e2c8ac24ace62067891b93c`
+- Source SHA-256: `d4b37430b86fcd2e07af28e40b55d12f48574c660997f8a220d94fd7a3d23a31`
+- Upstream license: Apache License 2.0; a complete copy is included at
+  `LICENSES/Apache-2.0.txt`.
+
+The Mahiro adaptation keeps public tool registration, reverse cleanup, a
+closed schema, and bounded output. It rejects the upstream file reads,
+AST/Ctags/regex parsing, subprocesses, permission overlays, and enforcement,
+replacing them with stateless navigation/read guidance and explicit trust
+boundaries.
+
+No endorsement by Letta or the upstream author is implied.
+
 ## Letta User Timestamps
 
 `mods/mahiro-user-timestamps.ts` is adapted from

@@ -1,8 +1,8 @@
 {
   "name": "@mahirocoko/letta-mods",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
-  "description": "Mahiro's private workflow, UX coordination, code evidence, timestamps, RTK, statusline, and MCP mods for Letta Code.",
+  "description": "Mahiro's private workflow, Code Map, UX coordination, code evidence, timestamps, RTK, statusline, and MCP mods for Letta Code.",
   "license": "UNLICENSED",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
@@ -39,6 +39,7 @@
       "./mods/mahiro-goal.ts",
       "./mods/mahiro-code-evidence.ts",
       "./mods/mahiro-ux-workflow.ts",
+      "./mods/mahiro-code-map.ts",
       "./mods/rtk-control.ts",
       "./mods/statusline.tsx",
       "./mods/mahiro-mcp-proxy.js"

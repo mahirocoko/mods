@@ -12,6 +12,7 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/mahiro-goal.ts` | `/mh-goal`, busy-safe `/mh-goal-status`, `mh_get_goal`, `mh_create_goal`, `mh_update_goal`, `turn_start` | Structured conversation goal with DoD criteria, evidence, blockers, revision guards, and human verification gates. |
 | `mods/mahiro-code-evidence.ts` | `/mh-evidence`, `mh_get_code_evidence`, `mh_collect_code_evidence`, `mh_record_code_evidence` | Bounded read-only Git evidence with separate staged/unstaged/untracked/base lanes, stale-proof external records, conservative verdicts, and explicit Goal handoff. |
 | `mods/mahiro-ux-workflow.ts` | `/mh-ux`, `mh_get_ux_workflow`, `mh_create_ux_workflow`, `mh_update_ux_workflow` | Revisioned UX coordination from frame through review, with a required `frontend-design` brief, human direction/review gates, bounded handoff/review evidence, and no Goal mutation. |
+| `mods/mahiro-code-map.ts` | `mh_code_map` | Stateless bounded guidance that routes conceptual discovery to `ccc`, exact symbols/paths/strings to exact search, and outline requests to external bounded outline tooling without reading or indexing source. |
 | `mods/rtk-control.ts` | `/rtk`, `tool_start` | Opt-in RTK status, savings, suggestions, and command rewriting. Default mode is Off. |
 | `mods/statusline.tsx` | order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, conversation activity, context, MemFS, RTK, model, reasoning, and backend state. |
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
@@ -105,6 +106,30 @@ State is isolated per explicit agent/conversation identity, plus workspace for
 raw `default` lanes, at `~/.letta/mods/mahiro-ux-workflow.state.json`. Writes are
 atomic, fsynced, mode `0600`, owner-token locked, revision guarded, recursively
 validated, and corruption preserving.
+
+## Code Map
+
+Phase 4 adds one stateless model tool, `mh_code_map`. The caller supplies an
+intent (`semantic`, `exact`, or `outline`), a query, optional target-workspace
+metadata, and optional path/language hints plus navigation entries already
+found by another tool. Code Map never resolves or reads the supplied workspace.
+It returns at most 3,000 characters of deterministic guidance:
+
+- semantic/conceptual discovery routes to `ccc`
+- exact symbol/path/string lookup routes to `rg` or another exact search
+- outline requests route to an existing trusted outline/symbol surface outside
+  the mod; Code Map does not generate outlines
+
+Normal guidance stays targeted at two files and 6,000 characters per file.
+Broader reading requires an explicit `large_read` object with a reason and
+bounded 3–12 file / 6,000–20,000 character-per-file guidance. This is advisory,
+not authorization, permission enforcement, or a security boundary.
+
+Caller-supplied search/outline entries are navigation metadata—not verification
+evidence. Goal criterion and Code Evidence references are caller-supplied
+coordination metadata, not trusted receipts. The mod has no state and never
+reads/scans source, indexes a repository, runs a subprocess, generates an
+outline, or mutates source, Git, indexes, Goal, or Code Evidence.
 
 ## Mahiro Goal dogfood
 

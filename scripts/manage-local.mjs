@@ -41,6 +41,7 @@ const entries = [
   "./mods/mahiro-goal.ts",
   "./mods/mahiro-code-evidence.ts",
   "./mods/mahiro-ux-workflow.ts",
+  "./mods/mahiro-code-map.ts",
   "./mods/rtk-control.ts",
   "./mods/statusline.tsx",
   "./mods/mahiro-mcp-proxy.js",
@@ -537,7 +538,7 @@ async function install() {
     }
     if (!finalBundles[0].enabled) throw new Error("Installed bundle is not enabled");
     if (!exactEntries(finalBundles[0].entries)) {
-      throw new Error("Installed bundle does not register the exact seven manifest entries");
+      throw new Error(`Installed bundle does not register the exact ${entries.length} manifest entries`);
     }
     if (finalRegistry.packages.some((pkg) => pkg.source === legacyMcpSource)) {
       throw new Error(`Legacy package remains registered: ${legacyMcpSource}`);

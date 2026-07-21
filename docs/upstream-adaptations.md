@@ -184,6 +184,50 @@ Upstream:
 - Turn-event reminders or a persistent panel before real use proves either is
   necessary.
 
+## Mahiro Code Map Phase 4
+
+Upstream pattern reference:
+
+- package: `@letta-ai/code-outline-enforce@0.2.0`
+- source commit: `492c6c6ea5102dc29e2c8ac24ace62067891b93c`
+- source SHA-256:
+  `d4b37430b86fcd2e07af28e40b55d12f48574c660997f8a220d94fd7a3d23a31`
+- license: Apache-2.0
+
+### Keep
+
+- Public capability-gated tool registration and reverse cleanup.
+- Closed object schema with explicit required fields.
+- Hard output bounds: at most 40 caller entries and 3,000 returned characters.
+- Short actionable routing/status language instead of unbounded source output.
+
+### Adapt
+
+- Replace read enforcement with one stateless `mh_code_map` guidance tool.
+- Route semantic/conceptual discovery to `ccc`, exact symbol/path/string lookup
+  to exact search, and outline requests to an existing trusted external
+  outline/symbol surface or small targeted reads.
+- Accept optional caller-supplied navigation entries, but label them navigation
+  metadata rather than verification evidence.
+- Accept an optional target workspace as caller-supplied metadata so cross-repo
+  guidance does not mislabel the host conversation cwd; never resolve/read it.
+- Keep normal reads narrowly bounded. Broader guidance requires an explicit
+  `large_read` object with a reason and 3–12 file / 6,000–20,000
+  character-per-file limits; the result remains advisory.
+- Accept Goal criterion and Code Evidence references only as caller-supplied
+  coordination metadata. Store no state and import no workflow internals.
+
+### Reject
+
+- Reading arbitrary files or interpreting agent-supplied paths as authority.
+- Python AST execution, Ctags probing/parsing, language regex parsers, fallback
+  source excerpts, filesystem caches, or subprocesses of any kind.
+- Permission overlays, Read-family interception, deny/force/anti-bypass
+  behavior, or presenting large-read limits as authorization/security.
+- Running `ccc`, exact search, indexing, outline generation, tests, or other
+  verification from inside the mod.
+- Mutating source, Git, indexes, Goal, Code Evidence, or another mod's state.
+
 ## Mahiro User Timestamps
 
 Upstream:

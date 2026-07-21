@@ -68,3 +68,11 @@ the package was introduced at commit
 `5acfc823849ab7e5b401ab74f1c6158fdb4da7c6`. It is Apache-2.0. The adaptation
 keeps staged UX coordination and human gates while making `frontend-design`
 canonical and keeping Goal/Code Evidence state strictly separate.
+
+`mods/mahiro-code-map.ts` adapts only public registration, reverse cleanup,
+closed-schema, and bounded-output patterns from
+`@letta-ai/code-outline-enforce@0.2.0`, source commit
+`492c6c6ea5102dc29e2c8ac24ace62067891b93c`, source SHA-256
+`d4b37430b86fcd2e07af28e40b55d12f48574c660997f8a220d94fd7a3d23a31`,
+Apache-2.0. It deliberately rejects the upstream AST/Ctags/regex/read-file,
+permission-overlay, and enforcement implementation.

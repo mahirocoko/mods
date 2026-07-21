@@ -2,7 +2,7 @@
 
 ## Current reality
 
-The repository root is one installable Letta package with seven manifest entries. This deliberately favors one-command private Git installation and one update source over independent npm publication.
+The repository root is one installable Letta package with eight manifest entries. This deliberately favors one-command private Git installation and one update source over independent npm publication.
 
 ```text
 package.json#letta
@@ -10,12 +10,13 @@ package.json#letta
 ├── mods/mahiro-goal.ts
 ├── mods/mahiro-code-evidence.ts
 ├── mods/mahiro-ux-workflow.ts
+├── mods/mahiro-code-map.ts
 ├── mods/rtk-control.ts
 ├── mods/statusline.tsx
 └── mods/mahiro-mcp-proxy.js
 ```
 
-The declared capability list is the union of the seven entries. Runtime behavior still remains independent because each activation function checks the capabilities it needs.
+The declared capability list is the union of the eight entries. Runtime behavior still remains independent because each activation function checks the capabilities it needs.
 
 `mahiro-goal.ts`, `mahiro-code-evidence.ts`, and `mahiro-ux-workflow.ts` each
 own focused state and invariants. Phase 3 deliberately does not extract a shared
@@ -23,6 +24,11 @@ workflow core: Goal owns completion, Code Evidence owns repository proof, and UX
 Workflow owns design-stage coordination/human gates. This keeps cross-mod
 handoffs explicit through public tool output rather than internal imports. See
 `docs/workflow-ecosystem.md`.
+
+`mahiro-code-map.ts` is intentionally stateless and independent. It owns only a
+bounded routing/read-guidance contract; `ccc`, exact search, outline tools, file
+reads, and verification remain external operations. It does not share a core or
+state with Goal, Code Evidence, or UX Workflow.
 
 ## Why one package
 

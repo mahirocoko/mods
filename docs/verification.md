@@ -389,3 +389,93 @@ Final live Phase 3 runtime evidence:
   dedicated Goal criterion
 
 Commit, push, release, and Phase 4 remain separate operations.
+
+## Phase 4 Code Map candidate
+
+Source contract:
+
+- `mods/mahiro-code-map.ts` registers one stateless `mh_code_map` model tool
+  and no command, event, panel, permission overlay, state file, or subprocess
+- semantic intent routes to `ccc`; exact intent routes to exact search; outline
+  intent returns bounded external outline guidance and never generates an
+  outline inside the mod
+- normal read guidance is two files × 6,000 characters; broader guidance
+  requires an explicit reason and bounded `large_read` limits
+- caller navigation entries are metadata rather than verification evidence;
+  Goal/Code Evidence references are caller-supplied metadata rather than trusted
+  receipts
+- optional target workspace is caller-supplied metadata, allowing cross-repo
+  guidance without resolving/reading the path or mislabelling the host cwd
+- output is capped at 40 caller entries and 3,000 returned characters
+- provenance is pinned to `@letta-ai/code-outline-enforce@0.2.0`, commit
+  `492c6c6ea5102dc29e2c8ac24ace62067891b93c`, while its source-reading,
+  AST/Ctags/regex, subprocess, permission, and enforcement behavior is rejected
+
+Focused source checks currently prove the exact eight-entry `0.6.0` package
+order, tools-only capability gate, one-context `ctx.args` host contract,
+parallel-safe stateless registration, cleanup, closed schema, route behavior,
+opt-in large-read boundary, caller-metadata disclaimers, worst-case bounded
+output, invalid-input refusal, and absence of file/process/permission/event/
+command surfaces.
+
+Pre-install source/package evidence:
+
+- `pnpm check` passes with `8 mods, 9 capabilities`
+- `git diff --check` and `pnpm pack --dry-run` pass; the allowlisted tarball
+  contains all eight mods, package docs/notices, and the complete Apache license
+- an isolated `LETTA_MODS_ROOT` install/status/uninstall passes with the MCP SDK
+  present, all eight hashes matching, `Migration needed: no`, and runtime-state
+  preservation on uninstall
+- candidate `mods/mahiro-code-map.ts` SHA-256:
+  `007fbb0ec9988a3276b54fc5926576298c48a1f7221bf06fea5a8c84c0df8bd7`
+
+The first independent adversarial review verified the architecture, routing,
+side-effect boundaries, package synchronization, output cap, and trust model,
+but found that C1 controls plus Unicode line/paragraph separators still passed
+the original single-line validator. The corrected validator now rejects C0/C1,
+Unicode line/paragraph separators, and bidi override/isolate characters across
+queries, target workspace metadata, paths, summaries, hints, reasons, and
+references; focused regression cases cover each hostile family, including the
+later-added cross-repository workspace field.
+
+The first corrected independent re-review returned `PASS` with no
+High/Medium/Low findings.
+It re-exercised 32 hostile control-field cases, the 40-entry output bound, the
+current source hash, all intent/trust/side-effect boundaries, and the exact
+eight-entry package/docs/provenance synchronization.
+
+The first real-host dogfood after reload exercised semantic, exact, outline,
+and explicit large-read routes successfully, but caught one cross-repository
+attribution flaw before acceptance: the output used the host conversation cwd
+even when navigation entries targeted the mods repository. The candidate now
+accepts an optional metadata-only `workspace`, labels whether it came from the
+host or caller, and still never resolves or reads that path. A follow-up verifier
+then found the shared validator was correct but requested direct hostile tests
+for the newly added field; explicit C0, C1, Unicode separator, and bidi workspace
+regressions were added. The final source-level verifier returned `PASS` with no
+remaining findings.
+
+Final managed/runtime evidence:
+
+- `pnpm mods:update` installed the workspace-aware `0.6.0` eight-entry bundle;
+  backup: `~/.letta/mods/backups/2026-07-21T09-16-57-825Z-73010`
+- post-install `pnpm mods:status` reports the MCP SDK present, all eight entries
+  matching, and `Migration needed: no`
+- installed package version/entry count is `0.6.0 / 8`; installed and repository
+  Code Map hashes both equal
+  `007fbb0ec9988a3276b54fc5926576298c48a1f7221bf06fea5a8c84c0df8bd7`
+- Mahiro reloaded the active session; the real host exposed the new optional
+  `workspace` schema and `mh_code_map` remained agent-callable
+- final live calls passed semantic → `ccc`, exact → exact search, and outline →
+  bounded external guidance, including targeted-default and explicit 6-file ×
+  12,000-character advisory large-read branches
+- every final output labelled the mods target as caller-supplied metadata,
+  preserved navigation-not-verification and caller-reference boundaries, and
+  stated zero reads/scans/indexing/subprocess/outline/mutation side effects
+- post-reload diagnostics report `errorCount: 0`; the only warning is the
+  expected secondary Agent Halo process forwarding to the primary bridge
+
+Mahiro explicitly accepted the Phase 4 behavior through the human-owned Goal
+criterion after the final workspace-aware live dogfood. All implementation,
+package, runtime, and human acceptance gates are closed. No commit, push,
+release, or Phase 5 is implied.

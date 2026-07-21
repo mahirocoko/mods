@@ -1,13 +1,13 @@
 ---
 name: "@mahirocoko/letta-mods"
-description: "Mahiro's private user timestamps, structured workflow goal, bounded code evidence, UX coordination, RTK control, compact statusline, and lazy MCP proxy bundle for Letta Code."
+description: "Mahiro's private user timestamps, structured workflow goal, bounded code evidence, UX coordination, Code Map guidance, RTK control, compact statusline, and lazy MCP proxy bundle for Letta Code."
 ---
 
 # Mahiro Letta Mods semantics
 
 ## Package boundary
 
-This package activates seven independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, and persistent MCP connections.
+This package activates eight independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, and persistent MCP connections.
 
 Installed package files are runtime copies. Edit this repository, validate it, reinstall/update the managed package, and run `/reload` rather than editing files below `~/.letta/mods/packages/`.
 
@@ -121,6 +121,23 @@ Mahiro Goal intentionally does not override `/goal`, duplicate official goal
 tool names, or touch `goal-mode.state.json` during dogfood. The official package
 may remain enabled until the adapted workflow has passed real use and an
 explicit switchover is approved.
+
+## Mahiro Code Map
+
+`mods/mahiro-code-map.ts` registers one stateless, parallel-safe model tool:
+`mh_code_map`. It accepts a closed bounded schema and returns no more than 3,000
+characters. Semantic intent points to `ccc`; exact intent points to exact
+search; outline intent points to an existing external outline/symbol surface or
+small targeted reads. The mod itself never reads, scans, parses, indexes, or
+generates source structure. An optional target workspace is caller-supplied
+metadata only; the mod never resolves or reads it.
+
+Navigation entries and Goal/Code Evidence references are supplied by the caller
+and remain metadata, not proof or trusted receipts. Normal reads stay narrowly
+bounded; `large_read` must be supplied explicitly with a reason and limits. Its
+result is guidance only—not permission enforcement or a security boundary.
+Code Map has no persistent state and never mutates files, Git, indexes, Goal,
+Code Evidence, or another mod.
 
 ## RTK control
 
