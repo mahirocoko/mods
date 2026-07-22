@@ -1,10 +1,6 @@
 /**
  * Mahiro UX Workflow — runtime coordination and human approval gates.
  *
- * Adapted in part from @letta-ai/cruise-ux@0.2.0-alpha.1 (Apache-2.0),
- * source commit 57f7a3ef3b4648a1c46b0f922d6df74d11bfa628. See
- * THIRD_PARTY_NOTICES.md and docs/upstream-adaptations.md.
- *
  * This mod coordinates artifacts only. frontend-design remains canonical design
  * doctrine. This mod never researches, browses, runs commands, scans files,
  * implements product code, mutates Goal/Code Evidence, or verifies a Goal.

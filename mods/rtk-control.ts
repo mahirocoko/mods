@@ -648,7 +648,7 @@ const guidance = [
   "- Mod = control-plane + optional tool_start rewrite layer.",
   "- Separate settings hooks are not needed for Letta Code when this mod is active.",
   "- rewrite-safe is intentionally conservative: safe read-only allowlist only.",
-  "- rewrite-rtk uses RTK's broader `rtk rewrite` result and is closer to official hook behavior.",
+  "- rewrite-rtk uses RTK's broader `rtk rewrite` result and is closer to RTK hook behavior.",
   "- Default mode remains off; suggest logs safe opportunities; choose rewrite-rtk explicitly for broader behavior.",
   "- Compression should stay visible through /rtk status and /rtk log.",
 ].join("\n");

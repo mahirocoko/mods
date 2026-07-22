@@ -1,10 +1,5 @@
 /**
  * Mahiro User Timestamps — local time metadata for each real user turn.
- *
- * Adapted from @letta-ai/user-timestamps 0.1.0 (Apache-2.0), canonical fix
- * commit c28d70fc490c7e59123e33ae73b064f9c75ddd27. The npm 0.1.0 artifact is
- * older and combines dateStyle/timeStyle with timeZoneName, which throws on
- * Node 22+. See THIRD_PARTY_NOTICES.md and docs/upstream-adaptations.md.
  */
 
 interface TimestampMetadata {

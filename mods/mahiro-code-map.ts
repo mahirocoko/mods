@@ -1,12 +1,5 @@
 /**
  * Mahiro Code Map — bounded navigation guidance for repository discovery.
- *
- * Adapted in part from @letta-ai/code-outline-enforce 0.2.0 (Apache-2.0),
- * source commit 492c6c6ea5102dc29e2c8ac24ace62067891b93c. This adaptation keeps
- * public tool registration, reverse cleanup, closed schemas, and bounded output
- * while rejecting source reads, AST/Ctags/regex parsing, subprocesses,
- * permission overlays, and enforcement. See THIRD_PARTY_NOTICES.md and
- * docs/upstream-adaptations.md.
  */
 
 const MAX_OUTPUT_CHARS = 3_000;

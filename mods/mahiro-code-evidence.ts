@@ -1,12 +1,9 @@
 /**
  * Mahiro Code Evidence — bounded, read-only repository proof for Goal work.
  *
- * Adapted in part from @letta-ai/cruise-code 0.1.0-alpha.1 (Apache-2.0),
- * source commit 5acfc823849ab7e5b401ab74f1c6158fdb4da7c6. This adaptation keeps
- * evidence-first reporting while separating staged, unstaged, untracked, and
- * base-to-HEAD state. It never stages, commits, mutates source, runs arbitrary
- * commands, or writes Mahiro Goal state. See THIRD_PARTY_NOTICES.md and
- * docs/upstream-adaptations.md.
+ * It keeps staged, unstaged, untracked, and base-to-HEAD state separate and
+ * never stages, commits, mutates source, runs arbitrary commands, or writes
+ * Mahiro Goal state.
  */
 
 import { execFile as execFileCallback } from "node:child_process";

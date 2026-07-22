@@ -260,7 +260,7 @@ if (packageJson) {
   if (!Array.isArray(packageJson.files)) {
     addError("package.json files must be an allowlist array.");
   } else {
-    for (const allowedPath of ["README.md", "MOD.md", "THIRD_PARTY_NOTICES.md", "LICENSES", "mods"]) {
+    for (const allowedPath of ["README.md", "MOD.md", "docs/usage-th.md", "THIRD_PARTY_NOTICES.md", "LICENSES", "mods"]) {
       if (!packageJson.files.includes(allowedPath)) addError(`package.json files must include ${JSON.stringify(allowedPath)}.`);
     }
   }
@@ -330,6 +330,7 @@ if (packageJson) {
 }
 
 readRequiredFile("README.md");
+readRequiredFile("docs/usage-th.md");
 validateModFrontmatter(readRequiredFile("MOD.md"));
 inspectSourceCandidates();
 

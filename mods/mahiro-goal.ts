@@ -1,14 +1,8 @@
 /**
  * Mahiro Goal — structured workflow goal foundation for Mahiro's Letta mods.
  *
- * Adapted in part from @letta-ai/goal-mode 0.1.0 (Apache-2.0), source commit
- * 27859c3771177a4e431ace91a4780b0e154abae1. See THIRD_PARTY_NOTICES.md and
- * docs/upstream-adaptations.md for the Keep / Adapt / Reject ledger.
- *
- * Phase 1 deliberately coexists with the official package:
- * - command: /mh-goal (never overrides /goal)
- * - tools: mh_get_goal, mh_create_goal, mh_update_goal
- * - state: ~/.letta/mods/mahiro-goal.state.json
+ * Surfaces: /mh-goal, mh_get_goal, mh_create_goal, mh_update_goal.
+ * State: ~/.letta/mods/mahiro-goal.state.json.
  */
 
 import { randomUUID } from "node:crypto";
@@ -899,7 +893,7 @@ function helpText(): string {
     "  /mh-goal clear                           Remove this conversation's Mahiro Goal",
     "  /mh-goal unlock --force                  Explicitly remove an abandoned mutation lock",
     "",
-    "The official /goal package remains independent during dogfood.",
+    "/mh-goal and mh_* tools are the Goal surfaces for this bundle.",
   ].join("\n");
 }
 

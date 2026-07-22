@@ -366,6 +366,7 @@ async function createInstallStage() {
     for (const name of ["package.json", "README.md", "MOD.md", "THIRD_PARTY_NOTICES.md"]) {
       await copyPath(join(repositoryRoot, name), join(stageRoot, name));
     }
+    await copyPath(join(repositoryRoot, "docs", "usage-th.md"), join(stageRoot, "docs", "usage-th.md"));
     await copyPath(join(repositoryRoot, "LICENSES"), join(stageRoot, "LICENSES"));
     await copyPath(join(repositoryRoot, "mods"), join(stageRoot, "mods"));
     return stageRoot;

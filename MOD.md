@@ -20,11 +20,8 @@ assistant/system items, existing metadata, multimodal non-text parts, and
 existing timestamp blocks. Synthetic `<system-reminder>` user items are left
 untouched.
 
-The formatter uses the canonical safe `dateStyle: "full"` and
-`timeStyle: "long"` combination. The stale published official package adds
-`timeZoneName`, which is incompatible with those style options and throws on
-Node 22+. Do not enable both handlers together. Mahiro explicitly removed the
-stale official package after the adapted entry passed reload verification.
+The formatter uses the safe `dateStyle: "full"` and `timeStyle: "long"`
+combination. Keep one timestamp owner active per user turn.
 
 ## Mahiro Code Evidence
 
@@ -117,9 +114,8 @@ Evidence/history are bounded but may contain private paths, commands, URLs, and
 review notes. Keep credentials and secret values out of goal state and remember
 that model-tool output may enter the conversation transcript.
 
-Mahiro Goal intentionally does not duplicate official goal tool names or touch
-historical `goal-mode.state.json`. The initial coexistence period is complete;
-Mahiro explicitly removed official Goal Mode after approving the switchover.
+Mahiro Goal owns only its namespaced commands, tools, and state. It never reads
+or mutates another workflow mod's state.
 
 ## Mahiro Code Map
 

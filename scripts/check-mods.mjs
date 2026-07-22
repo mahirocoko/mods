@@ -544,6 +544,8 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
     cwd: "/tmp/mahiro-goal-project",
     contextWindow: { totalInputTokens: 120, totalOutputTokens: 30 },
   };
+  const helpResult = goalCommand.run({ ...baseContext, args: "help" });
+  assert(helpResult.success !== false && helpResult.output.includes("/mh-goal and mh_* tools are the Goal surfaces") && !/official|dogfood/i.test(helpResult.output), "Mahiro Goal help must describe only the current bundle surface");
   const create = tools.find(({ name }) => name === "mh_create_goal");
   const get = tools.find(({ name }) => name === "mh_get_goal");
   const update = tools.find(({ name }) => name === "mh_update_goal");

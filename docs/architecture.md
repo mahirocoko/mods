@@ -54,10 +54,6 @@ Repository source flows into a managed package below `~/.letta/mods/packages/`. 
 
 Agent Halo remains an external managed source because its mod and install lifecycle are coupled to the Agent Halo bridge/desktop project.
 
-Official `@letta-ai/goal-mode` was an independent managed source during initial
-Mahiro Goal dogfood. Mahiro explicitly removed it after the switchover. There is
-still no automatic migration or cross-write with historical official state.
-
 ## Local migration
 
 The local installer is a compatibility bridge for the pre-repository layout:
@@ -69,7 +65,7 @@ The local installer is a compatibility bridge for the pre-repository layout:
 5. Install production dependencies into the managed local copy because Letta 0.28.8 local-path installation intentionally excludes `node_modules`.
 6. Verify copied source hashes and the MCP SDK.
 7. Remove the superseded direct RTK/statusline files and old `npm:mahiro-mcp-proxy` package.
-8. Preserve all state, logs, config, cache, diagnostics, Agent Halo files, and official packages.
+8. Preserve all unrelated state, logs, config, cache, diagnostics, Agent Halo files, and package-registry entries.
 
 Rollback restores this bundle/legacy paths while preserving unrelated package-registry entries that may have changed. Do not deliberately run other Letta package mutations concurrently because the upstream CLI does not share this repository's lock.
 

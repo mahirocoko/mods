@@ -1,14 +1,6 @@
 /**
  * Mahiro Execution Run — bounded, executor-neutral coordination records.
  *
- * Pattern references (Apache-2.0; see docs/upstream-adaptations.md):
- * - @letta-ai/threadkeeper@0.1.0
- *   35461e785330115869de1bc7a777b568f957c8e3 / 3b5886629be4c9d204b8d95efd058e15f456268abcc21d39dcff34bc3d739617
- * - @letta-ai/environment-compass@0.1.0
- *   01a3bf35c86c947abc1a374b1c24c89abc28547b / 3ed5504d780b23126741741d7430e3f5fb1ee18cb68537804f91458cbb161077
- * - @letta-ai/tool-guard-inspector@0.1.0
- *   4f580ee3297e9c311b81ff64c39f9aae7ddf8b7a / 7dd30efb6bf7830967e59ff8a896f3d9362699b0c7308f990bdb6db7e4e9c2ce
- *
  * Recorded metadata is caller-supplied coordination data, never execution proof.
  */
 import { randomUUID } from "node:crypto";

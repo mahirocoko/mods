@@ -4,6 +4,8 @@ Private, inspectable Letta Code workflow and runtime mods that Mahiro uses acros
 
 This repository is the canonical source. Runtime state, logs, caches, diagnostics, and installed copies stay under `~/.letta/` and are never committed.
 
+คู่มือใช้งานภาษาไทย: [`docs/usage-th.md`](docs/usage-th.md)
+
 ## Included mods
 
 | Entry | Surface | Purpose |
@@ -22,17 +24,8 @@ Agent Halo is not duplicated here. Its canonical mod remains in the separate [`a
 
 ## User timestamp ownership
 
-The published `@letta-ai/user-timestamps@0.1.0` artifact is older than its
-canonical repository fix and throws on each `turn_start` because it combines
-`dateStyle`/`timeStyle` with `timeZoneName`. This bundle carries the attributed
-fixed behavior as `mahiro-user-timestamps.ts`.
-
-Only one timestamp owner may be enabled. After the Mahiro-owned handler passed
-live verification, Mahiro explicitly removed the stale official package on
-2026-07-21. Reinstall it only for a deliberate upstream comparison, and never
-enable both handlers together.
-
-The adapted handler runs before Mahiro Goal, returns a composable input
+Use one timestamp owner per user turn. The bundled handler runs before Mahiro
+Goal, returns a composable input
 transform, and timestamps the real user message without timestamping the
 synthetic Goal reminder.
 
@@ -186,13 +179,9 @@ run-ID plus revision stale-caller protection.
 
 ## Mahiro Goal ownership
 
-Phase 1 initially coexisted with official `@letta-ai/goal-mode` while the
-Mahiro-owned workflow was dogfooded. After acceptance and a reload-pressure
-audit, Mahiro explicitly removed the official package on 2026-07-21. `/mh-goal`
-and the `mh_*` tools are now the only installed Goal surface from this bundle;
-`/goal` is unavailable unless the official package is deliberately reinstalled.
-Mahiro Goal never reads, migrates, or mutates historical
-`goal-mode.state.json` automatically.
+`/mh-goal`, `/mh-goal-status`, and the `mh_*` Goal tools are the Goal surfaces
+for this bundle. Goal state remains isolated by agent, conversation, and
+workspace scope and is never shared with another workflow mod.
 
 ```text
 /mh-goal status
