@@ -649,3 +649,33 @@ reload:
 This is a reversible runtime-ownership cleanup, not removal of upstream
 provenance. `THIRD_PARTY_NOTICES.md`, pinned commits, hashes, and adaptation
 boundaries remain canonical.
+
+## Adaptive left-wrap statusline — 2026-07-23
+
+The order-0 statusline now returns one row at normal widths and at most two rows
+when left-side segments overflow. The right-side agent/model/backend group stays
+on the first row; the second row contains only complete left segments in their
+original priority order. A segment is never split internally, and any remainder
+after the bounded second row is omitted.
+
+Source verification passed through `pnpm check`:
+
+- width 220 renders one string row
+- width 64 renders exactly two rows
+- the model/reasoning group remains on row one
+- row two contains only ordered whole left segments
+- order-0 ownership, all event registrations, panel cleanup, and the other eight
+  bundle entries continue to pass
+
+The local managed package was updated with backup
+`~/.letta/mods/backups/2026-07-23T09-51-50-833Z-69723`. Repository and installed
+statusline SHA-256 both equal
+`76554433f270c4b8ae3cb6717983993fffdb8b3bb02ae396b913783d969613cd`, and
+`pnpm mods:status` reports `Migration needed: no`.
+
+The foreground `/reload` loaded cache
+`.letta-mod-statusline-76554433f270c4b8.mjs`; post-reload diagnostics contained
+zero records, and all nine managed hashes still matched with
+`Migration needed: no`. Mahiro then requested the retrospective and commit.
+An explicit narrow-terminal screenshot/visual confirmation was not reported, so
+that presentation check remains a follow-up rather than claimed evidence.

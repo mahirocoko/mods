@@ -17,7 +17,7 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/mahiro-code-map.ts` | `mh_code_map` | Stateless bounded guidance that routes conceptual discovery to `ccc`, exact symbols/paths/strings to exact search, and outline requests to external bounded outline tooling without reading or indexing source. |
 | `mods/mahiro-execution-run.ts` | `/mh-run`, `mh_get_execution_run`, `mh_create_execution_run`, `mh_update_execution_run` | Optional executor-neutral coordination for complex main-agent, Letta-subagent, Direct-CLI, human, or other work, with declared target ownership, bounded reports, and a Code Evidence intake handoff. |
 | `mods/rtk-control.ts` | `/rtk`, `tool_start` | Opt-in RTK status, savings, suggestions, and command rewriting. Default mode is Off. |
-| `mods/statusline.tsx` | order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, conversation activity, context, MemFS, RTK, model, reasoning, and backend state. |
+| `mods/statusline.tsx` | order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, conversation activity, context, MemFS, RTK, model, reasoning, and backend state; left-side overflow wraps by whole segment to one bounded second row. |
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
 
 Agent Halo is not duplicated here. Its canonical mod remains in the separate [`agent-halo`](https://github.com/mahirocoko/agent-halo) repository and is installed by that project.

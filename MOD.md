@@ -190,6 +190,8 @@ Use `/rtk doctor`, `/rtk log`, and `/rtk rewrite <command>` before enabling broa
 
 `mods/statusline.tsx` owns an order-0 panel when `ui.panels` is available. It combines bounded workspace/Git/conversation/activity/context/MemFS/RTK/model information and refreshes local Git, memory, reflection, and RTK state every ten seconds.
 
+The statusline remains one row when the available width is sufficient. When only the left-side segments overflow, it keeps the agent/model/backend group on the first row and moves a prefix-preserving set of complete left segments to one second row. It never wraps a segment internally and never grows beyond two rows; lower-priority remainder is omitted when both rows are full.
+
 The panel subscribes only to event capabilities exposed by the current host and cleans up its interval, event registrations, timers, and panel on reload. Hosts without panel UI receive a warning diagnostic and no statusline registration.
 
 ## Lazy MCP proxy

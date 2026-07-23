@@ -293,7 +293,7 @@ export default function activate(letta: LettaApi) {
   };
 }
 
-function renderStatusline(context: any, status: CachedStatus): string {
+function renderStatusline(context: any, status: CachedStatus): string | string[] {
   const width = pickNumber(context?.width) ?? 80;
   const row = typeof context?.row === "function" ? context.row : fallbackRow;
   const chalk = context?.chalk ?? null;
@@ -401,14 +401,20 @@ function renderStatusline(context: any, status: CachedStatus): string {
 
   for (const rightParts of rightOptions) {
     const right = renderSegments(chalk, rightParts);
+    if (visibleWidth(right) > width) continue;
     const availableLeftWidth = Math.max(0, width - visibleWidth(right) - (right ? 3 : 0));
-    const leftParts = fitSegments(leftCandidates, availableLeftWidth, chalk);
-    const left = renderSegments(chalk, leftParts) || color(chalk, STATUS_COLORS.agent, agentName ?? "Letta");
-    const rendered = row(left, right, width);
-    if (visibleWidth(rendered) <= width) return rendered;
+    const primary = fitSegmentPrefix(leftCandidates, availableLeftWidth, chalk);
+    const overflow = fitSegmentPrefix(primary.remaining, width, chalk);
+    const left = renderSegments(chalk, primary.fitted);
+    const firstLine = row(left || (!right ? color(chalk, STATUS_COLORS.agent, agentName ?? "Letta") : ""), right, width);
+    if (visibleWidth(firstLine) > width) continue;
+
+    const secondLine = renderSegments(chalk, overflow.fitted);
+    if (secondLine && visibleWidth(secondLine) <= width) return [firstLine, secondLine];
+    return firstLine;
   }
 
-  const left = renderSegments(chalk, fitSegments(leftCandidates, width, chalk));
+  const left = renderSegments(chalk, fitSegmentPrefix(leftCandidates, width, chalk).fitted);
   return row(left || color(chalk, STATUS_COLORS.agent, agentName ?? "Letta"), "", width);
 }
 
@@ -646,18 +652,23 @@ function renderSegments(chalk: any, segments: StatusSegment[]): string {
     .join("");
 }
 
-function fitSegments(segments: StatusSegment[], maxWidth: number, chalk: any): StatusSegment[] {
-  if (maxWidth <= 0) return [];
+function fitSegmentPrefix(
+  segments: StatusSegment[],
+  maxWidth: number,
+  chalk: any,
+): { fitted: StatusSegment[]; remaining: StatusSegment[] } {
+  if (maxWidth <= 0) return { fitted: [], remaining: segments };
 
   const fitted: StatusSegment[] = [];
-  for (const segment of segments) {
+  let index = 0;
+  for (; index < segments.length; index += 1) {
+    const segment = segments[index];
     const next = [...fitted, segment];
-    if (visibleWidth(renderSegments(chalk, next)) <= maxWidth) {
-      fitted.push(segment);
-    }
+    if (visibleWidth(renderSegments(chalk, next)) > maxWidth) break;
+    fitted.push(segment);
   }
 
-  return fitted;
+  return { fitted, remaining: segments.slice(index) };
 }
 
 function compactModelName(modelName: string | null): string | null {

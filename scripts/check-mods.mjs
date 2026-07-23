@@ -1403,6 +1403,32 @@ function checkStatuslineRegistration(activate) {
   assert(panelOptions?.id === "statusline", "statusline must register panel id statusline");
   assert(panelOptions?.order === 0, "statusline must own order-0 panel position");
   assert(typeof panelOptions?.render({ width: 100 }) === "string", "statusline panel must render a string");
+  const layoutContext = {
+    agent: { name: "Mahiro Code" },
+    backend: { name: "local" },
+    contextWindow: { usedPercentage: 77 },
+    conversationSummary: "responsive-statusline-check",
+    model: { displayName: "GPT-5.6 Sol", reasoningEffort: "extra-high" },
+    permissionMode: "acceptEdits",
+    reflection: { mode: "step-count", stepCount: 25 },
+    workspace: { cwd: "/Users/mahiro/ghq/github.com/mahirocoko/mods" },
+  };
+  const wideLayout = panelOptions?.render({ ...layoutContext, width: 220 });
+  assert(typeof wideLayout === "string", "wide statusline must remain one row");
+  const narrowLayout = panelOptions?.render({ ...layoutContext, width: 64 });
+  assert(Array.isArray(narrowLayout) && narrowLayout.length === 2, "narrow statusline must wrap left overflow to exactly two rows");
+  assert(narrowLayout[0].includes("[GPT-5.6 Sol r:xhigh]"), "statusline right model must stay on the first row");
+  assert(!narrowLayout[1].includes("GPT-5.6 Sol"), "statusline second row must contain left overflow only");
+  const narrowOverflow = narrowLayout[1];
+  const overflowReflectionIndex = narrowOverflow.indexOf("😴 25");
+  const overflowModeIndex = narrowOverflow.indexOf("✏️ accept-edits");
+  assert(
+    narrowLayout[0].includes("ctx 77%") &&
+      overflowReflectionIndex >= 0 &&
+      overflowModeIndex > overflowReflectionIndex &&
+      narrowOverflow.includes("accept-edits"),
+    `statusline must move complete left segments to the second row in order: ${JSON.stringify(narrowLayout)}`,
+  );
   const expectedEvents = [
     "compact_end",
     "compact_start",

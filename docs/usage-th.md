@@ -336,6 +336,7 @@ Mahiro ใช้คำสั่งเหล่านี้เพื่อดู�
 
 - ข้อมูล Git, memory, reflection และ RTK refresh ทุก 10 วินาที ไม่ใช่ทุก millisecond
 - Activity จาก turn, LLM, tool และ compaction เป็นสถานะชั่วคราว
+- ถ้าข้อมูลฝั่งซ้ายยาวเกินพื้นที่ statusline จะย้ายทั้ง segment ลงแถวที่สอง โดยฝั่ง agent/model/backend ยังอยู่แถวแรก และ panel จะสูงไม่เกิน 2 แถว
 - ถ้า host ไม่มี `ui.panels` จะไม่มี statusline และ diagnostics อาจมี warning เรื่อง panel capability ซึ่งไม่เท่ากับ mod พัง
 - ถ้า statusline หายหลังแก้ source ให้ติดตั้ง package ใหม่แล้ว `/reload` แทนการแก้ installed copy
 
