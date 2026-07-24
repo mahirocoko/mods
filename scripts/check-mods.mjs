@@ -353,7 +353,7 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
         },
       },
     });
-    assert(handlers.size === 6, "Herdr lifecycle must prefer turn/tool truth and avoid redundant LLM/compact registrations");
+    assert(handlers.size === 7, "Herdr lifecycle must register one bounded llm_end interrupt observer alongside lifecycle/turn/tool truth");
 
     handlers.get("conversation_open")({ conversationId: "local-conv-herdr" }, context);
     await waitFor(() => requests.length >= 2, "Herdr lifecycle did not report initial agent plus metadata state");
@@ -384,11 +384,70 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
     const settledReport = [...requests].reverse().find((request) => request.method === "pane.report_agent");
     assert(settledReport?.params.state === "idle", "settled main and child work must return to idle");
 
+    assert(
+      !testing.shouldScanSubagentProcesses({ conversationOpen: true, runningSubagentCount: 0, discoveryUntil: 0, now: 10 }),
+      "open root turns and stale tools must not scan processes without a child or short discovery grace",
+    );
+    assert(
+      testing.shouldScanSubagentProcesses({ conversationOpen: true, runningSubagentCount: 0, discoveryUntil: testing.processDiscoveryDeadline(10), now: 10 }),
+      "tool boundaries must retain a bounded discovery scan window",
+    );
+    assert(
+      testing.shouldScanSubagentProcesses({ conversationOpen: true, runningSubagentCount: 1, discoveryUntil: 0, now: 10 }),
+      "known background children must continue process scans after the root turn settles",
+    );
+    assert(testing.userInterruptedEvent({ reason: "user_interrupt" }), "explicit user-interrupt reasons must identify a user interrupt");
+    assert(testing.userInterruptedEvent({ error: { message: "Interrupted by user" } }), "explicit user-interrupt messages must identify a user interrupt");
+    assert(!testing.userInterruptedEvent({ stopReason: "aborted" }), "generic aborts must not masquerade as user interrupts");
+    assert(testing.userInterruptedEvent({ stopReason: "aborted" }, true), "an observed llm abort must settle a user-interrupted root turn");
+    assert(!testing.userInterruptedEvent({ stopReason: "aborted", message: "Interrupted by user" }), "an explicit non-user stop reason must outrank an ambiguous interrupt message");
+    assert(!testing.userInterruptedEvent({ stopReason: "cancelled", error: { message: "Interrupted by user" } }), "a cancelled terminal reason must not masquerade as user intent");
+    assert(!testing.userInterruptedEvent({ stopReason: "llm_api_error" }), "provider errors must not masquerade as user interrupts");
+
+    const beforeInterrupt = requests.length;
+    handlers.get("turn_start")({ conversationId: "local-conv-herdr" }, context);
+    handlers.get("tool_start")({ toolCallId: "interrupt-tool", toolName: "Read" }, context);
+    handlers.get("llm_end")({ stopReason: "aborted" }, context);
+    await waitFor(() => requests.slice(beforeInterrupt).some((request) => request.method === "pane.report_agent" && request.params.state === "idle"), "user interrupt must settle the root Letta state");
+    assert(
+      !testing.shouldScanSubagentProcesses({ conversationOpen: true, runningSubagentCount: 0, discoveryUntil: 0, now: 10 }),
+      "an interrupted root turn with no known child must stop process scanning immediately",
+    );
+    const afterInterrupt = requests.length;
+    handlers.get("tool_end")({ toolCallId: "interrupt-tool", toolName: "Read" }, context);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 600));
+    assert(requests.length === afterInterrupt, "late tool completion after an interrupt must not reopen process discovery");
+
+    const beforeToolAbort = requests.length;
+    handlers.get("turn_start")({ conversationId: "local-conv-herdr" }, context);
+    handlers.get("tool_start")({ toolCallId: "provider-abort-tool", toolName: "Read" }, context);
+    handlers.get("tool_end")({ toolCallId: "provider-abort-tool", toolName: "Read", stopReason: "aborted" }, context);
+    await waitFor(() => requests.slice(beforeToolAbort).some((request) => request.method === "pane.report_agent" && request.params.state === "working"), "a generic tool abort must preserve root activity until the turn itself settles");
+
     const beforeClose = requests.length;
     handlers.get("conversation_close")({ conversationId: "local-conv-herdr" }, context);
     await waitFor(() => requests.slice(beforeClose).some((request) => request.method === "pane.release_agent"), "conversation close must release custom Herdr authority");
     const closeMetadata = requests.slice(beforeClose).find((request) => request.method === "pane.report_metadata");
     assert(closeMetadata?.params.clear_display_agent === true && closeMetadata.params.tokens.summary === null && closeMetadata.params.tokens.letta_scope === null, "conversation close must clear Herdr presentation and focus identity metadata before release");
+    const afterClose = requests.length;
+    handlers.get("tool_start")({ conversationId: "local-conv-herdr", toolCallId: "stale-tool", toolName: "Read" }, context);
+    handlers.get("tool_end")({ conversationId: "local-conv-herdr", toolCallId: "stale-tool", toolName: "Read" }, context);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 600));
+    assert(requests.length === afterClose, "stale tool events after conversation close must not reopen lifecycle reporting or process discovery");
+    const nextContext = { app: { version: "0.28.18" }, conversation: { id: "local-conv-next" } };
+    handlers.get("conversation_open")({ conversationId: "local-conv-next" }, nextContext);
+    await waitFor(() => requests.length > afterClose, "next conversation must register its initial lifecycle state");
+    const afterNextOpen = requests.length;
+    handlers.get("tool_start")({ conversationId: "local-conv-herdr", toolCallId: "stale-cross-conversation", toolName: "Read" }, context);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 600));
+    assert(requests.length === afterNextOpen, "stale events from a previous conversation must not affect a newly opened lifecycle scope");
+    handlers.get("conversation_open")({ conversationId: "local-conv-herdr" }, context);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 600));
+    assert(requests.length === afterNextOpen, "a stale conversation open must not take over an already active lifecycle scope");
+    handlers.get("conversation_close")({}, {});
+    handlers.get("conversation_open")({}, {});
+    await new Promise((resolveWait) => setTimeout(resolveWait, 600));
+    assert(requests.length === afterNextOpen, "unscoped stale lifecycle events must not reset an active scoped conversation");
     assert(diagnostics.length === 0, `Herdr lifecycle healthy socket smoke must not report diagnostics: ${JSON.stringify(diagnostics)}`);
   } finally {
     if (typeof disposer === "function") disposer();
@@ -402,7 +461,7 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
     if (previousAgentRole === undefined) delete process.env.LETTA_CODE_AGENT_ROLE;
     else process.env.LETTA_CODE_AGENT_ROLE = previousAgentRole;
   }
-  assert(cleanupCount === 6, "Herdr lifecycle cleanup must dispose every registered event outside engine-aborted reload");
+  assert(cleanupCount === 7, "Herdr lifecycle cleanup must dispose every registered event outside engine-aborted reload");
 }
 
 async function checkMahiroCodeEvidenceRegistration(activate, testing, testRoot) {

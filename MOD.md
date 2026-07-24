@@ -34,9 +34,20 @@ prompts, task descriptions, tool output, or child result bodies.
 
 `blocked` is reserved for observed question tools. Main or child activity maps
 to `working`; a settled pane maps to `idle`, allowing Herdr to own unseen
-`done`. Reports are change-driven with a bounded heartbeat, monotonic sequence,
-metadata TTL, local socket timeout/size limits, and one in-flight plus one
-latest coalesced report batch so a slow socket cannot grow an unbounded queue.
+`done`. Tool boundaries schedule a short bounded spawn-discovery window, and
+the process tree remains scanned only during that window or while a known child
+is active. This keeps interrupted root LLMs and stale tool events from
+sustaining process polling even when the host cannot expose a terminal interrupt
+event. An observed user interrupt signal also clears root activity and ends that
+grace, but never forgets a known background child; transient process-list
+failures retain known children until a successful scan proves they ended. On the
+local LLM event path,
+`stopReason: "aborted"` also settles root activity;
+tool events remain strict so unrelated tool cancellation cannot be misreported
+as user intent. Provider errors remain ordinary terminal events. Reports are
+change-driven with a bounded heartbeat, monotonic sequence, metadata TTL, local
+socket timeout/size limits, and one in-flight plus one latest coalesced report
+batch so a slow socket cannot grow an unbounded queue.
 Cleanup runs on conversation
 close or `/reload`. When Letta aborts the mod generation during reload, cleanup
 skips redundant per-handler unregister calls because the host immediately

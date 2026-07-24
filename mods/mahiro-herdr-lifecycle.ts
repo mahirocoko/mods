@@ -13,6 +13,7 @@ const AGENT_SOURCE = "mahiro:letta";
 const METADATA_SOURCE = "mahiro:letta-display";
 const POLL_INTERVAL_MS = 500;
 const PROCESS_SCAN_INTERVAL_MS = 1_000;
+const PROCESS_DISCOVERY_GRACE_MS = 10_000;
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const METADATA_TTL_MS = 30_000;
 const SOCKET_TIMEOUT_MS = 1_500;
@@ -88,6 +89,13 @@ interface ProcessRow {
   command: string;
 }
 
+interface ProcessScanInput {
+  conversationOpen: boolean;
+  runningSubagentCount: number;
+  discoveryUntil: number;
+  now: number;
+}
+
 const parseProcessRows = (value: string): ProcessRow[] => value
   .split("\n")
   .map((line) => line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/))
@@ -135,6 +143,21 @@ const parseSubagentProcesses = (value: string, rootPid: number): SubagentItem[] 
       status: "running",
       isBackground: true,
     }));
+};
+
+const shouldScanSubagentProcesses = (input: ProcessScanInput) =>
+  input.conversationOpen && (
+    input.runningSubagentCount > 0 ||
+    input.now < input.discoveryUntil
+  );
+
+const processDiscoveryDeadline = (now: number) => now + PROCESS_DISCOVERY_GRACE_MS;
+
+const userInterruptedEvent = (event: any, acceptLlmAbort = false) => {
+  const reason = normalizeText(event?.stopReason ?? event?.stop_reason ?? event?.reason, 40).toLowerCase();
+  if (reason) return reason === "user_interrupt" || (acceptLlmAbort && reason === "aborted");
+  const message = normalizeText(event?.error?.message ?? event?.message, 120);
+  return message === "Interrupted by user";
 };
 
 const groupedActiveTypes = (items: SubagentItem[]) => {
@@ -253,7 +276,7 @@ const socketRequest = (
 });
 
 export const __testing = process.env.MAHIRO_HERDR_TESTING === "1"
-  ? Object.freeze({ deriveLifecycleSnapshot, normalizeText, normalizeSocketPath, isAskTool, parseSubagentProcesses, scopeFingerprint })
+  ? Object.freeze({ deriveLifecycleSnapshot, normalizeText, normalizeSocketPath, isAskTool, parseSubagentProcesses, scopeFingerprint, shouldScanSubagentProcesses, processDiscoveryDeadline, userInterruptedEvent })
   : null;
 
 export default function activate(letta: any) {
@@ -287,8 +310,10 @@ export default function activate(letta: any) {
   let conversationScope = "";
   let processSubagents: SubagentItem[] = [];
   let processScanInFlight = false;
-  let consecutiveProcessScanFailures = 0;
   let lastProcessScanAt = 0;
+  let processDiscoveryUntil = 0;
+  let interrupted = false;
+  let conversationGeneration = 0;
   const recentlyCompletedProcesses = new Map<string, number>();
   let lastDigest = "";
   let lastReportAt = 0;
@@ -468,30 +493,54 @@ export default function activate(letta: any) {
   const rememberContext = (event: any, context: any) => {
     appVersion = normalizeText(context?.app?.version, 24) || appVersion;
     conversationScope = normalizeConversationScope(event, context) || conversationScope;
-    if (event?.conversationId || context?.conversation?.id) conversationOpen = true;
+  };
+
+  const belongsToActiveConversation = (event: any, context: any) => {
+    if (!conversationOpen) return false;
+    const eventScope = normalizeConversationScope(event, context);
+    return !conversationScope || eventScope === conversationScope;
+  };
+
+  const canOpenConversation = (event: any, context: any) => {
+    const openingScope = normalizeConversationScope(event, context);
+    return !conversationOpen || !conversationScope || openingScope === conversationScope;
+  };
+
+  const settleUserInterrupt = () => {
+    interrupted = true;
+    turnActive = false;
+    llmDepth = 0;
+    activeTools.clear();
+    blockedTools.clear();
+    processDiscoveryUntil = 0;
+    report(false);
   };
 
   const scanSubagentProcesses = () => {
-    if (disposed || !conversationOpen || processScanInFlight) return;
-    if (process.platform !== "darwin" && process.platform !== "linux") return;
     const now = Date.now();
+    if (disposed || processScanInFlight || !shouldScanSubagentProcesses({
+      conversationOpen,
+      runningSubagentCount: processSubagents.length,
+      discoveryUntil: processDiscoveryUntil,
+      now,
+    })) return;
+    if (process.platform !== "darwin" && process.platform !== "linux") return;
     if (now - lastProcessScanAt < PROCESS_SCAN_INTERVAL_MS) return;
     lastProcessScanAt = now;
     processScanInFlight = true;
+    const scanGeneration = conversationGeneration;
+    const scanScope = conversationScope;
     execFile(
       "ps",
       ["-axo", "pid=,ppid=,command="],
       { encoding: "utf8", timeout: SOCKET_TIMEOUT_MS, maxBuffer: 512 * 1024 },
       (error, stdout) => {
         processScanInFlight = false;
-        if (disposed) return;
+        if (disposed || scanGeneration !== conversationGeneration || scanScope !== conversationScope) return;
         if (error) {
-          consecutiveProcessScanFailures += 1;
-          if (consecutiveProcessScanFailures >= 3) processSubagents = [];
           report(false);
           return;
         }
-        consecutiveProcessScanFailures = 0;
         const next = parseSubagentProcesses(stdout, process.pid);
         const nextIds = new Set(next.map((item) => normalizeText(item.id, 80)).filter(Boolean));
         for (const item of processSubagents) {
@@ -510,19 +559,25 @@ export default function activate(letta: any) {
   };
 
   addEvent(letta.capabilities.events.lifecycle, "conversation_open", (event, context) => {
+    if (!canOpenConversation(event, context)) return;
+    conversationGeneration += 1;
     conversationOpen = true;
+    interrupted = false;
     turnActive = false;
     llmDepth = 0;
     activeTools.clear();
     blockedTools.clear();
     processSubagents = [];
     recentlyCompletedProcesses.clear();
+    processDiscoveryUntil = 0;
     rememberContext(event, context);
     lastDigest = "";
     report(false);
   });
 
   addEvent(letta.capabilities.events.lifecycle, "conversation_close", (event, context) => {
+    if (!belongsToActiveConversation(event, context)) return;
+    conversationGeneration += 1;
     rememberContext(event, context);
     conversationOpen = false;
     turnActive = false;
@@ -531,15 +586,19 @@ export default function activate(letta: any) {
     blockedTools.clear();
     processSubagents = [];
     recentlyCompletedProcesses.clear();
+    processDiscoveryUntil = 0;
     releaseHerdrState();
   });
 
   addEvent(letta.capabilities.events?.turns, "turn_start", (event, context) => {
+    if (!belongsToActiveConversation(event, context)) return;
     rememberContext(event, context);
+    interrupted = false;
     turnActive = true;
     report(false);
   });
   addEvent(letta.capabilities.events?.turns, "turn_end", (event, context) => {
+    if (!belongsToActiveConversation(event, context)) return;
     rememberContext(event, context);
     turnActive = false;
     llmDepth = 0;
@@ -548,37 +607,52 @@ export default function activate(letta: any) {
     report(false);
   });
   addEvent(!letta.capabilities.events?.turns && letta.capabilities.events?.llm, "llm_start", (event, context) => {
+    if (!belongsToActiveConversation(event, context)) return;
     rememberContext(event, context);
     llmDepth += 1;
     report(false);
   });
-  addEvent(!letta.capabilities.events?.turns && letta.capabilities.events?.llm, "llm_end", (event, context) => {
+  addEvent(letta.capabilities.events?.llm, "llm_end", (event, context) => {
+    if (!belongsToActiveConversation(event, context)) return;
     rememberContext(event, context);
-    llmDepth = Math.max(0, llmDepth - 1);
-    report(false);
+    if (userInterruptedEvent(event, true)) {
+      settleUserInterrupt();
+      return;
+    }
+    if (!letta.capabilities.events?.turns) {
+      llmDepth = Math.max(0, llmDepth - 1);
+      report(false);
+    }
   });
   addEvent(letta.capabilities.events?.tools, "tool_start", (event, context) => {
+    if (!belongsToActiveConversation(event, context) || interrupted) return;
     rememberContext(event, context);
     const toolCallId = normalizeText(event?.toolCallId, 120) || `tool-${Date.now()}`;
     const toolName = compactToolName(event?.toolName);
     activeTools.set(toolCallId, toolName);
     if (isAskTool(toolName)) blockedTools.set(toolCallId, toolName);
+    processDiscoveryUntil = processDiscoveryDeadline(Date.now());
     report(false);
   });
   addEvent(letta.capabilities.events?.tools, "tool_end", (event, context) => {
+    if (!belongsToActiveConversation(event, context)) return;
     rememberContext(event, context);
     const toolCallId = normalizeText(event?.toolCallId, 120);
+    let matched = false;
     if (toolCallId) {
-      activeTools.delete(toolCallId);
-      blockedTools.delete(toolCallId);
+      matched = activeTools.delete(toolCallId);
+      if (matched) blockedTools.delete(toolCallId);
     } else {
       const toolName = compactToolName(event?.toolName);
       const matching = [...activeTools.entries()].find(([, activeName]) => activeName === toolName)?.[0];
       if (matching) {
         activeTools.delete(matching);
         blockedTools.delete(matching);
+        matched = true;
       }
     }
+    if (userInterruptedEvent(event)) settleUserInterrupt();
+    else if (!interrupted && matched) processDiscoveryUntil = processDiscoveryDeadline(Date.now());
     report(false);
   });
 
