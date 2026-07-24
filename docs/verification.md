@@ -679,3 +679,34 @@ zero records, and all nine managed hashes still matched with
 `Migration needed: no`. Mahiro then requested the retrospective and commit.
 An explicit narrow-terminal screenshot/visual confirmation was not reported, so
 that presentation check remains a follow-up rather than claimed evidence.
+
+## Herdr root lifecycle adapter — 2026-07-24
+
+The tenth managed entry adds no-upstream Letta-to-Herdr observability. It owns
+one root pane authority, maps main turn/tool state, observes only descendant
+stream-json Letta child processes, and sends bounded count/type metadata plus
+PID/start/conversation identity tokens. Headless child processes no-op, task
+descriptions/results are never forwarded, process exits are labelled `ended`
+rather than fabricated as successful, and close/reload clears metadata before
+releasing authority.
+
+Foreground isolation found a real reload regression: normal per-handler cleanup
+caused a publish storm through Letta's React external mod store and emitted
+`Maximum update depth exceeded`. Cursor Fable 5 High traced the engine-aborted
+generation contract; cleanup now skips redundant event unregistrations only
+after `letta.signal.aborted`, while normal disposal still reverses all six
+registrations. Mahiro confirmed the warning disappeared across the final reload.
+
+Final evidence:
+
+- `pnpm check` passes with 10 entries and a slow-socket smoke proving at most one
+  in-flight plus one latest coalesced report batch
+- `pnpm mods:status` reports every installed hash matching and no migration
+- live Herdr showed `Letta · 1 subagent`, `subagent_types=repo-scout`, then
+  `subagents_ended=1` after the child process exited
+- final reload diagnostics were `errorCount: 0`, `warningCount: 0`
+- the disable sentinel remains available as a reversible isolation switch but
+  is absent in the enabled final runtime
+
+This evidence is the release basis for v0.8.0. Final HEAD/origin/tag/GitHub
+release alignment must still be checked after publishing.

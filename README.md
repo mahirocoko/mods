@@ -11,6 +11,7 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | Entry | Surface | Purpose |
 | --- | --- | --- |
 | `mods/mahiro-user-timestamps.ts` | `turn_start` | Adds safe local/IANA timestamp metadata and one visible block to each real user turn without timestamping synthetic workflow reminders. |
+| `mods/mahiro-herdr-lifecycle.ts` | lifecycle/turn/tool events + bounded child-process observation | Reports one truthful Letta pane state plus bounded child-task counts/types to the owning Herdr pane over its local socket. |
 | `mods/mahiro-goal.ts` | `/mh-goal`, busy-safe `/mh-goal-status`, `mh_get_goal`, `mh_create_goal`, `mh_update_goal`, `turn_start` | Structured conversation goal with DoD criteria, evidence, blockers, revision guards, and human verification gates. |
 | `mods/mahiro-code-evidence.ts` | `/mh-evidence`, `mh_get_code_evidence`, `mh_collect_code_evidence`, `mh_record_code_evidence` | Bounded read-only Git evidence with separate staged/unstaged/untracked/base lanes, stale-proof external records, conservative verdicts, and explicit Goal handoff. |
 | `mods/mahiro-ux-workflow.ts` | `/mh-ux`, `mh_get_ux_workflow`, `mh_create_ux_workflow`, `mh_update_ux_workflow` | Revisioned UX coordination from frame through review, with a required `frontend-design` brief, human direction/review gates, bounded handoff/review evidence, and no Goal mutation. |
@@ -21,6 +22,23 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
 
 Agent Halo is not duplicated here. Its canonical mod remains in the separate [`agent-halo`](https://github.com/mahirocoko/agent-halo) repository and is installed by that project.
+
+## Herdr lifecycle
+
+When Letta Code runs inside a Herdr-managed pane, the lifecycle mod reads only
+the inherited local `HERDR_SOCKET_PATH` and pane identity. It combines main
+turn/tool/model activity with a bounded local child-process observation, then
+reports one semantic `letta` state for Herdr rollups. Child output and
+prompts and task descriptions are never forwarded, and headless child processes
+never claim the parent pane's lifecycle authority. Presentation metadata is
+limited to bounded running/ended counts and subagent types. A process exit is
+reported only as `ended`, never fabricated as successful `done`. Outside Herdr
+the mod is a no-op.
+
+Herdr remains the owner of unseen `done` state and workspace/tab rollups. The
+mod reports `blocked` only for an observed question tool, `working` while the
+main turn or any child is active, and `idle` after work settles. Missing
+capabilities or socket failures degrade without changing Letta execution.
 
 ## User timestamp ownership
 

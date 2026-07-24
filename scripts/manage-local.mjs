@@ -38,6 +38,7 @@ const gitBundleSource = "git:https://github.com/mahirocoko/mods";
 const legacyMcpSource = "npm:mahiro-mcp-proxy";
 const entries = [
   "./mods/mahiro-user-timestamps.ts",
+  "./mods/mahiro-herdr-lifecycle.ts",
   "./mods/mahiro-goal.ts",
   "./mods/mahiro-code-evidence.ts",
   "./mods/mahiro-ux-workflow.ts",

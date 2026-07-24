@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -9,6 +10,7 @@ import { transform } from "esbuild";
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const entries = [
   "mods/mahiro-user-timestamps.ts",
+  "mods/mahiro-herdr-lifecycle.ts",
   "mods/mahiro-goal.ts",
   "mods/mahiro-code-evidence.ts",
   "mods/mahiro-ux-workflow.ts",
@@ -218,6 +220,189 @@ function checkMahiroTimestampRegistration(activate, testing) {
   if (typeof disposer === "function") disposer();
   assert(disposed === 1, "mahiro timestamps cleanup must dispose its single turn handler");
   return handler;
+}
+
+async function waitFor(check, message, timeoutMs = 3_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (check()) return;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+  }
+  throw new Error(message);
+}
+
+async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot) {
+  assert(testing && typeof testing.deriveLifecycleSnapshot === "function", "Herdr lifecycle must expose its isolated derivation seam");
+  const idle = testing.deriveLifecycleSnapshot({
+    conversationOpen: true,
+    turnActive: false,
+    llmActive: false,
+    compactActive: false,
+    activeTools: [],
+    blockedTools: [],
+    subagents: [],
+    appVersion: "0.28.18",
+  });
+  assert(idle.state === "idle" && idle.summary === "Ready", "settled Letta panes must report idle so Herdr can own unseen done");
+  const working = testing.deriveLifecycleSnapshot({
+    conversationOpen: true,
+    turnActive: false,
+    llmActive: false,
+    compactActive: false,
+    activeTools: [],
+    blockedTools: [],
+    subagents: [
+      { type: "repo-scout", description: "Map Herdr state", status: "running" },
+      { type: "verifier", description: "Verify lifecycle", status: "pending" },
+      { type: "recall", description: "Old recall", status: "completed" },
+    ],
+    appVersion: "0.28.18",
+  });
+  assert(working.state === "working" && working.runningCount === 2 && working.endedCount === 1, "active child tasks must keep the root pane working while completed evidence stays distinct");
+  assert(working.summary === "repo-scout · verifier" && !working.summary.includes("Herdr state"), "child summaries must use type only and never task descriptions");
+  const blocked = testing.deriveLifecycleSnapshot({
+    conversationOpen: true,
+    turnActive: true,
+    llmActive: false,
+    compactActive: false,
+    activeTools: ["AskUserQuestion"],
+    blockedTools: ["AskUserQuestion"],
+    subagents: [{ type: "verifier", status: "running" }],
+    appVersion: "0.28.18",
+  });
+  assert(blocked.state === "blocked" && blocked.summary.includes("Needs input"), "observed question tools must outrank child work as blocked");
+  assert(testing.normalizeSocketPath(" /tmp/Herdr Session/herdr.sock \n") === "/tmp/Herdr Session/herdr.sock", "socket paths must preserve legitimate spaces while removing controls");
+  const processItems = testing.parseSubagentProcesses([
+    " 100 1 bun /usr/local/bin/letta --conv local-conv-main",
+    " 101 100 bun /opt/letta.js --new-agent --system repo-scout --tags type:repo-scout,parent:agent-main --output-format stream-json",
+    " 102 101 sleep 20",
+    " 200 1 bun /opt/letta.js --new-agent --system unrelated --output-format stream-json",
+  ].join("\n"), 100);
+  assert(processItems.length === 1 && processItems[0].type === "repo-scout", "process fallback must include only descendant stream-json Letta children and expose type without task text");
+
+  const socketPath = process.platform === "win32"
+    ? `\\\\.\\pipe\\mahiro-herdr-${process.pid}-${Date.now()}`
+    : join(testRoot, "herdr-lifecycle.sock");
+  const requests = [];
+  let responseDelayMs = 0;
+  const server = createServer((socket) => {
+    let buffer = "";
+    socket.on("data", (chunk) => {
+      buffer += chunk.toString("utf8");
+      const newline = buffer.indexOf("\n");
+      if (newline < 0) return;
+      const request = JSON.parse(buffer.slice(0, newline));
+      requests.push(request);
+      setTimeout(() => {
+        socket.end(`${JSON.stringify({ id: request.id, result: { type: "ok" } })}\n`);
+      }, responseDelayMs);
+    });
+  });
+  await new Promise((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(socketPath, resolveListen);
+  });
+
+  const previousHerdrEnv = process.env.HERDR_ENV;
+  const previousHerdrSocket = process.env.HERDR_SOCKET_PATH;
+  const previousHerdrPane = process.env.HERDR_PANE_ID;
+  const previousAgentRole = process.env.LETTA_CODE_AGENT_ROLE;
+  process.env.HERDR_ENV = "1";
+  process.env.HERDR_SOCKET_PATH = socketPath;
+  process.env.HERDR_PANE_ID = "w-test:p1";
+
+  process.env.LETTA_CODE_AGENT_ROLE = "subagent";
+  let childRegistrations = 0;
+  const childDisposer = activate({
+    capabilities: { events: { lifecycle: true } },
+    events: { on() { childRegistrations += 1; return () => {}; } },
+  });
+  assert(childDisposer === undefined && childRegistrations === 0, "headless Letta subagents must never claim their parent Herdr pane");
+  delete process.env.LETTA_CODE_AGENT_ROLE;
+
+  let abortedCleanupCount = 0;
+  const abortedDisposer = activate({
+    signal: { aborted: true },
+    capabilities: { events: { lifecycle: true, turns: true, tools: true, llm: true, compact: true } },
+    events: { on() { return () => { abortedCleanupCount += 1; }; } },
+  });
+  assert(typeof abortedDisposer === "function", "Herdr lifecycle must still return non-registration cleanup under engine disposal");
+  abortedDisposer();
+  assert(abortedCleanupCount === 0, "engine-aborted reload must skip redundant per-event unregister publishes");
+
+  const handlers = new Map();
+  let cleanupCount = 0;
+  const diagnostics = [];
+  const context = {
+    app: { version: "0.28.18" },
+    conversation: { id: "local-conv-herdr" },
+  };
+  let disposer;
+  try {
+    disposer = activate({
+      capabilities: {
+        events: { lifecycle: true, turns: true, tools: true, llm: true, compact: true },
+      },
+      diagnostics: { report: (diagnostic) => diagnostics.push(diagnostic) },
+      events: {
+        on(name, handler) {
+          handlers.set(name, handler);
+          return () => {
+            cleanupCount += 1;
+          };
+        },
+      },
+    });
+    assert(handlers.size === 6, "Herdr lifecycle must prefer turn/tool truth and avoid redundant LLM/compact registrations");
+
+    handlers.get("conversation_open")({ conversationId: "local-conv-herdr" }, context);
+    await waitFor(() => requests.length >= 2, "Herdr lifecycle did not report initial agent plus metadata state");
+    assert(requests[0].method === "pane.report_agent" && requests[0].params.state === "idle", "initial Herdr semantic state must be idle");
+    assert(requests[1].method === "pane.report_metadata" && requests[1].params.tokens.letta_version === "0.28.18", "initial Herdr metadata must include bounded capability evidence");
+    assert(requests[1].params.tokens.letta_pid === String(process.pid) && requests[1].params.tokens.letta_scope === testing.scopeFingerprint("local-conv-herdr"), "Herdr metadata must bind focus identity to the exact Letta process and conversation scope");
+
+    responseDelayMs = 80;
+    const beforeBurst = requests.length;
+    for (let index = 0; index < 25; index += 1) {
+      handlers.get("tool_start")({ toolCallId: `burst-${index}`, toolName: index % 2 === 0 ? "Read" : "Bash" }, context);
+      handlers.get("tool_end")({ toolCallId: `burst-${index}`, toolName: index % 2 === 0 ? "Read" : "Bash" }, context);
+    }
+    await waitFor(() => requests.length >= beforeBurst + 4, "coalesced Herdr reports did not drain the active and latest snapshots");
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+    assert(requests.length === beforeBurst + 4, "slow Herdr transport must retain at most one in-flight and one latest report batch");
+    responseDelayMs = 0;
+
+    const beforeBlocked = requests.length;
+    handlers.get("tool_start")({ toolCallId: "ask-1", toolName: "AskUserQuestion" }, context);
+    await waitFor(() => requests.length >= beforeBlocked + 2, "Herdr lifecycle did not report blocked question state");
+    assert(requests.slice(beforeBlocked).find((request) => request.method === "pane.report_agent")?.params.state === "blocked", "question state must outrank active children");
+
+    const beforeSettled = requests.length;
+    handlers.get("tool_end")({ toolCallId: "ask-1", toolName: "AskUserQuestion" }, context);
+    handlers.get("turn_end")({ conversationId: "local-conv-herdr" }, context);
+    await waitFor(() => requests.slice(beforeSettled).some((request) => request.method === "pane.report_agent" && request.params.state === "idle"), "Herdr lifecycle did not settle after question completion");
+    const settledReport = [...requests].reverse().find((request) => request.method === "pane.report_agent");
+    assert(settledReport?.params.state === "idle", "settled main and child work must return to idle");
+
+    const beforeClose = requests.length;
+    handlers.get("conversation_close")({ conversationId: "local-conv-herdr" }, context);
+    await waitFor(() => requests.slice(beforeClose).some((request) => request.method === "pane.release_agent"), "conversation close must release custom Herdr authority");
+    const closeMetadata = requests.slice(beforeClose).find((request) => request.method === "pane.report_metadata");
+    assert(closeMetadata?.params.clear_display_agent === true && closeMetadata.params.tokens.summary === null && closeMetadata.params.tokens.letta_scope === null, "conversation close must clear Herdr presentation and focus identity metadata before release");
+    assert(diagnostics.length === 0, `Herdr lifecycle healthy socket smoke must not report diagnostics: ${JSON.stringify(diagnostics)}`);
+  } finally {
+    if (typeof disposer === "function") disposer();
+    await new Promise((resolveClose) => server.close(resolveClose));
+    if (previousHerdrEnv === undefined) delete process.env.HERDR_ENV;
+    else process.env.HERDR_ENV = previousHerdrEnv;
+    if (previousHerdrSocket === undefined) delete process.env.HERDR_SOCKET_PATH;
+    else process.env.HERDR_SOCKET_PATH = previousHerdrSocket;
+    if (previousHerdrPane === undefined) delete process.env.HERDR_PANE_ID;
+    else process.env.HERDR_PANE_ID = previousHerdrPane;
+    if (previousAgentRole === undefined) delete process.env.LETTA_CODE_AGENT_ROLE;
+    else process.env.LETTA_CODE_AGENT_ROLE = previousAgentRole;
+  }
+  assert(cleanupCount === 6, "Herdr lifecycle cleanup must dispose every registered event outside engine-aborted reload");
 }
 
 async function checkMahiroCodeEvidenceRegistration(activate, testing, testRoot) {
@@ -832,6 +1017,7 @@ function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
 
   const expectedPackageEntries = [
     "./mods/mahiro-user-timestamps.ts",
+    "./mods/mahiro-herdr-lifecycle.ts",
     "./mods/mahiro-goal.ts",
     "./mods/mahiro-code-evidence.ts",
     "./mods/mahiro-ux-workflow.ts",
@@ -842,9 +1028,9 @@ function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-mcp-proxy.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.7.1", "Package version must be 0.7.1");
-  assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Phase 5 package must use the exact nine-entry order");
-  assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact nine-entry package");
+  assert(packageJson.version === "0.8.0", "Package version must be 0.8.0");
+  assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
+  assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
 
   const missingDiagnostics = [];
   const missing = activate({ capabilities: {}, diagnostics: { report: (item) => missingDiagnostics.push(item) } });
@@ -1451,6 +1637,8 @@ const testRoot = await mkdtemp(join(tmpdir(), "mahiro-goal-check-"));
 const previousStatePath = process.env.MAHIRO_GOAL_STATE_PATH;
 const previousGoalTesting = process.env.MAHIRO_GOAL_TESTING;
 const previousTimestampTesting = process.env.MAHIRO_TIMESTAMPS_TESTING;
+const previousHerdrTesting = process.env.MAHIRO_HERDR_TESTING;
+const previousHerdrForceEnable = process.env.MAHIRO_HERDR_FORCE_ENABLE;
 const previousCodeEvidenceStatePath = process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH;
 const previousCodeEvidenceTesting = process.env.MAHIRO_CODE_EVIDENCE_TESTING;
 const previousUxWorkflowStatePath = process.env.MAHIRO_UX_WORKFLOW_STATE_PATH;
@@ -1461,6 +1649,8 @@ const previousExecutionRunTesting = process.env.MAHIRO_EXECUTION_RUN_TESTING;
 process.env.MAHIRO_GOAL_STATE_PATH = join(testRoot, "state.json");
 process.env.MAHIRO_GOAL_TESTING = "1";
 process.env.MAHIRO_TIMESTAMPS_TESTING = "1";
+process.env.MAHIRO_HERDR_TESTING = "1";
+process.env.MAHIRO_HERDR_FORCE_ENABLE = "1";
 process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH = join(testRoot, "code-evidence-state.json");
 process.env.MAHIRO_CODE_EVIDENCE_TESTING = "1";
 process.env.MAHIRO_UX_WORKFLOW_STATE_PATH = join(testRoot, "ux-workflow-state.json");
@@ -1483,6 +1673,11 @@ try {
   const timestampHandler = checkMahiroTimestampRegistration(
     activations.get("mods/mahiro-user-timestamps.ts"),
     testingSurfaces.get("mods/mahiro-user-timestamps.ts"),
+  );
+  await checkMahiroHerdrLifecycleRegistration(
+    activations.get("mods/mahiro-herdr-lifecycle.ts"),
+    testingSurfaces.get("mods/mahiro-herdr-lifecycle.ts"),
+    testRoot,
   );
   checkMahiroGoalRegistration(
     activations.get("mods/mahiro-goal.ts"),
@@ -1521,6 +1716,10 @@ try {
   else process.env.MAHIRO_GOAL_TESTING = previousGoalTesting;
   if (previousTimestampTesting === undefined) delete process.env.MAHIRO_TIMESTAMPS_TESTING;
   else process.env.MAHIRO_TIMESTAMPS_TESTING = previousTimestampTesting;
+  if (previousHerdrTesting === undefined) delete process.env.MAHIRO_HERDR_TESTING;
+  else process.env.MAHIRO_HERDR_TESTING = previousHerdrTesting;
+  if (previousHerdrForceEnable === undefined) delete process.env.MAHIRO_HERDR_FORCE_ENABLE;
+  else process.env.MAHIRO_HERDR_FORCE_ENABLE = previousHerdrForceEnable;
   if (previousCodeEvidenceStatePath === undefined) delete process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH;
   else process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH = previousCodeEvidenceStatePath;
   if (previousCodeEvidenceTesting === undefined) delete process.env.MAHIRO_CODE_EVIDENCE_TESTING;

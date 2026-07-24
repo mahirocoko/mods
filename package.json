@@ -1,8 +1,8 @@
 {
   "name": "@mahirocoko/letta-mods",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "private": true,
-  "description": "Mahiro's private workflow, execution coordination, Code Map, UX coordination, code evidence, timestamps, RTK, statusline, and MCP mods for Letta Code.",
+  "description": "Mahiro's private workflow, Herdr lifecycle, execution coordination, Code Map, UX coordination, code evidence, timestamps, RTK, statusline, and MCP mods for Letta Code.",
   "license": "UNLICENSED",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
@@ -37,6 +37,7 @@
     "manifestVersion": 1,
     "mods": [
       "./mods/mahiro-user-timestamps.ts",
+      "./mods/mahiro-herdr-lifecycle.ts",
       "./mods/mahiro-goal.ts",
       "./mods/mahiro-code-evidence.ts",
       "./mods/mahiro-ux-workflow.ts",
@@ -58,7 +59,7 @@
       "ui.panels"
     ],
     "engines": {
-      "lettaCodeCli": ">=0.28.8"
+      "lettaCodeCli": ">=0.28.18"
     }
   },
   "dependencies": {

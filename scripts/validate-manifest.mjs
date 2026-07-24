@@ -18,6 +18,7 @@ const errors = [];
 
 const EXPECTED_MODS = [
   "./mods/mahiro-user-timestamps.ts",
+  "./mods/mahiro-herdr-lifecycle.ts",
   "./mods/mahiro-goal.ts",
   "./mods/mahiro-code-evidence.ts",
   "./mods/mahiro-ux-workflow.ts",
@@ -297,8 +298,8 @@ if (packageJson) {
       }
     }
 
-    if (!isObject(letta.engines) || letta.engines.lettaCodeCli !== ">=0.28.8") {
-      addError('letta.engines.lettaCodeCli must equal ">=0.28.8".');
+    if (!isObject(letta.engines) || letta.engines.lettaCodeCli !== ">=0.28.18") {
+      addError('letta.engines.lettaCodeCli must equal ">=0.28.18".');
     }
   }
 

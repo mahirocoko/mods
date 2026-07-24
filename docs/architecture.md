@@ -2,11 +2,12 @@
 
 ## Current reality
 
-The repository root is one installable Letta package with nine manifest entries. This deliberately favors one-command private Git installation and one update source over independent npm publication.
+The repository root is one installable Letta package with ten manifest entries. This deliberately favors one-command private Git installation and one update source over independent npm publication.
 
 ```text
 package.json#letta
 ├── mods/mahiro-user-timestamps.ts
+├── mods/mahiro-herdr-lifecycle.ts
 ├── mods/mahiro-goal.ts
 ├── mods/mahiro-code-evidence.ts
 ├── mods/mahiro-ux-workflow.ts
@@ -17,7 +18,18 @@ package.json#letta
 └── mods/mahiro-mcp-proxy.js
 ```
 
-The declared capability list is the union of the nine entries. Runtime behavior still remains independent because each activation function checks the capabilities it needs.
+The declared capability list is the union of the ten entries. Runtime behavior still remains independent because each activation function checks the capabilities it needs.
+
+`mahiro-herdr-lifecycle.ts` is a local observability adapter, not a Herdr
+controller. It activates only when Herdr injects its local socket and pane
+identity, observes bounded local child-process identity, and reports one
+semantic pane state plus bounded presentation
+metadata. Herdr owns rollups, unseen `done`, focus, waits, and notifications.
+The mod never starts, stops, prompts, or reads output from another agent.
+It registers lifecycle, turn, and tool events only; LLM events are a fallback
+when turn events are unavailable. Engine-aborted reload cleanup deliberately
+does not call each event disposer because Letta clears the whole generation
+after abort and every redundant unregister publishes a new host snapshot.
 
 `mahiro-goal.ts`, `mahiro-code-evidence.ts`, and `mahiro-ux-workflow.ts` each
 own focused state and invariants. Phase 3 deliberately does not extract a shared

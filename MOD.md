@@ -1,13 +1,13 @@
 ---
 name: "@mahirocoko/letta-mods"
-description: "Mahiro's private user timestamps, structured workflow goal, bounded code evidence, UX coordination, Code Map guidance, execution coordination, RTK control, compact statusline, and lazy MCP proxy bundle for Letta Code."
+description: "Mahiro's private user timestamps, Herdr lifecycle, structured workflow goal, bounded code evidence, UX coordination, Code Map guidance, execution coordination, RTK control, compact statusline, and lazy MCP proxy bundle for Letta Code."
 ---
 
 # Mahiro Letta Mods semantics
 
 ## Package boundary
 
-This package activates nine independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, and persistent MCP connections.
+This package activates ten independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, sockets, and persistent MCP connections.
 
 Installed package files are runtime copies. Edit this repository, validate it, reinstall/update the managed package, and run `/reload` rather than editing files below `~/.letta/mods/packages/`.
 
@@ -22,6 +22,27 @@ untouched.
 
 The formatter uses the safe `dateStyle: "full"` and `timeStyle: "long"`
 combination. Keep one timestamp owner active per user turn.
+
+## Mahiro Herdr Lifecycle
+
+`mods/mahiro-herdr-lifecycle.ts` activates only inside a Herdr-managed pane. It
+uses the inherited local socket and pane identity, public Letta event
+capabilities, and a bounded local child-process observation. It reports one semantic root state plus bounded child
+counts/type metadata to Herdr. Headless Letta subagent processes explicitly
+no-op so they cannot replace the parent pane's authority. It never sends
+prompts, task descriptions, tool output, or child result bodies.
+
+`blocked` is reserved for observed question tools. Main or child activity maps
+to `working`; a settled pane maps to `idle`, allowing Herdr to own unseen
+`done`. Reports are change-driven with a bounded heartbeat, monotonic sequence,
+metadata TTL, local socket timeout/size limits, and one in-flight plus one
+latest coalesced report batch so a slow socket cannot grow an unbounded queue.
+Cleanup runs on conversation
+close or `/reload`. When Letta aborts the mod generation during reload, cleanup
+skips redundant per-handler unregister calls because the host immediately
+clears that generation's event registry; this avoids a publish storm through
+the host's React external store. Outside Herdr it is a no-op; missing
+capabilities or socket failure never alter Letta execution.
 
 ## Mahiro Code Evidence
 

@@ -49,6 +49,7 @@ pnpm mods:update
 | ถ้าต้องการ… | ใช้ mod |
 | --- | --- |
 | ให้ทุกข้อความมีเวลาท้องถิ่นที่เชื่อถือได้ | Mahiro User Timestamps |
+| ดูว่า Letta main/subagent ในแต่ละ Herdr Space กำลังทำงาน รอ input หรือเสร็จแล้ว | Mahiro Herdr Lifecycle |
 | ตั้งเป้าหมาย มี DoD และกำหนด human gate เมื่อต้องให้ Mahiro ตรวจรับ | Mahiro Goal |
 | เก็บ Git state และผล check เพื่อใช้อ้างอิง | Mahiro Code Evidence |
 | จัด flow งานออกแบบและขออนุมัติ direction/review | Mahiro UX Workflow |
@@ -64,6 +65,27 @@ pnpm mods:update
 - **Model tool** มีไว้ให้ agent ใช้ระหว่างทำงาน เช่น `mh_collect_code_evidence` หรือ `mh_update_execution_run`
 
 ปกติไม่ต้องพิมพ์ JSON ของ model tool เอง บอกสิ่งที่ต้องการกับ agent ได้เลย แล้วให้ agent เรียก tool พร้อม revision และ scope ที่ถูกต้อง
+
+---
+
+## Mahiro Herdr Lifecycle
+
+ถ้าเปิด Letta Code อยู่ใน Herdr mod นี้จะทำงานเอง ไม่ต้องใช้ command เพิ่ม
+โดยจะส่งเฉพาะสถานะรวมของ main agent กับ subagent ไปยัง local Herdr socket เช่น
+`working`, `blocked`, `idle`, จำนวน child ที่กำลังรัน และชนิดของ subagent
+ผลลัพธ์เต็ม, prompt, task description และ tool output จะไม่ถูกส่งไป Herdr
+
+สถานะ `done` เป็นหน้าที่ของ Herdr: เมื่อ Letta รายงาน `idle` ใน pane ที่ยังไม่
+ถูกเปิดดู Herdr จะเก็บ Done ไว้ให้ ถ้าเปิด Letta นอก Herdr mod นี้จะ no-op
+และไม่เปลี่ยนการทำงานของ session
+
+หลัง update bundle ให้ `/reload` ทุก Letta session ที่เปิดอยู่ ถ้า Herdr ไม่เห็น
+สถานะ ให้เช็กก่อนว่า session นั้นถูกเปิดจาก Herdr และมี `HERDR_ENV=1`,
+`HERDR_SOCKET_PATH`, `HERDR_PANE_ID` ครบ
+
+ถ้าต้อง isolate ปัญหาโดยไม่ปิด mod bundle ทั้งชุด ให้สร้างไฟล์
+`~/.letta/mods/mahiro-herdr-lifecycle.disabled` แล้ว `/reload` ตัว lifecycle
+adapter จะ no-op จนกว่าจะลบไฟล์และ reload อีกครั้ง
 
 ---
 
