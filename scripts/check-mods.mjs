@@ -832,6 +832,10 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
     transformed.input[0].content.includes("Mahiro Workflow Goal") && transformed.input[1].content === "continue",
     "mahiro-goal reminder must preserve the original turn after the injected reminder",
   );
+  assert(
+    transformed.input[0].content.includes("checkpoint report") && transformed.input[0].content.includes("Turn completion"),
+    "active Goal reminders must distinguish a checkpoint from Goal completion",
+  );
   const timestampedTurn = timestampHandler({ input: [{ role: "user", content: "composed turn" }] });
   const composedTurn = eventHandlers.get("turn_start")(
     { conversationId: "conversation-test", input: timestampedTurn.input },
@@ -933,15 +937,22 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
   assert(humanReplace.type === "prompt", "human replacement with the current revision must create a fresh goal prompt");
 
   const otherAgentContext = { ...baseContext, agent: { id: "agent-other" } };
-  create.run({
+  const otherAgentGoal = parseToolOutput(create.run({
     ...otherAgentContext,
     args: {
       objective: "Independent agent goal",
       criteria: [{ text: "Independent state exists", owner: "agent" }],
     },
-  });
+  })).goal;
   const isolatedState = JSON.parse(readFileSync(statePath, "utf8"));
   assert(Object.keys(isolatedState.goals).length === 2, "same conversation IDs from different agents must not merge goal state");
+  const listedGoals = goalCommand.run({ ...baseContext, args: "list" });
+  assert(listedGoals.success !== false && listedGoals.output.includes(otherAgentGoal.id) && listedGoals.output.includes("human-only inventory"), "human Goal list must expose bounded cross-scope inventory without a model tool");
+  const beforeWrongCrossClear = readFileSync(statePath, "utf8");
+  const wrongCrossClear = goalCommand.run({ ...baseContext, args: `clear ${otherAgentGoal.id} 99` });
+  assert(wrongCrossClear.success === false && readFileSync(statePath, "utf8") === beforeWrongCrossClear, "cross-scope Goal clear must require the exact current revision without mutation");
+  const crossClear = goalCommand.run({ ...baseContext, args: `clear ${otherAgentGoal.id} ${otherAgentGoal.revision}` });
+  assert(crossClear.success !== false && !readFileSync(statePath, "utf8").includes(otherAgentGoal.id), "human cross-scope Goal clear must remove exactly the selected goal id and revision");
 
   for (const cwd of ["/tmp/default-project-a", "/tmp/default-project-b"]) {
     create.run({
@@ -980,7 +991,7 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
     { conversationId: "conversation-budget", input: [{ role: "user", content: "continue" }] },
     budgetContext,
   );
-  assert(budgetReminder?.input?.[0]?.content.includes("budget_limited"), "first budget crossing must emit one budget-limited reminder");
+  assert(budgetReminder?.input?.[0]?.content.includes("budget_limited") && budgetReminder.input[0].content.includes("wait for Mahiro"), "first budget crossing must emit a budget-limited checkpoint-and-wait reminder");
   const budgetGoal = parseToolOutput(get.run({ ...budgetContext, args: {} })).goal;
   assert(budgetGoal.status === "budget_limited" && budgetGoal.tokensUsed === 110 && budgetGoal.revision === 2, "goal-relative usage must advance revision and stop at budget");
   const repeatedBudgetReminder = eventHandlers.get("turn_start")(
@@ -1462,6 +1473,18 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   const fail = (fn, needle) => { let blocked = false; try { fn(); } catch (error) { blocked = String(error).includes(needle); } assert(blocked, `Execution Run must reject: ${needle}`); };
   const initial = run(base());
   assert(initial.revision === 1 && initial.stage === "plan" && Object.values(testing.readState().runs)[0].workspace === resolve(workspace), "Execution Run must use explicit target workspace rather than ctx.cwd");
+  const archivedContext = { agent: { id: "agent-run" }, conversation: { id: "stale-run" }, cwd };
+  const archivedRun = call(create, base({ summary: `Stale bounded coordination ${"detail ".repeat(30)}` }), archivedContext).run;
+  const listedRuns = commands[0].run({ ...ctx, args: "list" });
+  assert(listedRuns.success !== false && listedRuns.output.includes(archivedRun.id) && listedRuns.output.includes("human-only inventory") && listedRuns.output.includes("…"), "human Execution Run list must expose bounded cross-scope inventory without a model tool or reject long summaries");
+  const beforeWrongCrossAbandon = readFileSync(testing.statePath, "utf8");
+  const wrongCrossAbandon = commands[0].run({ ...ctx, args: `abandon ${archivedRun.id} 99 stale` });
+  assert(wrongCrossAbandon.success === false && readFileSync(testing.statePath, "utf8") === beforeWrongCrossAbandon, "cross-scope abandon must require the exact current revision without mutation");
+  const crossAbandon = commands[0].run({ ...ctx, args: `abandon ${archivedRun.id} ${archivedRun.revision} stale` });
+  assert(crossAbandon.success !== false && crossAbandon.output.includes("abandoned"), "human cross-scope abandon must archive the selected non-terminal run");
+  const archivedRevision = JSON.parse(readFileSync(testing.statePath, "utf8")).runs[JSON.stringify(["agent-run", "stale-run", ""])].revision;
+  const crossClear = commands[0].run({ ...ctx, args: `clear ${archivedRun.id} ${archivedRevision}` });
+  assert(crossClear.success !== false && !readFileSync(testing.statePath, "utf8").includes(archivedRun.id), "cross-scope clear must remove only a terminal run with its exact revision");
   fail(() => get.run({ ...ctx, args: { workspace: join(testRoot, "wrong-target") } }), "workspace mismatch");
   fail(() => call(update, { workspace: join(testRoot, "wrong-target"), action: "set_open_questions", expected_run_id: initial.id, expected_revision: initial.revision, open_questions: [] }), "workspace mismatch");
   assert((statSync(testing.statePath).mode & 0o777) === 0o600, "Execution Run state must use mode 0600");
@@ -1493,6 +1516,8 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   current = updateRun(current, { action: "add_report", lane_id: "main", report_id: "main-report", status: "reported", summary: "Implemented metadata", changed_paths: ["src/feature/run.ts"], checks: ["pnpm check"], refs: ["ref-main"] });
   current = updateRun(current, { action: "add_report", lane_id: "reader", report_id: "reader-terminal", status: "reported", summary: "Reader report", changed_paths: [], checks: [], refs: [] });
   current = updateRun(current, { action: "set_stage", stage: "reported" });
+  const reportedStatus = commands[0].run({ ...ctx, args: "status" });
+  assert(reportedStatus.success !== false && reportedStatus.output.includes("does not mean successful, verified, accepted, merged, or Goal complete"), "reported Execution Run status must explicitly distinguish a lane report from Goal completion");
   fail(() => updateRun(current, { action: "set_handoff", final_handoff: "Handoff", suggested_checks: ["pnpm check"], goal_refs: ["criterion-1"], included: [], exceptions: [], unresolved_items: [], refs: [] }), "exactly match");
   fail(() => updateRun(current, { action: "set_handoff", final_handoff: "Handoff", suggested_checks: ["pnpm check"], goal_refs: ["criterion-other"], included: ["main", "reader"], exceptions: [], unresolved_items: [], refs: [] }), "Goal refs must exactly match");
   current = updateRun(current, { action: "set_handoff", final_handoff: "Bounded handoff", suggested_checks: ["pnpm check"], goal_refs: ["criterion-1"], included: ["main", "reader"], exceptions: [], unresolved_items: ["Human review"], refs: ["handoff-ref"] });

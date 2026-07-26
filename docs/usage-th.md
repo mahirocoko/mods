@@ -137,14 +137,18 @@ adapter จะ no-op จนกว่าจะลบไฟล์และ reload 
 ```text
 /mh-goal status
 /mh-goal-status
+/mh-goal list
 /mh-goal pause
 /mh-goal resume
 /mh-goal verify criterion-02 UI ผ่านแล้ว
 /mh-goal complete
 /mh-goal clear
+/mh-goal clear <goal-id> <revision>
 ```
 
 `/mh-goal-status` เปิด panel สั้น ๆ ได้แม้ agent กำลังทำงาน ส่วน `/mh-goal status` เหมาะกับการดูรายละเอียดเต็มตอน idle
+
+ตอบจบรอบหนึ่ง, checkpoint report, Execution Run ที่ `reported` หรือสถานะ Done ของ Herdr ไม่ได้แปลว่า Goal จบ Goal ที่ยัง active สามารถหยุดที่ checkpoint ได้ตามปกติ โดย status จะบอกว่าเหลืองานฝั่ง agent หรือกำลังรอ Mahiro ตรวจรับ
 
 ### สถานะสำคัญ
 
@@ -160,6 +164,7 @@ adapter จะ no-op จนกว่าจะลบไฟล์และ reload 
 - ก่อน `claimed` ต้องมี evidence จริง
 - `complete --force` เป็นทางลัดของมนุษย์ ใช้เฉพาะตอนตั้งใจข้าม audit
 - Completed Goal แก้ต่อไม่ได้ ถ้าจะเปลี่ยน objective ให้ replace ด้วย revision ล่าสุด หรือ clear แล้วเริ่มใหม่
+- `/mh-goal list` เป็น inventory สำหรับ Mahiro เท่านั้น ถ้าจะล้าง Goal จาก conversation เก่า ต้องใช้ goal ID และ revision ที่ list แสดง จึงไม่มี model tool ตัวไหนล้างข้าม scope ได้เอง
 
 ---
 
@@ -285,8 +290,11 @@ Mahiro ใช้คำสั่งเหล่านี้เพื่อดู�
 
 ```text
 /mh-run status
+/mh-run list
 /mh-run abandon <revision> [note]
 /mh-run clear <revision>
+/mh-run abandon <run-id> <revision> [note]
+/mh-run clear <run-id> <revision>
 ```
 
 ### ต้องรู้
@@ -297,6 +305,7 @@ Mahiro ใช้คำสั่งเหล่านี้เพื่อดู�
 - `reported` แปลว่ามีรายงานถูกบันทึก ไม่ได้แปลว่างานผ่าน
 - `handed_off` แปลว่าส่ง scope ต่อแล้ว ไม่ได้แปลว่า verified, merged หรือ complete
 - หลัง handoff ต้อง collect Code Evidence ใหม่ แล้วค่อยแนบเข้า Goal
+- `list` และคำสั่งที่ระบุ run ID เป็น human-only cleanup สำหรับ state เก่าข้าม conversation โดยต้องใช้ revision ล่าสุดเสมอ
 
 ---
 

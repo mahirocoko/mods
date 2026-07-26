@@ -90,6 +90,14 @@ Each slice stays a focused mod entry until a second owner proves shared-module
 pressure. Runtime state remains under `~/.letta/`; repository state and installed
 copies remain separate.
 
+### Checkpoints are not completion
+
+Goal completion is a DoD audit, not a model-turn outcome. A completed response,
+checkpoint report, Execution Run `reported` stage, or Herdr activity label may
+describe useful progress while a Goal remains active. Checkpoints are the default
+safe pause: the status surface must name whether agent-owned work remains or a
+Mahiro-owned gate is pending. No workflow mod automatically starts another turn.
+
 ## Completion semantics
 
 ```text

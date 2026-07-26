@@ -127,6 +127,9 @@ Agent-owned criteria require evidence before the agent may mark them `claimed`.
 Human-owned criteria can only become `verified` through `/mh-goal verify`.
 Completion fails closed while required criteria or open blockers remain; only
 the explicit human `/mh-goal complete --force` command bypasses that audit.
+Turn completion, checkpoint reports, Execution Run reports, and Herdr activity
+labels are separate from Goal completion. An active Goal may correctly stop at a
+checkpoint; Goal status names whether the next owner is the agent or Mahiro.
 
 State is isolated at `~/.letta/mods/mahiro-goal.state.json`, written atomically
 with mode `0600`, and guarded by an ownership-checked cross-process mutation
@@ -141,6 +144,11 @@ owns it; an old owner cannot remove a successor lock directory.
 Completed goals are immutable; every replacement requires the current revision.
 Token budgets count usage observed after goal creation rather than
 the conversation's entire prior history.
+
+`/mh-goal list` and `/mh-run list` are bounded human-only inventories for
+cross-conversation hygiene. Cross-scope Goal clear, Run abandon, and terminal
+Run clear require an exact listed ID plus current revision and are intentionally
+not model tools. No stale record is cleared automatically.
 
 Evidence/history are bounded but may contain private paths, commands, URLs, and
 review notes. Keep credentials and secret values out of goal state and remember

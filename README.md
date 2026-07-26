@@ -204,11 +204,13 @@ workspace scope and is never shared with another workflow mod.
 ```text
 /mh-goal status
 /mh-goal-status  # transient TUI panel; works while the agent is busy
+/mh-goal list  # human-only bounded inventory across stored scopes
 /mh-goal pause
 /mh-goal resume
 /mh-goal verify criterion-02 Foreground behavior accepted
 /mh-goal complete
 /mh-goal replace 7 A revised objective
+/mh-goal clear <goal-id> <revision>  # human-only cross-scope cleanup
 /mh-goal unlock --force  # abandoned-lock recovery only
 ```
 
@@ -216,6 +218,10 @@ Agent-owned criteria must have concrete evidence before they can be `claimed`.
 Human-owned criteria remain incomplete until Mahiro runs `/mh-goal verify`.
 Normal completion fails while required criteria or blockers remain;
 `/mh-goal complete --force` is an explicit human-only override.
+An agent turn finishing, a checkpoint report, an Execution Run report, or a
+Herdr activity label never means a Goal is complete. Active Goals may end a
+turn at a checkpoint; the status surface names whether agent work remains or a
+human gate is waiting.
 
 `/mh-goal status` remains the detailed idle command. While the main agent is
 working, `/mh-goal-status` is a separate read-only `runWhenBusy` command that
@@ -234,6 +240,10 @@ confirm no live mutation is running before `/mh-goal unlock --force` atomically
 quarantines it. Completed goals are immutable;
 clear or explicitly replace them. Every replacement requires the latest
 revision shown by `/mh-goal status`.
+
+`/mh-goal list` is a human-only bounded inventory. Cross-scope cleanup requires
+the exact listed goal ID and current revision; it is deliberately not exposed to
+model tools. Record any disposition that matters before clearing a Goal.
 
 Goal evidence/history may contain private paths, commands, URLs, or review
 notes. They remain local runtime state but may enter tool output/transcripts;

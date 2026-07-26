@@ -471,6 +471,59 @@ function getGoal(scope: Scope): WorkflowGoal | null {
   return goal ? structuredClone(goal) : null;
 }
 
+function goalProgress(goal: WorkflowGoal) {
+  const required = goal.criteria.filter((item) => item.required);
+  const satisfied = required.filter((item) =>
+    item.owner === "human"
+      ? item.status === "verified"
+      : item.status === "claimed" && item.evidence.length > 0,
+  );
+  const humanPending = required.filter((item) => item.owner === "human" && item.status !== "verified");
+  const agentPending = required.filter((item) => item.owner === "agent" && (item.status !== "claimed" || item.evidence.length === 0));
+  return { required, satisfied, humanPending, agentPending };
+}
+
+function goalStateLabel(goal: WorkflowGoal): string {
+  const progress = goalProgress(goal);
+  const openBlockers = goal.blockers.filter((item) => item.status === "open");
+  if (goal.status === "complete") return "Goal complete — all required DoD criteria passed the completion audit.";
+  if (goal.status === "budget_limited") return "Checkpoint required — the goal budget is reached; wait for Mahiro before continuing.";
+  if (goal.status === "paused") return "Paused — wait for Mahiro to resume the goal.";
+  if (goal.status === "blocked" || openBlockers.length) return "Blocked — resolve the recorded blocker before continuing.";
+  if (progress.humanPending.length) return `Waiting for Mahiro — human gates: ${progress.humanPending.map((item) => item.id).join(", ")}.`;
+  if (progress.agentPending.length) return `Agent work remaining — criteria: ${progress.agentPending.map((item) => item.id).join(", ")}.`;
+  return "Checkpoint — agent criteria are claimed; the goal remains open until any required human gates pass.";
+}
+
+function formatGoalList(goals: WorkflowGoal[]): string {
+  if (!goals.length) return "No Mahiro Goals are stored for this agent.";
+  return [
+    "Mahiro Goals · human-only inventory",
+    ...goals
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .map((goal) => `${goal.id} · ${goal.status} · rev ${goal.revision} · ${goal.conversationId} · ${goal.updatedAt.slice(0, 10)} · ${compactText(goal.objective, 140)}`),
+    "Use /mh-goal clear <goal-id> <revision> only after recording the disposition elsewhere when history matters.",
+  ].join("\n");
+}
+
+function listGoals(): WorkflowGoal[] {
+  return Object.values(readState().goals).map((goal) => structuredClone(goal));
+}
+
+function clearGoalById(goalId: string, revision: number): WorkflowGoal {
+  return withLockedState((state) => {
+    const matches = Object.entries(state.goals).filter(([, goal]) => goal.id === goalId);
+    if (!matches.length) throw new Error(`No Mahiro Goal exists with id ${goalId}.`);
+    if (matches.length > 1) throw new Error(`Mahiro Goal id ${goalId} is ambiguous; refusing to clear.`);
+    const [key, current] = matches[0];
+    if (!Number.isSafeInteger(revision) || revision !== current.revision) {
+      throw new Error(`Clearing ${goalId} requires current revision ${current.revision}.`);
+    }
+    delete state.goals[key];
+    return structuredClone(current);
+  });
+}
+
 function validateObjective(value: unknown): string {
   const objective = String(value ?? "").trim();
   if (!objective) throw new Error("Goal objective must not be empty.");
@@ -686,6 +739,7 @@ function formatGoal(goal: WorkflowGoal): string {
     `Objective: ${goal.objective}`,
     `Phase: ${goal.phase}`,
     `Next: ${goal.nextAction ?? "not set"}`,
+    `State: ${goalStateLabel(goal)}`,
     `Workspace: ${goal.workspace}`,
     `Usage: ${budget} tokens · ${formatElapsed(liveElapsedSeconds(goal))}`,
     "DoD:",
@@ -697,29 +751,19 @@ function formatGoal(goal: WorkflowGoal): string {
 
 function compactStatusPanel(goal: WorkflowGoal | null): string[] {
   if (!goal) return ["Mahiro Goal · no goal for this conversation"];
-  const required = goal.criteria.filter((item) => item.required);
-  const satisfied = required.filter((item) =>
-    item.owner === "human"
-      ? item.status === "verified"
-      : item.status === "claimed" && item.evidence.length > 0,
-  ).length;
+  const progress = goalProgress(goal);
   const blockers = goal.blockers.filter((item) => item.status === "open").length;
   return [
     `Mahiro Goal · ${goal.status} · revision ${goal.revision}`,
     `Objective  ${compactText(goal.objective, 100)}`,
-    `Progress   ${satisfied}/${required.length} required · ${blockers} blocker${blockers === 1 ? "" : "s"}`,
+    `Progress   ${progress.satisfied.length}/${progress.required.length} required · ${blockers} blocker${blockers === 1 ? "" : "s"}`,
+    `State      ${compactText(goalStateLabel(goal), 100)}`,
     `Next       ${compactText(goal.nextAction ?? "not set", 100)}`,
   ];
 }
 
 function buildReminder(goal: WorkflowGoal, currentWorkspace: string): string {
-  const required = goal.criteria.filter((item) => item.required);
-  const satisfied = required.filter((item) =>
-    item.owner === "human"
-      ? item.status === "verified"
-      : ["claimed", "verified"].includes(item.status),
-  ).length;
-  const humanPending = required.filter((item) => item.owner === "human" && item.status !== "verified");
+  const progress = goalProgress(goal);
   const workspaceWarning = currentWorkspace === goal.workspace
     ? ""
     : `\nWorkspace warning: goal was created for ${goal.workspace}, current cwd is ${currentWorkspace}. Do not silently move goal ownership.`;
@@ -732,13 +776,23 @@ Mahiro Workflow Goal is ${goal.status} for this conversation.
 Objective: ${goal.objective}
 Phase: ${goal.phase}
 Next action: ${goal.nextAction ?? "choose the smallest grounded next action"}
-DoD progress: ${satisfied}/${required.length} required criteria satisfied
-Human gates pending: ${humanPending.length ? humanPending.map((item) => item.id).join(", ") : "none"}
+DoD progress: ${progress.satisfied.length}/${progress.required.length} required criteria satisfied
+Human gates pending: ${progress.humanPending.length ? progress.humanPending.map((item) => item.id).join(", ") : "none"}
 Open blockers: ${goal.blockers.filter((item) => item.status === "open").length}
 Token budget: ${budget}
 Revision: ${goal.revision}${workspaceWarning}
 
-Use mh_get_goal before mutating stale state. Add concrete evidence before claiming an agent-owned criterion. Never verify a human-owned criterion yourself. Complete the goal only when all required agent criteria are claimed, all required human criteria are verified, and no blockers remain.
+Turn completion, a checkpoint report, an Execution Run report, and Herdr Done never mean this Goal is complete. Ending this turn with a checkpoint report while the Goal remains active is correct behavior. State the remaining criterion and next action; do not use final-project language unless the completion audit succeeds.
+
+${goal.status === "budget_limited"
+  ? "The budget is reached: issue a checkpoint and wait for Mahiro. Do not continue work in this Goal."
+  : progress.humanPending.length
+    ? "A human gate is pending: report the checkpoint and wait for Mahiro's verification or direction."
+    : progress.agentPending.length
+      ? "Agent-owned work remains: if the next action is grounded and stays within scope, continue it in this turn; otherwise issue a checkpoint with the exact next action."
+      : "All agent-owned criteria are claimed: issue a checkpoint and wait for any required human verification."}
+
+Use mh_get_goal before mutating stale state. Add concrete evidence before claiming an agent-owned criterion. Never verify a human-owned criterion yourself. Complete the Goal only when all required agent criteria are claimed, all required human criteria are verified, and no blockers remain.
 </system-reminder>`;
 }
 
@@ -883,6 +937,7 @@ function helpText(): string {
     "  /mh-goal <objective> [--token-budget N]  Create a simple goal",
     "  /mh-goal replace <revision> <objective>  Replace the current Mahiro Goal",
     "  /mh-goal status                          Show objective, DoD, evidence state, and blockers",
+    "  /mh-goal list                            List bounded Goal records across this agent (human-only)",
     "  /mh-goal pause | resume                  Control active reminders/time",
     "  /mh-goal next <action>                   Set the immediate next action",
     "  /mh-goal phase <name>                    Set the current workflow phase",
@@ -891,6 +946,7 @@ function helpText(): string {
     "  /mh-goal resolve <blocker-id>            Resolve a blocker",
     "  /mh-goal complete [--force]              Complete after DoD audit; --force is explicit human override",
     "  /mh-goal clear                           Remove this conversation's Mahiro Goal",
+    "  /mh-goal clear <goal-id> <revision>      Revision-guarded cross-scope clear (human-only)",
     "  /mh-goal unlock --force                  Explicitly remove an abandoned mutation lock",
     "",
     "/mh-goal and mh_* tools are the Goal surfaces for this bundle.",
@@ -913,6 +969,12 @@ function runCommand(ctx: any) {
       return commandOutput(forceUnlock() ? "Mahiro Goal mutation lock quarantined and removed by explicit human override." : "No Mahiro Goal mutation lock exists.");
     }
     if (normalized === "unlock") return commandOutput("Use /mh-goal unlock --force only after confirming no live mutation owns the lock.", false);
+    if (normalized === "list") return commandOutput(formatGoalList(listGoals()));
+    const crossScopeClear = input.match(/^clear\s+(\S+)\s+(\d+)$/i);
+    if (crossScopeClear) {
+      const cleared = clearGoalById(compactText(crossScopeClear[1], 160), Number(crossScopeClear[2]));
+      return commandOutput(`Mahiro Goal cleared: ${cleared.id} · ${cleared.conversationId} · revision ${cleared.revision}.`);
+    }
     if (normalized === "clear") {
       return commandOutput(clearGoal(scope) ? "Mahiro Goal cleared." : "No Mahiro Goal was set.");
     }
@@ -1102,7 +1164,7 @@ export default function activate(letta: any) {
     disposers.push(letta.commands.register({
       id: "mh-goal",
       description: "Manage Mahiro's structured conversation goal, DoD, evidence, blockers, and human gates",
-      args: "[status|pause|resume|next|phase|evidence|verify|resolve|complete|clear|replace|<objective>]",
+      args: "[status|list|pause|resume|next|phase|evidence|verify|resolve|complete|clear|replace|<objective>]",
       run: runCommand,
     }));
   }
