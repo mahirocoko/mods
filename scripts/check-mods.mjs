@@ -1098,7 +1098,7 @@ function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-mcp-proxy.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.8.0", "Package version must be 0.8.0");
+  assert(packageJson.version === "0.8.1", "Package version must be 0.8.1");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
 
