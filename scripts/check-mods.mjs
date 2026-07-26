@@ -972,33 +972,58 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
     "raw default conversation lanes must be isolated by workspace",
   );
 
-  const budgetContext = {
+  assert(!Object.hasOwn(create.parameters.properties, "token_budget"), "mh_create_goal must not expose token_budget in its model schema");
+  assert(!helpResult.output.includes("--token-budget"), "/mh-goal help must not expose the removed token-budget option");
+  const legacyContext = {
     ...baseContext,
-    agent: { id: "agent-budget" },
-    conversation: { id: "conversation-budget" },
+    agent: { id: "agent-legacy-budget" },
+    conversation: { id: "conversation-legacy-budget" },
     contextWindow: { totalInputTokens: 90, totalOutputTokens: 20 },
   };
-  create.run({
-    ...budgetContext,
-    contextWindow: { totalInputTokens: 0, totalOutputTokens: 0 },
+  const legacyGoal = parseToolOutput(create.run({
+    ...legacyContext,
     args: {
-      objective: "Bounded goal",
-      criteria: [{ text: "Stay within budget", owner: "agent" }],
+      objective: "Legacy quota state must not stop this goal",
+      criteria: [{ text: "Continue independent of historic quota data", owner: "agent" }],
       token_budget: 100,
     },
-  });
-  const budgetReminder = eventHandlers.get("turn_start")(
-    { conversationId: "conversation-budget", input: [{ role: "user", content: "continue" }] },
-    budgetContext,
+  })).goal;
+  assert(legacyGoal.status === "active" && !Object.hasOwn(legacyGoal, "tokenBudget"), "ignored legacy token_budget input must not create quota state");
+  const legacyKey = JSON.stringify(["agent-legacy-budget", "conversation-legacy-budget", ""]);
+  const legacyState = JSON.parse(readFileSync(statePath, "utf8"));
+  legacyState.goals[legacyKey] = {
+    ...legacyState.goals[legacyKey],
+    status: "budget_limited",
+    activeStartedAt: null,
+    tokenBudget: 100,
+    tokenBaseline: 0.5,
+    tokensUsed: 110,
+  };
+  writeFileSync(statePath, `${JSON.stringify(legacyState, null, 2)}\n`, { mode: 0o600 });
+  const legacyReminder = eventHandlers.get("turn_start")(
+    { conversationId: "conversation-legacy-budget", input: [{ role: "user", content: "continue" }] },
+    legacyContext,
   );
-  assert(budgetReminder?.input?.[0]?.content.includes("budget_limited") && budgetReminder.input[0].content.includes("wait for Mahiro"), "first budget crossing must emit a budget-limited checkpoint-and-wait reminder");
-  const budgetGoal = parseToolOutput(get.run({ ...budgetContext, args: {} })).goal;
-  assert(budgetGoal.status === "budget_limited" && budgetGoal.tokensUsed === 110 && budgetGoal.revision === 2, "goal-relative usage must advance revision and stop at budget");
-  const repeatedBudgetReminder = eventHandlers.get("turn_start")(
-    { conversationId: "conversation-budget", input: [{ role: "user", content: "continue" }] },
-    budgetContext,
+  const migratedLegacyGoal = parseToolOutput(get.run({ ...legacyContext, args: {} })).goal;
+  assert(
+    legacyReminder?.input?.[0]?.content.includes("Agent-owned work remains")
+      && migratedLegacyGoal.status === "active"
+      && migratedLegacyGoal.revision === 1
+      && !Object.hasOwn(migratedLegacyGoal, "tokenBudget")
+      && !Object.hasOwn(migratedLegacyGoal, "tokenBaseline")
+      && !Object.hasOwn(migratedLegacyGoal, "tokensUsed"),
+    "legacy quota fields and budget_limited status must migrate to an active, non-quota Goal that continues work",
   );
-  assert(repeatedBudgetReminder === undefined, "budget-limited goals must stop injecting reminders until resumed");
+  const migratedWrite = goalCommand.run({ ...legacyContext, args: "next continue the remaining criterion" });
+  const persistedMigratedGoal = JSON.parse(readFileSync(statePath, "utf8")).goals[legacyKey];
+  assert(
+    migratedWrite.success !== false
+      && persistedMigratedGoal.status === "active"
+      && !Object.hasOwn(persistedMigratedGoal, "tokenBudget")
+      && !Object.hasOwn(persistedMigratedGoal, "tokenBaseline")
+      && !Object.hasOwn(persistedMigratedGoal, "tokensUsed"),
+    "a legacy quota state must persist only as an active Goal without token-budget fields",
+  );
 
   mkdirSync(`${statePath}.lock`, { mode: 0o700 });
   writeFileSync(join(`${statePath}.lock`, "old-owner-token"), "busy", { mode: 0o600 });
@@ -1029,7 +1054,6 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
   const scopedKey = JSON.stringify(["agent-test", "conversation-test", ""]);
   const malformedNestedState = JSON.parse(readFileSync(statePath, "utf8"));
   malformedNestedState.goals[scopedKey].criteria[0].text = "";
-  malformedNestedState.goals[scopedKey].tokenBaseline = 0.5;
   malformedNestedState.goals[scopedKey].updatedAt = "not-an-iso-timestamp";
   const malformedNestedText = `${JSON.stringify(malformedNestedState, null, 2)}\n`;
   writeFileSync(statePath, malformedNestedText, { mode: 0o600 });
@@ -1098,7 +1122,7 @@ function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-mcp-proxy.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.8.1", "Package version must be 0.8.1");
+  assert(packageJson.version === "0.8.2", "Package version must be 0.8.2");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
 

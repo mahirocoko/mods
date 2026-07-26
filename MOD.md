@@ -121,7 +121,7 @@ Evidence to Goal separately with `mh_update_goal`.
 
 A goal contains one objective, workflow phase, next action, non-goals, required
 or optional DoD criteria, agent/human ownership, structured evidence, blockers,
-workspace attribution, token/time budget, revision, and bounded history.
+workspace attribution, active-time tracking, revision, and bounded history.
 
 Agent-owned criteria require evidence before the agent may mark them `claimed`.
 Human-owned criteria can only become `verified` through `/mh-goal verify`.
@@ -142,8 +142,8 @@ auto-reclaimed by age. `/mh-goal unlock --force` atomically quarantines the
 directory as the explicit human recovery path after confirming no live mutation
 owns it; an old owner cannot remove a successor lock directory.
 Completed goals are immutable; every replacement requires the current revision.
-Token budgets count usage observed after goal creation rather than
-the conversation's entire prior history.
+Legacy token-budget fields are ignored on read; legacy `budget_limited` goals
+resume as active goals without quota enforcement.
 
 `/mh-goal list` and `/mh-run list` are bounded human-only inventories for
 cross-conversation hygiene. Cross-scope Goal clear, Run abandon, and terminal

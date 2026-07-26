@@ -20,7 +20,7 @@ Upstream:
 - Public Letta APIs only: commands, tools, and `turn_start` events.
 - Conversation-scoped goal behavior.
 - Explicit create/status/pause/resume/complete/clear lifecycle.
-- Token/time accounting and compact turn reminders.
+- Active-time tracking and compact turn reminders.
 - Capability guards and reverse-order disposer cleanup.
 
 ### Adapt
@@ -42,9 +42,9 @@ Upstream:
   `/mh-goal verify` command before completion.
 - Completion fails closed while required criteria or blockers remain. Only the
   explicit human `/mh-goal complete --force` path bypasses that audit.
-- Token budgets use a goal-creation baseline, persisted usage advances revision,
-  completed goals are immutable, and every replacement requires the latest
-  revision.
+- Token-budget enforcement is removed. Legacy persisted quota fields are ignored,
+  and a legacy `budget_limited` goal normalizes to `active`; completion auditing,
+  immutable completed goals, and current-revision replacement remain unchanged.
 
 ### Reject for Phase 1
 

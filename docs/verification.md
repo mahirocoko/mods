@@ -65,7 +65,7 @@ independent re-review. Current source/isolated evidence passes:
 - cleanup disposes two commands, three tools, and one event when panel UI exists
 - structured creation produces revision-1 state outside the repository
 - state files are mode `0600`; invalid JSON, null scoped goals, empty/oversized
-  nested values, decimal counters, duplicate IDs, and malformed nested records
+  nested values, invalid active-time counters, duplicate IDs, and malformed nested records
   are preserved and reported rather than overwritten
 - scope requires concrete identities, separates agents, and separates raw
   `default` lanes by workspace
@@ -77,8 +77,9 @@ independent re-review. Current source/isolated evidence passes:
   the successor token/directory remain until the successor releases
 - stale model revisions and stale replacement revisions are rejected
 - reminder injection preserves the original user input
-- token usage is goal-relative, advances revision, emits one budget-limit
-  reminder, and then pauses reminder injection
+- token budgets are absent from the model schema and human help; legacy persisted
+  quota fields are ignored, `budget_limited` normalizes to active, and those
+  historic fields can never pause a Goal or its active reminder
 - evidence advances revision before an agent criterion can be claimed
 - `/mh-goal verify` cannot verify an agent-owned criterion
 - agent completion is rejected while a required human gate remains

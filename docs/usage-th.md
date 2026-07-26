@@ -129,7 +129,6 @@ adapter จะ no-op จนกว่าจะลบไฟล์และ reload 
 
 ```text
 /mh-goal ทำระบบ login ให้เสร็จ
-/mh-goal ทำระบบ login ให้เสร็จ --token-budget 50000
 ```
 
 คำสั่งที่ใช้บ่อย:
@@ -164,6 +163,7 @@ adapter จะ no-op จนกว่าจะลบไฟล์และ reload 
 - ก่อน `claimed` ต้องมี evidence จริง
 - `complete --force` เป็นทางลัดของมนุษย์ ใช้เฉพาะตอนตั้งใจข้าม audit
 - Completed Goal แก้ต่อไม่ได้ ถ้าจะเปลี่ยน objective ให้ replace ด้วย revision ล่าสุด หรือ clear แล้วเริ่มใหม่
+- Goal ไม่มี token quota; state เก่าที่มีข้อมูล token budget จะถูกละทิ้ง และ Goal ที่เคย `budget_limited` จะกลับเป็น `active`
 - `/mh-goal list` เป็น inventory สำหรับ Mahiro เท่านั้น ถ้าจะล้าง Goal จาก conversation เก่า ต้องใช้ goal ID และ revision ที่ list แสดง จึงไม่มี model tool ตัวไหนล้างข้าม scope ได้เอง
 
 ---

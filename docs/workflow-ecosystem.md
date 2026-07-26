@@ -50,7 +50,7 @@ The Goal schema reserves these ownership boundaries:
 - bounded structured evidence
 - blockers and resolution state
 - revision-guarded mutations
-- goal-relative token/time budget and bounded history
+- active-time tracking and bounded history
 
 ## Active slices
 

@@ -38,7 +38,7 @@ const STATE_PATH = resolve(
 );
 const LOCK_PATH = `${STATE_PATH}.lock`;
 
-type GoalStatus = "active" | "paused" | "blocked" | "budget_limited" | "complete";
+type GoalStatus = "active" | "paused" | "blocked" | "complete";
 type CriterionOwner = "agent" | "human";
 type CriterionStatus = "pending" | "claimed" | "verified" | "blocked";
 type Actor = "agent" | "human" | "system";
@@ -104,9 +104,6 @@ interface WorkflowGoal {
   workspace: string;
   agentId: string;
   conversationId: string;
-  tokenBudget: number | null;
-  tokenBaseline: number;
-  tokensUsed: number;
   activeTimeSeconds: number;
   activeStartedAt: string | null;
   createdAt: string;
@@ -130,10 +127,8 @@ interface GoalCreateInput {
   criteria: CriterionInput[];
   nonGoals?: string[];
   nextAction?: string | null;
-  tokenBudget?: number | null;
   replace?: boolean;
   expectedRevision?: number | null;
-  initialObservedTokens?: number;
 }
 
 function nowIso(): string {
@@ -190,6 +185,19 @@ function hasUniqueIds(items: unknown[]): boolean {
   return ids.length === new Set(ids).size;
 }
 
+function normalizeStoredGoal(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const normalized = structuredClone(value);
+  delete normalized.tokenBudget;
+  delete normalized.tokenBaseline;
+  delete normalized.tokensUsed;
+  if (normalized.status === "budget_limited") {
+    normalized.status = "active";
+    normalized.activeStartedAt = nowIso();
+  }
+  return normalized;
+}
+
 function validateStoredGoal(key: string, value: unknown): asserts value is WorkflowGoal {
   if (!isRecord(value)) throw new Error(`Mahiro Goal state entry ${key} must be an object.`);
   const stringLimits: Record<string, number> = {
@@ -209,19 +217,14 @@ function validateStoredGoal(key: string, value: unknown): asserts value is Workf
   if (!isIsoTimestamp(value.createdAt) || !isIsoTimestamp(value.updatedAt)) {
     throw new Error(`Mahiro Goal state entry ${key} has invalid timestamps.`);
   }
-  if (!["active", "paused", "blocked", "budget_limited", "complete"].includes(value.status)) {
+  if (!["active", "paused", "blocked", "complete"].includes(value.status)) {
     throw new Error(`Mahiro Goal state entry ${key} has invalid status.`);
   }
   if (!Number.isSafeInteger(value.revision) || value.revision < 1) {
     throw new Error(`Mahiro Goal state entry ${key} has invalid revision.`);
   }
-  for (const field of ["tokenBaseline", "tokensUsed", "activeTimeSeconds"]) {
-    if (!Number.isSafeInteger(value[field]) || value[field] < 0) {
-      throw new Error(`Mahiro Goal state entry ${key} has invalid ${field}.`);
-    }
-  }
-  if (value.tokenBudget !== null && (!Number.isSafeInteger(value.tokenBudget) || value.tokenBudget <= 0)) {
-    throw new Error(`Mahiro Goal state entry ${key} has invalid tokenBudget.`);
+  if (!Number.isSafeInteger(value.activeTimeSeconds) || value.activeTimeSeconds < 0) {
+    throw new Error(`Mahiro Goal state entry ${key} has invalid activeTimeSeconds.`);
   }
   if (value.nextAction !== null && !isBoundedString(value.nextAction, MAX_TEXT_CHARS)) {
     throw new Error(`Mahiro Goal state entry ${key} has invalid nextAction.`);
@@ -322,11 +325,14 @@ function readState(): WorkflowState {
   if (!isRecord(parsed)) {
     throw new Error("Mahiro Goal state must be a JSON object.");
   }
-  const candidate = parsed as Partial<WorkflowState>;
+  const candidate = structuredClone(parsed) as Partial<WorkflowState>;
   if (candidate.schemaVersion !== SCHEMA_VERSION || !isRecord(candidate.goals)) {
     throw new Error(`Unsupported Mahiro Goal state schema. Expected ${SCHEMA_VERSION}.`);
   }
-  for (const [key, goal] of Object.entries(candidate.goals)) validateStoredGoal(key, goal);
+  for (const [key, goal] of Object.entries(candidate.goals)) {
+    candidate.goals[key] = normalizeStoredGoal(goal) as WorkflowGoal;
+    validateStoredGoal(key, candidate.goals[key]);
+  }
   return candidate as WorkflowState;
 }
 
@@ -487,7 +493,6 @@ function goalStateLabel(goal: WorkflowGoal): string {
   const progress = goalProgress(goal);
   const openBlockers = goal.blockers.filter((item) => item.status === "open");
   if (goal.status === "complete") return "Goal complete — all required DoD criteria passed the completion audit.";
-  if (goal.status === "budget_limited") return "Checkpoint required — the goal budget is reached; wait for Mahiro before continuing.";
   if (goal.status === "paused") return "Paused — wait for Mahiro to resume the goal.";
   if (goal.status === "blocked" || openBlockers.length) return "Blocked — resolve the recorded blocker before continuing.";
   if (progress.humanPending.length) return `Waiting for Mahiro — human gates: ${progress.humanPending.map((item) => item.id).join(", ")}.`;
@@ -573,18 +578,10 @@ function normalizeNonGoals(input: unknown): string[] {
   });
 }
 
-function normalizeTokenBudget(value: unknown): number | null {
-  if (value == null) return null;
-  const budget = Number(value);
-  if (!Number.isSafeInteger(budget) || budget <= 0) throw new Error("token_budget must be a positive safe integer.");
-  return budget;
-}
-
 function createGoal(scope: Scope, workspace: string, input: GoalCreateInput, actor: Actor): WorkflowGoal {
   const objective = validateObjective(input.objective);
   const criteria = normalizeCriteria(input.criteria);
   const nonGoals = normalizeNonGoals(input.nonGoals);
-  const tokenBudget = normalizeTokenBudget(input.tokenBudget);
   const nextAction = input.nextAction == null ? null : compactText(input.nextAction);
   if (input.nextAction != null && !nextAction) throw new Error("next_action must not be empty when provided.");
   const timestamp = nowIso();
@@ -612,9 +609,6 @@ function createGoal(scope: Scope, workspace: string, input: GoalCreateInput, act
       workspace,
       agentId: scope.agentId,
       conversationId: scope.conversationId,
-      tokenBudget,
-      tokenBaseline: Math.max(0, Math.floor(input.initialObservedTokens ?? 0)),
-      tokensUsed: 0,
       activeTimeSeconds: 0,
       activeStartedAt: timestamp,
       createdAt: timestamp,
@@ -645,39 +639,6 @@ function stopClock(goal: WorkflowGoal): WorkflowGoal {
 function startClock(goal: WorkflowGoal): WorkflowGoal {
   goal.activeStartedAt ??= nowIso();
   return goal;
-}
-
-function observedTokens(ctx: any): number {
-  return Math.max(
-    0,
-    Math.floor(
-      Number(ctx?.contextWindow?.totalInputTokens ?? 0)
-      + Number(ctx?.contextWindow?.totalOutputTokens ?? 0),
-    ),
-  );
-}
-
-function updateUsageForTurn(scope: Scope, ctx: any): WorkflowGoal | null {
-  if (!existsSync(STATE_PATH)) return null;
-  return withLockedState((state) => {
-    const goal = state.goals[scope.key];
-    if (!goal || goal.status !== "active") return null;
-    const nextTokensUsed = Math.max(goal.tokensUsed, Math.max(0, observedTokens(ctx) - goal.tokenBaseline));
-    const usageChanged = nextTokensUsed !== goal.tokensUsed;
-    goal.tokensUsed = nextTokensUsed;
-    goal.updatedAt = nowIso();
-    const budgetCrossed = goal.tokenBudget !== null && goal.tokensUsed >= goal.tokenBudget;
-    if (usageChanged || budgetCrossed) goal.revision += 1;
-    if (budgetCrossed) {
-      stopClock(goal);
-      goal.status = "budget_limited";
-      goal.history = [
-        ...goal.history,
-        historyEntry(goal.revision, "system", "budget_limited", `Observed ${goal.tokensUsed} of ${goal.tokenBudget} tokens.`),
-      ].slice(-MAX_HISTORY);
-    }
-    return structuredClone(goal);
-  });
 }
 
 function criterionById(goal: WorkflowGoal, id: unknown): Criterion {
@@ -729,7 +690,6 @@ function criterionMark(status: CriterionStatus): string {
 }
 
 function formatGoal(goal: WorkflowGoal): string {
-  const budget = goal.tokenBudget === null ? "unbounded" : `${goal.tokensUsed}/${goal.tokenBudget}`;
   const criteria = goal.criteria.map(
     (item) => `${criterionMark(item.status)} ${item.id} [${item.owner}${item.required ? ", required" : ""}] ${item.text}`,
   );
@@ -741,7 +701,7 @@ function formatGoal(goal: WorkflowGoal): string {
     `Next: ${goal.nextAction ?? "not set"}`,
     `State: ${goalStateLabel(goal)}`,
     `Workspace: ${goal.workspace}`,
-    `Usage: ${budget} tokens · ${formatElapsed(liveElapsedSeconds(goal))}`,
+    `Active time: ${formatElapsed(liveElapsedSeconds(goal))}`,
     "DoD:",
     ...criteria,
     "Blockers:",
@@ -767,9 +727,6 @@ function buildReminder(goal: WorkflowGoal, currentWorkspace: string): string {
   const workspaceWarning = currentWorkspace === goal.workspace
     ? ""
     : `\nWorkspace warning: goal was created for ${goal.workspace}, current cwd is ${currentWorkspace}. Do not silently move goal ownership.`;
-  const budget = goal.tokenBudget === null
-    ? "none"
-    : `${goal.tokensUsed}/${goal.tokenBudget} (${Math.max(0, goal.tokenBudget - goal.tokensUsed)} remaining)`;
   return `<system-reminder>
 Mahiro Workflow Goal is ${goal.status} for this conversation.
 
@@ -779,18 +736,15 @@ Next action: ${goal.nextAction ?? "choose the smallest grounded next action"}
 DoD progress: ${progress.satisfied.length}/${progress.required.length} required criteria satisfied
 Human gates pending: ${progress.humanPending.length ? progress.humanPending.map((item) => item.id).join(", ") : "none"}
 Open blockers: ${goal.blockers.filter((item) => item.status === "open").length}
-Token budget: ${budget}
 Revision: ${goal.revision}${workspaceWarning}
 
 Turn completion, a checkpoint report, an Execution Run report, and Herdr Done never mean this Goal is complete. Ending this turn with a checkpoint report while the Goal remains active is correct behavior. State the remaining criterion and next action; do not use final-project language unless the completion audit succeeds.
 
-${goal.status === "budget_limited"
-  ? "The budget is reached: issue a checkpoint and wait for Mahiro. Do not continue work in this Goal."
-  : progress.humanPending.length
-    ? "A human gate is pending: report the checkpoint and wait for Mahiro's verification or direction."
-    : progress.agentPending.length
-      ? "Agent-owned work remains: if the next action is grounded and stays within scope, continue it in this turn; otherwise issue a checkpoint with the exact next action."
-      : "All agent-owned criteria are claimed: issue a checkpoint and wait for any required human verification."}
+${progress.humanPending.length
+  ? "A human gate is pending: report the checkpoint and wait for Mahiro's verification or direction."
+  : progress.agentPending.length
+    ? "Agent-owned work remains: if the next action is grounded and stays within scope, continue it in this turn; otherwise issue a checkpoint with the exact next action."
+    : "All agent-owned criteria are claimed: issue a checkpoint and wait for any required human verification."}
 
 Use mh_get_goal before mutating stale state. Add concrete evidence before claiming an agent-owned criterion. Never verify a human-owned criterion yourself. Complete the Goal only when all required agent criteria are claimed, all required human criteria are verified, and no blockers remain.
 </system-reminder>`;
@@ -905,20 +859,8 @@ function jsonResult(payload: unknown) {
   return { status: "success", output: JSON.stringify(payload, null, 2) };
 }
 
-function parseCreateArgs(input: string): { objective: string; tokenBudget: number | null } {
-  let rest = input.trim();
-  let tokenBudget: number | null = null;
-  const match = rest.match(/(?:^|\s)--token-budget\s+(\d+)(?:\s|$)/);
-  if (match?.[1]) {
-    tokenBudget = normalizeTokenBudget(Number(match[1]));
-    rest = rest.replace(match[0], " ").trim();
-  } else if (/(?:^|\s)--token-budget(?:\s|$)/.test(rest)) {
-    throw new Error("--token-budget requires a positive integer.");
-  }
-  return {
-    objective: rest.replace(/^["']|["']$/g, "").trim(),
-    tokenBudget,
-  };
+function parseCreateArgs(input: string): { objective: string } {
+  return { objective: input.trim().replace(/^["']|["']$/g, "").trim() };
 }
 
 function simpleCriterion(objective: string): CriterionInput {
@@ -934,7 +876,7 @@ function helpText(): string {
     "Mahiro Goal — structured workflow goal",
     "",
     "Commands:",
-    "  /mh-goal <objective> [--token-budget N]  Create a simple goal",
+    "  /mh-goal <objective>                     Create a simple goal",
     "  /mh-goal replace <revision> <objective>  Replace the current Mahiro Goal",
     "  /mh-goal status                          Show objective, DoD, evidence state, and blockers",
     "  /mh-goal list                            List bounded Goal records across this agent (human-only)",
@@ -1072,11 +1014,9 @@ function runCommand(ctx: any) {
     const goal = createGoal(scope, workspace, {
       objective: parsed.objective,
       criteria: [simpleCriterion(parsed.objective)],
-      tokenBudget: parsed.tokenBudget,
       replace: Boolean(replaceMatch),
       expectedRevision: replaceMatch ? Number(replaceMatch[1]) : null,
       nextAction: null,
-      initialObservedTokens: observedTokens(ctx),
     }, "human");
     return {
       type: "prompt" as const,
@@ -1111,7 +1051,6 @@ const CREATE_PARAMETERS = {
     },
     non_goals: { type: "array", items: { type: "string" }, maxItems: MAX_NON_GOALS },
     next_action: { type: "string", description: "Immediate next action." },
-    token_budget: { type: "integer", minimum: 1 },
     replace: { type: "boolean", description: "Must be true only after Mahiro explicitly approved replacement." },
     expected_revision: { type: "integer", minimum: 1, description: "Required with replace=true to guard against stale replacement." },
   },
@@ -1223,10 +1162,8 @@ export default function activate(letta: any) {
           criteria: ctx.args.criteria,
           nonGoals: ctx.args.non_goals,
           nextAction: ctx.args.next_action,
-          tokenBudget: ctx.args.token_budget,
           replace: ctx.args.replace,
           expectedRevision: ctx.args.expected_revision,
-          initialObservedTokens: observedTokens(ctx),
         }, "agent");
         return jsonResult({ goal, completion_issues: completionIssues(goal) });
       },
@@ -1248,8 +1185,8 @@ export default function activate(letta: any) {
     disposers.push(letta.events.on("turn_start", (event: any, ctx: any) => {
       try {
         const scope = scopeFrom(ctx, event);
-        const goal = updateUsageForTurn(scope, ctx);
-        if (!goal || !["active", "budget_limited"].includes(goal.status)) return;
+        const goal = getGoal(scope);
+        if (!goal || goal.status !== "active") return;
         return {
           input: [
             { role: "user", content: buildReminder(goal, workspaceFrom(ctx, event)) },
