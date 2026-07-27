@@ -25,7 +25,7 @@ authority boundary.
 
 `control-room-goals` owns the portable Goal drafting/application procedure.
 After Mahiro explicitly approves a packet, the agent applies it itself through
-`mh_get_goal` / `mh_create_goal` / `mh_update_goal` and never asks Mahiro to type
+`mh_get_goal` / `mh_create_goal` / `mh_update_goal` / `mh_clear_goal` and never asks Mahiro to type
 a slash command while a tool exists. The mod owns deterministic structured state,
 revision gates, evidence, blockers, and completion audit; the skill owns when
 and how the agent should use those surfaces. Human-owned criteria remain
@@ -41,10 +41,11 @@ selects what to attach through `mh_update_goal`.
 
 The Goal schema reserves these ownership boundaries:
 
-- one human-owned objective
+- one human-owned living mission objective
 - conversation and agent scope
 - originating workspace
 - workflow phase and immediate next action
+- a bounded mutable plan for reprioritising work during execution
 - required/optional Definition of Done criteria
 - agent-owned versus human-owned criteria
 - bounded structured evidence
@@ -54,8 +55,10 @@ The Goal schema reserves these ownership boundaries:
 
 ## Active slices
 
-1. **Mahiro Goal** — structured objective, DoD, evidence, blockers, human gates,
-   and turn continuity through namespaced Mahiro surfaces.
+1. **Mahiro Goal** — living mission, mutable plan, DoD, evidence, blockers,
+   human gates, and turn continuity through namespaced Mahiro surfaces. Mission
+   revisions keep one ID/history; current-plan completion is explicitly reopened
+   only by a later revision.
 2. **Code Evidence** — active Phase 2. The mod collects staged, unstaged,
    untracked, and base-to-HEAD Git metadata with fixed read-only commands;
    records bounded summaries of already-performed command/test/browser/native/

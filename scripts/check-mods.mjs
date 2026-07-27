@@ -765,11 +765,23 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
   assert(goalCommand && busyGoalStatusCommand && commands.length === 2, "mahiro-goal must register /mh-goal plus one namespaced busy-safe status command");
   assert(busyGoalStatusCommand.runWhenBusy === true && busyGoalStatusCommand.showInTranscript === false, "busy Goal status must be available during work without transcript noise");
   assert(
-    tools.map(({ name }) => name).join(",") === "mh_get_goal,mh_create_goal,mh_update_goal",
-    "mahiro-goal must register exactly three namespaced tools",
+    tools.map(({ name }) => name).join(",") === "mh_get_goal,mh_create_goal,mh_update_goal,mh_clear_goal",
+    "mahiro-goal must register exactly four namespaced tools",
   );
   assert(eventHandlers.size === 1 && eventHandlers.has("turn_start"), "mahiro-goal must register one turn_start reminder");
   assert(testing && typeof testing.acquireStateLock === "function", "mahiro-goal test lock seam must load only in the isolated smoke environment");
+
+  let abortedCleanupCount = 0;
+  const abortedDisposer = activate({
+    signal: { aborted: true },
+    capabilities: { commands: true, tools: true, events: { turns: true } },
+    commands: { register() { return () => { abortedCleanupCount += 1; }; } },
+    tools: { register() { return () => { abortedCleanupCount += 1; }; } },
+    events: { on() { return () => { abortedCleanupCount += 1; }; } },
+  });
+  assert(typeof abortedDisposer === "function", "mahiro-goal must return cleanup during engine-aborted reload");
+  abortedDisposer();
+  assert(abortedCleanupCount === 0, "engine-aborted Goal cleanup must not republish redundant registration removals");
 
   const savedAgentId = process.env.AGENT_ID;
   const savedConversationId = process.env.CONVERSATION_ID;
@@ -793,6 +805,8 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
   const create = tools.find(({ name }) => name === "mh_create_goal");
   const get = tools.find(({ name }) => name === "mh_get_goal");
   const update = tools.find(({ name }) => name === "mh_update_goal");
+  const clear = tools.find(({ name }) => name === "mh_clear_goal");
+  assert(clear.requiresApproval === true, "mahiro-goal clear must require an explicit runtime approval");
 
   const noGoalTurn = eventHandlers.get("turn_start")(
     { conversationId: "conversation-test", input: [{ role: "user", content: "continue" }] },
@@ -811,7 +825,7 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
       next_action: "Implement the focused mod entry",
     },
   })).goal;
-  assert(created.revision === 1 && created.criteria.length === 2, "mahiro-goal must create structured revision-1 state");
+  assert(created.revision === 1 && created.criteria.length === 2 && Array.isArray(created.plan) && created.plan.length === 0, "mahiro-goal must create structured revision-1 mission state with an empty mutable plan");
   assert((statSync(statePath).mode & 0o777) === 0o600, "mahiro-goal state must be mode 0600");
   const stateAfterCreate = JSON.parse(readFileSync(statePath, "utf8"));
   assert(
@@ -902,9 +916,9 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
     ...baseContext,
     args: { action: "complete", expected_revision: 4 },
   })).goal;
-  assert(completed.status === "complete" && completed.revision === 5, "mahiro-goal must complete only after required evidence and human verification");
-  const immutableResult = goalCommand.run({ ...baseContext, args: "next mutate-completed-goal" });
-  assert(immutableResult.success === false && immutableResult.output.includes("immutable"), "completed Mahiro Goals must be immutable");
+  assert(completed.status === "complete" && completed.revision === 5, "mahiro-goal must complete the current plan only after required evidence and human verification");
+  const closedPlanResult = goalCommand.run({ ...baseContext, args: "next mutate-completed-goal" });
+  assert(closedPlanResult.success === false && closedPlanResult.output.includes("revise_mission"), "completed plans must require an explicit mission revision before ordinary mutation");
 
   let staleReplacementBlocked = false;
   try {
@@ -930,11 +944,58 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
       expected_revision: 5,
     },
   })).goal;
-  assert(replaced.revision === 1 && replaced.objective === "Replacement", "explicit current-revision replacement must create a fresh goal");
+  assert(replaced.revision === 6 && replaced.id === completed.id && replaced.createdAt === completed.createdAt && replaced.objective === "Replacement" && replaced.status === "active", "explicit current-revision replacement must revise one stable living mission in place");
   const revisionlessHumanReplace = goalCommand.run({ ...baseContext, args: "replace Revisionless replacement" });
-  assert(revisionlessHumanReplace.success === false && revisionlessHumanReplace.output.includes("<revision>"), "human replacement must require an explicit current revision");
-  const humanReplace = goalCommand.run({ ...baseContext, args: "replace 1 Human revision-guarded replacement" });
-  assert(humanReplace.type === "prompt", "human replacement with the current revision must create a fresh goal prompt");
+  assert(revisionlessHumanReplace.success === false && revisionlessHumanReplace.output.includes("<revision>"), "human mission revision must require an explicit current revision");
+  const humanReplace = goalCommand.run({ ...baseContext, args: "revise 6 Human revision-guarded replacement" });
+  assert(humanReplace.type === "prompt", "human mission revision with the current revision must keep one stable mission prompt");
+  const afterHumanRevision = parseToolOutput(get.run({ ...baseContext, args: {} })).goal;
+  assert(afterHumanRevision.revision === 7 && afterHumanRevision.id === completed.id && afterHumanRevision.objective === "Human revision-guarded replacement", "human revision must retain the mission identity and increment its revision");
+
+  const planAdded = parseToolOutput(update.run({
+    ...baseContext,
+    args: { action: "add_plan_item", expected_revision: 7, plan_text: "Map the smallest grounded implementation", plan_status: "in_progress", summary: "Added implementation step." },
+  })).goal;
+  const planId = planAdded.plan[0].id;
+  assert(planAdded.revision === 8 && planAdded.plan[0].status === "in_progress", "mahiro-goal must add mutable plan items without replacing the mission");
+  const planUpdated = parseToolOutput(update.run({
+    ...baseContext,
+    args: { action: "update_plan_item", expected_revision: 8, plan_id: planId, plan_status: "done", plan_note: "Mapped", summary: "Completed implementation map." },
+  })).goal;
+  assert(planUpdated.revision === 9 && planUpdated.plan[0].status === "done" && planUpdated.plan[0].note === "Mapped", "mahiro-goal must update a mutable plan item in place");
+  const revisedMission = parseToolOutput(update.run({
+    ...baseContext,
+    args: { action: "revise_mission", expected_revision: 9, objective: "Human revision with an adjusted scope", next_action: "Implement the revised scope", summary: "Mahiro adjusted scope during execution." },
+  })).goal;
+  assert(revisedMission.revision === 10 && revisedMission.id === completed.id && revisedMission.objective.includes("adjusted scope") && revisedMission.nextAction === "Implement the revised scope", "revise_mission must mutate the living mission in place with revision history");
+  const removedPlan = parseToolOutput(update.run({
+    ...baseContext,
+    args: { action: "remove_plan_item", expected_revision: 10, plan_id: planId, summary: "Removed obsolete implementation map." },
+  })).goal;
+  assert(removedPlan.revision === 11 && removedPlan.plan.length === 0, "mahiro-goal must remove obsolete mutable plan items");
+
+  const reopenContext = { ...baseContext, agent: { id: "agent-reopen" }, conversation: { id: "conversation-reopen" } };
+  const reopenCreated = parseToolOutput(create.run({
+    ...reopenContext,
+    args: { objective: "Reopen a completed current plan", criteria: [{ text: "Evidence is recorded", owner: "agent" }] },
+  })).goal;
+  const reopenEvidence = parseToolOutput(update.run({
+    ...reopenContext,
+    args: { action: "add_evidence", expected_revision: reopenCreated.revision, criterion_id: "criterion-01", kind: "test", summary: "Reopen fixture passed" },
+  })).goal;
+  const reopenClaimed = parseToolOutput(update.run({
+    ...reopenContext,
+    args: { action: "claim_criterion", expected_revision: reopenEvidence.revision, criterion_id: "criterion-01", summary: "Evidence checked" },
+  })).goal;
+  const reopenCompleted = parseToolOutput(update.run({
+    ...reopenContext,
+    args: { action: "complete", expected_revision: reopenClaimed.revision },
+  })).goal;
+  const directlyReopened = parseToolOutput(update.run({
+    ...reopenContext,
+    args: { action: "revise_mission", expected_revision: reopenCompleted.revision, next_action: "Continue the revised plan", summary: "Mahiro changed direction after completion." },
+  })).goal;
+  assert(directlyReopened.status === "active" && directlyReopened.id === reopenCreated.id && directlyReopened.revision === reopenCompleted.revision + 1, "revise_mission must directly reopen a completed current plan while retaining mission identity");
 
   const otherAgentContext = { ...baseContext, agent: { id: "agent-other" } };
   const otherAgentGoal = parseToolOutput(create.run({
@@ -945,7 +1006,8 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
     },
   })).goal;
   const isolatedState = JSON.parse(readFileSync(statePath, "utf8"));
-  assert(Object.keys(isolatedState.goals).length === 2, "same conversation IDs from different agents must not merge goal state");
+  const sameConversationGoals = Object.values(isolatedState.goals).filter(({ conversationId }) => conversationId === "conversation-test");
+  assert(sameConversationGoals.length === 2 && new Set(sameConversationGoals.map(({ agentId }) => agentId)).size === 2, "same conversation IDs from different agents must not merge goal state");
   const listedGoals = goalCommand.run({ ...baseContext, args: "list" });
   assert(listedGoals.success !== false && listedGoals.output.includes(otherAgentGoal.id) && listedGoals.output.includes("human-only inventory"), "human Goal list must expose bounded cross-scope inventory without a model tool");
   const beforeWrongCrossClear = readFileSync(statePath, "utf8");
@@ -953,6 +1015,41 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
   assert(wrongCrossClear.success === false && readFileSync(statePath, "utf8") === beforeWrongCrossClear, "cross-scope Goal clear must require the exact current revision without mutation");
   const crossClear = goalCommand.run({ ...baseContext, args: `clear ${otherAgentGoal.id} ${otherAgentGoal.revision}` });
   assert(crossClear.success !== false && !readFileSync(statePath, "utf8").includes(otherAgentGoal.id), "human cross-scope Goal clear must remove exactly the selected goal id and revision");
+
+  const completedListContext = { ...baseContext, agent: { id: "agent-completed-list" }, conversation: { id: "conversation-completed-list" } };
+  const completedListGoal = parseToolOutput(create.run({
+    ...completedListContext,
+    args: { objective: "A completed plan stays out of the attention list", criteria: [{ text: "Record list fixture evidence", owner: "agent" }] },
+  })).goal;
+  const completedListEvidence = parseToolOutput(update.run({
+    ...completedListContext,
+    args: { action: "add_evidence", expected_revision: completedListGoal.revision, criterion_id: "criterion-01", kind: "test", summary: "Completed list fixture passed" },
+  })).goal;
+  const completedListClaim = parseToolOutput(update.run({
+    ...completedListContext,
+    args: { action: "claim_criterion", expected_revision: completedListEvidence.revision, criterion_id: "criterion-01", summary: "Fixture evidence checked" },
+  })).goal;
+  const completedListGoalFinal = parseToolOutput(update.run({
+    ...completedListContext,
+    args: { action: "complete", expected_revision: completedListClaim.revision },
+  })).goal;
+  const attentionGoals = goalCommand.run({ ...baseContext, args: "list" });
+  assert(attentionGoals.success !== false && attentionGoals.output.includes("needing attention") && !attentionGoals.output.includes(completedListGoalFinal.id), "Goal list must hide completed current plans and show only remaining work");
+
+  const clearContext = { ...baseContext, agent: { id: "agent-clear" }, conversation: { id: "conversation-clear" } };
+  const clearable = parseToolOutput(create.run({
+    ...clearContext,
+    args: { objective: "Clear without a synthetic completed mission", criteria: [{ text: "This record can be cleared", owner: "agent" }] },
+  })).goal;
+  let staleClearBlocked = false;
+  try {
+    clear.run({ ...clearContext, args: { expected_revision: clearable.revision + 1 } });
+  } catch (error) {
+    staleClearBlocked = String(error).includes("Stale Mahiro Goal revision");
+  }
+  assert(staleClearBlocked, "agent clear must reject a stale mission revision");
+  const cleared = parseToolOutput(clear.run({ ...clearContext, args: { expected_revision: clearable.revision } }));
+  assert(cleared.cleared_goal_id === clearable.id && parseToolOutput(get.run({ ...clearContext, args: {} })).goal === null, "agent clear must remove the exact mission without creating a synthetic completed goal");
 
   for (const cwd of ["/tmp/default-project-a", "/tmp/default-project-b"]) {
     create.run({
@@ -999,6 +1096,7 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
     tokenBaseline: 0.5,
     tokensUsed: 110,
   };
+  delete legacyState.goals[legacyKey].plan;
   writeFileSync(statePath, `${JSON.stringify(legacyState, null, 2)}\n`, { mode: 0o600 });
   const legacyReminder = eventHandlers.get("turn_start")(
     { conversationId: "conversation-legacy-budget", input: [{ role: "user", content: "continue" }] },
@@ -1009,16 +1107,20 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
     legacyReminder?.input?.[0]?.content.includes("Agent-owned work remains")
       && migratedLegacyGoal.status === "active"
       && migratedLegacyGoal.revision === 1
+      && Array.isArray(migratedLegacyGoal.plan)
+      && migratedLegacyGoal.plan.length === 0
       && !Object.hasOwn(migratedLegacyGoal, "tokenBudget")
       && !Object.hasOwn(migratedLegacyGoal, "tokenBaseline")
       && !Object.hasOwn(migratedLegacyGoal, "tokensUsed"),
-    "legacy quota fields and budget_limited status must migrate to an active, non-quota Goal that continues work",
+    "legacy plan-less quota state must migrate to an active, non-quota mission with an empty mutable plan",
   );
   const migratedWrite = goalCommand.run({ ...legacyContext, args: "next continue the remaining criterion" });
   const persistedMigratedGoal = JSON.parse(readFileSync(statePath, "utf8")).goals[legacyKey];
   assert(
     migratedWrite.success !== false
       && persistedMigratedGoal.status === "active"
+      && Array.isArray(persistedMigratedGoal.plan)
+      && persistedMigratedGoal.plan.length === 0
       && !Object.hasOwn(persistedMigratedGoal, "tokenBudget")
       && !Object.hasOwn(persistedMigratedGoal, "tokenBaseline")
       && !Object.hasOwn(persistedMigratedGoal, "tokensUsed"),
@@ -1083,7 +1185,7 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
   assert(diagnostics.length === 0, "mahiro-goal smoke must not emit diagnostics");
 
   if (typeof disposer === "function") disposer();
-  assert(cleanupCount === 6, "mahiro-goal cleanup must dispose two commands, three tools, and one event");
+  assert(cleanupCount === 7, "mahiro-goal cleanup must dispose two commands, four tools, and one event");
   assert(goalPanelClosed === 1, "mahiro-goal cleanup must close the transient busy status panel");
 
   const noUiCommands = [];
@@ -1500,12 +1602,14 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   const archivedContext = { agent: { id: "agent-run" }, conversation: { id: "stale-run" }, cwd };
   const archivedRun = call(create, base({ summary: `Stale bounded coordination ${"detail ".repeat(30)}` }), archivedContext).run;
   const listedRuns = commands[0].run({ ...ctx, args: "list" });
-  assert(listedRuns.success !== false && listedRuns.output.includes(archivedRun.id) && listedRuns.output.includes("human-only inventory") && listedRuns.output.includes("…"), "human Execution Run list must expose bounded cross-scope inventory without a model tool or reject long summaries");
+  assert(listedRuns.success !== false && listedRuns.output.includes(archivedRun.id) && listedRuns.output.includes("needing attention") && listedRuns.output.includes("Goal refs: criterion-1") && listedRuns.output.includes("…"), "human Execution Run list must expose bounded remaining work and declared Goal refs without a model tool or reject long summaries");
   const beforeWrongCrossAbandon = readFileSync(testing.statePath, "utf8");
   const wrongCrossAbandon = commands[0].run({ ...ctx, args: `abandon ${archivedRun.id} 99 stale` });
   assert(wrongCrossAbandon.success === false && readFileSync(testing.statePath, "utf8") === beforeWrongCrossAbandon, "cross-scope abandon must require the exact current revision without mutation");
   const crossAbandon = commands[0].run({ ...ctx, args: `abandon ${archivedRun.id} ${archivedRun.revision} stale` });
   assert(crossAbandon.success !== false && crossAbandon.output.includes("abandoned"), "human cross-scope abandon must archive the selected non-terminal run");
+  const remainingRuns = commands[0].run({ ...ctx, args: "list" });
+  assert(remainingRuns.success !== false && !remainingRuns.output.includes(archivedRun.id), "Execution Run list must hide terminal abandoned or handed-off runs");
   const archivedRevision = JSON.parse(readFileSync(testing.statePath, "utf8")).runs[JSON.stringify(["agent-run", "stale-run", ""])].revision;
   const crossClear = commands[0].run({ ...ctx, args: `clear ${archivedRun.id} ${archivedRevision}` });
   assert(crossClear.success !== false && !readFileSync(testing.statePath, "utf8").includes(archivedRun.id), "cross-scope clear must remove only a terminal run with its exact revision");

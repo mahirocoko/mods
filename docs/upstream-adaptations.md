@@ -28,8 +28,9 @@ Upstream:
 - `/goal` became `/mh-goal` during dogfood so the official package could remain
   enabled without command collision. After the accepted switchover, Mahiro
   removed the official package while retaining this provenance record.
-- Generic goal tools become `mh_get_goal`, `mh_create_goal`, and
-  `mh_update_goal` with no aliases or hidden override.
+- Generic goal tools become `mh_get_goal`, `mh_create_goal`, `mh_update_goal`,
+  and the explicit-user-request-only `mh_clear_goal`, with no aliases or hidden
+  override.
 - State moves to `~/.letta/mods/mahiro-goal.state.json` with schema versioning,
   mode `0600` fsynced atomic rename, an owner-token directory lock with atomic
   force-unlock quarantine and explicit human recovery, and
@@ -43,8 +44,10 @@ Upstream:
 - Completion fails closed while required criteria or blockers remain. Only the
   explicit human `/mh-goal complete --force` path bypasses that audit.
 - Token-budget enforcement is removed. Legacy persisted quota fields are ignored,
-  and a legacy `budget_limited` goal normalizes to `active`; completion auditing,
-  immutable completed goals, and current-revision replacement remain unchanged.
+  and a legacy `budget_limited` goal normalizes to `active`.
+- Phase 1's immutable-goal/replacement model evolves into a living mission with
+  a mutable bounded plan. Revisions preserve mission ID/history, while current
+  plan completion requires an explicit later revision to reopen.
 
 ### Reject for Phase 1
 

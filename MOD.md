@@ -114,19 +114,24 @@ Evidence to Goal separately with `mh_update_goal`.
 - `/mh-goal-status` for read-only transient status while the main agent is busy;
   it is `runWhenBusy`, transcript-silent, panel-gated, and never sends a prompt
 - `mh_get_goal` for model-readable current state and completion issues
-- `mh_create_goal` for explicitly approved structured goal creation/replacement
-- `mh_update_goal` for revision-guarded phase, next action, evidence, claim,
-  blocker, and completion mutations
+- `mh_create_goal` for explicitly approved structured mission creation and
+  compatibility revisions
+- `mh_update_goal` for revision-guarded mission, plan, phase, next action,
+  evidence, claim, blocker, and current-plan completion mutations
+- `mh_clear_goal` for an explicitly requested, runtime-approval-gated,
+  revision-guarded clear of the current conversation mission
 - one compact `turn_start` reminder while the goal is active
 
-A goal contains one objective, workflow phase, next action, non-goals, required
-or optional DoD criteria, agent/human ownership, structured evidence, blockers,
-workspace attribution, active-time tracking, revision, and bounded history.
+A mission contains one objective, workflow phase, next action, a bounded mutable
+plan, non-goals, required or optional DoD criteria, agent/human ownership,
+structured evidence, blockers, workspace attribution, active-time tracking,
+revision, and bounded history.
 
 Agent-owned criteria require evidence before the agent may mark them `claimed`.
 Human-owned criteria can only become `verified` through `/mh-goal verify`.
-Completion fails closed while required criteria or open blockers remain; only
-the explicit human `/mh-goal complete --force` command bypasses that audit.
+Completion of the current plan fails closed while required criteria or open
+blockers remain; only the explicit human `/mh-goal complete --force` command
+bypasses that audit.
 Turn completion, checkpoint reports, Execution Run reports, and Herdr activity
 labels are separate from Goal completion. An active Goal may correctly stop at a
 checkpoint; Goal status names whether the next owner is the agent or Mahiro.
@@ -141,14 +146,20 @@ The lock is an owner-token directory removed only by its owner. It is never
 auto-reclaimed by age. `/mh-goal unlock --force` atomically quarantines the
 directory as the explicit human recovery path after confirming no live mutation
 owns it; an old owner cannot remove a successor lock directory.
-Completed goals are immutable; every replacement requires the current revision.
-Legacy token-budget fields are ignored on read; legacy `budget_limited` goals
-resume as active goals without quota enforcement.
+Completed current plans require an explicit revision before normal mutation, but
+the mission itself remains stable and editable in place. Every mission revision
+requires the current revision and records history; legacy `replace` remains a
+compatibility alias. Legacy token-budget fields are ignored on read; legacy
+`budget_limited` goals resume as active goals without quota enforcement.
 
-`/mh-goal list` and `/mh-run list` are bounded human-only inventories for
-cross-conversation hygiene. Cross-scope Goal clear, Run abandon, and terminal
-Run clear require an exact listed ID plus current revision and are intentionally
-not model tools. No stale record is cleared automatically.
+`/mh-goal list` and `/mh-run list` are bounded human-only **remaining-work**
+inventories for cross-conversation hygiene. Completed current Goal plans and
+terminal handed-off/abandoned Runs are intentionally hidden; their scoped status
+and history remain readable. Run list rows show declared Goal refs as
+coordination metadata, never live mission validation. Cross-scope Goal clear,
+Run abandon, and terminal Run clear require an exact known ID plus current
+revision and are intentionally not model tools. No stale record is cleared
+automatically.
 
 Evidence/history are bounded but may contain private paths, commands, URLs, and
 review notes. Keep credentials and secret values out of goal state and remember

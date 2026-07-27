@@ -30,6 +30,7 @@ const MAX_NON_GOALS = 20;
 const MAX_TEXT_CHARS = 1200;
 const MAX_EVIDENCE_PER_CRITERION = 30;
 const MAX_BLOCKERS = 30;
+const MAX_PLAN_ITEMS = 30;
 const MAX_HISTORY = 80;
 
 const STATE_PATH = resolve(
@@ -83,6 +84,16 @@ interface Blocker {
   resolvedAt: string | null;
 }
 
+type PlanItemStatus = "pending" | "in_progress" | "done" | "blocked";
+
+interface PlanItem {
+  id: string;
+  text: string;
+  status: PlanItemStatus;
+  note: string | null;
+  updatedAt: string;
+}
+
 interface HistoryItem {
   at: string;
   actor: Actor;
@@ -101,6 +112,7 @@ interface WorkflowGoal {
   criteria: Criterion[];
   nonGoals: string[];
   blockers: Blocker[];
+  plan: PlanItem[];
   workspace: string;
   agentId: string;
   conversationId: string;
@@ -188,6 +200,9 @@ function hasUniqueIds(items: unknown[]): boolean {
 function normalizeStoredGoal(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const normalized = structuredClone(value);
+  // Phase 1 missions predate the mutable plan. Keeping schemaVersion 1 and
+  // normalizing the absent field preserves existing conversation state.
+  if (normalized.plan === undefined) normalized.plan = [];
   delete normalized.tokenBudget;
   delete normalized.tokenBaseline;
   delete normalized.tokensUsed;
@@ -235,13 +250,14 @@ function validateStoredGoal(key: string, value: unknown): asserts value is Workf
   if ((value.status === "active") !== (value.activeStartedAt !== null)) {
     throw new Error(`Mahiro Goal state entry ${key} has inconsistent active clock state.`);
   }
-  if (!Array.isArray(value.criteria) || !Array.isArray(value.nonGoals) || !Array.isArray(value.blockers) || !Array.isArray(value.history)) {
+  if (!Array.isArray(value.criteria) || !Array.isArray(value.nonGoals) || !Array.isArray(value.blockers) || !Array.isArray(value.plan) || !Array.isArray(value.history)) {
     throw new Error(`Mahiro Goal state entry ${key} has invalid collection fields.`);
   }
   if (value.criteria.length === 0
     || value.criteria.length > MAX_CRITERIA
     || value.nonGoals.length > MAX_NON_GOALS
     || value.blockers.length > MAX_BLOCKERS
+    || value.plan.length > MAX_PLAN_ITEMS
     || value.history.length === 0
     || value.history.length > MAX_HISTORY
     || value.nonGoals.some((item: unknown) => !isBoundedString(item, MAX_CRITERION_CHARS))) {
@@ -290,6 +306,19 @@ function validateStoredGoal(key: string, value: unknown): asserts value is Workf
       || (blocker.status === "open" && blocker.resolvedAt !== null)
       || (blocker.status === "resolved" && blocker.resolvedAt === null)) {
       throw new Error(`Mahiro Goal state entry ${key} has an invalid blocker.`);
+    }
+  }
+  if (!hasUniqueIds(value.plan)) {
+    throw new Error(`Mahiro Goal state entry ${key} contains duplicate plan item IDs.`);
+  }
+  for (const item of value.plan) {
+    if (!isRecord(item)
+      || !isBoundedString(item.id, 120)
+      || !isBoundedString(item.text, MAX_CRITERION_CHARS)
+      || !["pending", "in_progress", "done", "blocked"].includes(item.status)
+      || (item.note !== null && !isBoundedString(item.note, MAX_TEXT_CHARS))
+      || !isIsoTimestamp(item.updatedAt)) {
+      throw new Error(`Mahiro Goal state entry ${key} has an invalid plan item.`);
     }
   }
   for (const history of value.history) {
@@ -441,12 +470,13 @@ function mutateGoal(
   summary: string,
   expectedRevision: number | null,
   mutate: (goal: WorkflowGoal) => WorkflowGoal,
+  options: { allowCompleted?: boolean } = {},
 ): WorkflowGoal {
   return withLockedState((state) => {
     const current = state.goals[scope.key];
     if (!current) throw new Error("No Mahiro Goal exists for this conversation.");
-    if (current.status === "complete") {
-      throw new Error("Completed Mahiro Goals are immutable. Clear or explicitly replace the goal instead.");
+    if (current.status === "complete" && !options.allowCompleted) {
+      throw new Error("This mission's current plan is complete. Use revise_mission to explicitly reopen it, or clear it.");
     }
     if (expectedRevision !== null && current.revision !== expectedRevision) {
       throw new Error(`Stale Mahiro Goal revision: expected ${expectedRevision}, current ${current.revision}. Read the goal again before updating.`);
@@ -472,6 +502,21 @@ function clearGoal(scope: Scope): boolean {
   });
 }
 
+function clearGoalAtRevision(scope: Scope, expectedRevision: number): WorkflowGoal {
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+    throw new Error("expected_revision must be the current positive mission revision.");
+  }
+  return withLockedState((state) => {
+    const current = state.goals[scope.key];
+    if (!current) throw new Error("No Mahiro Goal exists for this conversation.");
+    if (current.revision !== expectedRevision) {
+      throw new Error(`Stale Mahiro Goal revision: expected ${expectedRevision}, current ${current.revision}. Read the mission again before clearing.`);
+    }
+    delete state.goals[scope.key];
+    return structuredClone(current);
+  });
+}
+
 function getGoal(scope: Scope): WorkflowGoal | null {
   const goal = readState().goals[scope.key];
   return goal ? structuredClone(goal) : null;
@@ -492,7 +537,7 @@ function goalProgress(goal: WorkflowGoal) {
 function goalStateLabel(goal: WorkflowGoal): string {
   const progress = goalProgress(goal);
   const openBlockers = goal.blockers.filter((item) => item.status === "open");
-  if (goal.status === "complete") return "Goal complete — all required DoD criteria passed the completion audit.";
+  if (goal.status === "complete") return "Current plan complete — all required DoD criteria passed the completion audit; revise the mission only when new work is chosen.";
   if (goal.status === "paused") return "Paused — wait for Mahiro to resume the goal.";
   if (goal.status === "blocked" || openBlockers.length) return "Blocked — resolve the recorded blocker before continuing.";
   if (progress.humanPending.length) return `Waiting for Mahiro — human gates: ${progress.humanPending.map((item) => item.id).join(", ")}.`;
@@ -501,13 +546,14 @@ function goalStateLabel(goal: WorkflowGoal): string {
 }
 
 function formatGoalList(goals: WorkflowGoal[]): string {
-  if (!goals.length) return "No Mahiro Goals are stored for this agent.";
+  const remaining = goals.filter((goal) => goal.status !== "complete");
+  if (!remaining.length) return "No Mahiro Goals need attention.";
   return [
-    "Mahiro Goals · human-only inventory",
-    ...goals
+    "Mahiro Goals needing attention · human-only inventory",
+    ...remaining
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-      .map((goal) => `${goal.id} · ${goal.status} · rev ${goal.revision} · ${goal.conversationId} · ${goal.updatedAt.slice(0, 10)} · ${compactText(goal.objective, 140)}`),
-    "Use /mh-goal clear <goal-id> <revision> only after recording the disposition elsewhere when history matters.",
+      .map((goal) => `${goal.id} · ${goal.status} · plan ${goal.plan.filter((item) => item.status === "done").length}/${goal.plan.length} done · rev ${goal.revision} · ${goal.conversationId} · ${goal.updatedAt.slice(0, 10)} · ${compactText(goal.objective, 140)}`),
+    "Completed current plans are intentionally hidden. Revise an existing mission when new work is chosen; clear only when the record itself should be removed.",
   ].join("\n");
 }
 
@@ -588,13 +634,34 @@ function createGoal(scope: Scope, workspace: string, input: GoalCreateInput, act
   return withLockedState((state) => {
     const existing = state.goals[scope.key];
     if (existing && input.replace !== true) {
-      throw new Error("A Mahiro Goal already exists. Clear it or explicitly replace it first.");
+      throw new Error("A Mahiro Goal already exists. Revise the living mission or explicitly replace its current plan first.");
     }
     if (input.replace === true) {
       if (!existing) throw new Error("Cannot replace a Mahiro Goal that does not exist.");
       if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision !== existing.revision) {
         throw new Error(`Replacing a Mahiro Goal requires expected_revision ${existing.revision}.`);
       }
+    }
+    if (existing) {
+      const revised = structuredClone(existing);
+      const revision = existing.revision + 1;
+      revised.objective = objective;
+      revised.criteria = criteria;
+      revised.nonGoals = nonGoals;
+      revised.nextAction = nextAction;
+      revised.phase = "planning";
+      revised.blockers = [];
+      revised.plan = [];
+      revised.status = "active";
+      startClock(revised);
+      revised.revision = revision;
+      revised.updatedAt = timestamp;
+      revised.history = [
+        ...revised.history,
+        historyEntry(revision, actor, "mission_revised", "Mission and current plan revised explicitly."),
+      ].slice(-MAX_HISTORY);
+      state.goals[scope.key] = revised;
+      return structuredClone(revised);
     }
     const goal: WorkflowGoal = {
       id: `mh-goal-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`,
@@ -606,6 +673,7 @@ function createGoal(scope: Scope, workspace: string, input: GoalCreateInput, act
       criteria,
       nonGoals,
       blockers: [],
+      plan: [],
       workspace,
       agentId: scope.agentId,
       conversationId: scope.conversationId,
@@ -653,6 +721,84 @@ function blockerById(goal: WorkflowGoal, id: unknown): Blocker {
   return blocker;
 }
 
+function planItemById(goal: WorkflowGoal, id: unknown): PlanItem {
+  const item = goal.plan.find((candidate) => candidate.id === String(id ?? ""));
+  if (!item) throw new Error(`Unknown plan item: ${String(id ?? "<missing>")}`);
+  return item;
+}
+
+function reviseMission(goal: WorkflowGoal, args: any): WorkflowGoal {
+  const editable = ["objective", "criteria", "non_goals", "phase", "next_action"];
+  if (!editable.some((field) => Object.hasOwn(args, field))) {
+    throw new Error("revise_mission needs at least one of objective, criteria, non_goals, phase, or next_action.");
+  }
+  if (Object.hasOwn(args, "objective")) goal.objective = validateObjective(args.objective);
+  if (Object.hasOwn(args, "criteria")) goal.criteria = normalizeCriteria(args.criteria);
+  if (Object.hasOwn(args, "non_goals")) goal.nonGoals = normalizeNonGoals(args.non_goals);
+  if (Object.hasOwn(args, "phase")) {
+    const phase = compactText(args.phase, 120);
+    if (!phase) throw new Error("phase must not be empty when revising a mission.");
+    goal.phase = phase;
+  }
+  if (Object.hasOwn(args, "next_action")) {
+    const nextAction = compactText(args.next_action);
+    if (!nextAction) throw new Error("next_action must not be empty when revising a mission.");
+    goal.nextAction = nextAction;
+  }
+  if (goal.status === "complete" || goal.status === "paused") {
+    goal.status = "active";
+    startClock(goal);
+  }
+  return goal;
+}
+
+function addPlanItem(goal: WorkflowGoal, args: any): WorkflowGoal {
+  if (goal.plan.length >= MAX_PLAN_ITEMS) throw new Error(`A mission may contain at most ${MAX_PLAN_ITEMS} plan items.`);
+  const text = compactText(args.plan_text, MAX_CRITERION_CHARS);
+  if (!text) throw new Error("plan_text is required when adding a plan item.");
+  const status = String(args.plan_status ?? "pending") as PlanItemStatus;
+  if (!["pending", "in_progress", "done", "blocked"].includes(status)) {
+    throw new Error(`Unsupported plan status: ${status}`);
+  }
+  const note = args.plan_note == null ? null : compactText(args.plan_note);
+  if (args.plan_note != null && !note) throw new Error("plan_note must not be empty when provided.");
+  goal.plan.push({
+    id: `plan-${randomUUID().slice(0, 8)}`,
+    text,
+    status,
+    note,
+    updatedAt: nowIso(),
+  });
+  return goal;
+}
+
+function updatePlanItem(goal: WorkflowGoal, args: any): WorkflowGoal {
+  const item = planItemById(goal, args.plan_id);
+  if (!["plan_text", "plan_status", "plan_note", "clear_plan_note"].some((field) => Object.hasOwn(args, field))) {
+    throw new Error("update_plan_item needs plan_text, plan_status, plan_note, or clear_plan_note.");
+  }
+  if (Object.hasOwn(args, "plan_text")) {
+    const text = compactText(args.plan_text, MAX_CRITERION_CHARS);
+    if (!text) throw new Error("plan_text must not be empty when updating a plan item.");
+    item.text = text;
+  }
+  if (Object.hasOwn(args, "plan_status")) {
+    const status = String(args.plan_status) as PlanItemStatus;
+    if (!["pending", "in_progress", "done", "blocked"].includes(status)) {
+      throw new Error(`Unsupported plan status: ${status}`);
+    }
+    item.status = status;
+  }
+  if (Object.hasOwn(args, "plan_note")) {
+    const note = compactText(args.plan_note);
+    if (!note) throw new Error("plan_note must not be empty when updating a plan item.");
+    item.note = note;
+  }
+  if (args.clear_plan_note === true) item.note = null;
+  item.updatedAt = nowIso();
+  return goal;
+}
+
 function completionIssues(goal: WorkflowGoal): string[] {
   const issues: string[] = [];
   const openBlockers = goal.blockers.filter((item) => item.status === "open");
@@ -694,6 +840,7 @@ function formatGoal(goal: WorkflowGoal): string {
     (item) => `${criterionMark(item.status)} ${item.id} [${item.owner}${item.required ? ", required" : ""}] ${item.text}`,
   );
   const blockers = goal.blockers.filter((item) => item.status === "open");
+  const plan = goal.plan.map((item) => `${criterionMark(item.status === "done" ? "claimed" : item.status === "blocked" ? "blocked" : "pending")} ${item.id} [${item.status}] ${item.text}`);
   return [
     `Mahiro Goal · ${goal.status} · revision ${goal.revision}`,
     `Objective: ${goal.objective}`,
@@ -704,6 +851,8 @@ function formatGoal(goal: WorkflowGoal): string {
     `Active time: ${formatElapsed(liveElapsedSeconds(goal))}`,
     "DoD:",
     ...criteria,
+    "Plan:",
+    ...(plan.length ? plan : ["– no plan items yet"]),
     "Blockers:",
     ...(blockers.length ? blockers.map((item) => `! ${item.id}: ${item.summary}`) : ["– none"]),
   ].join("\n");
@@ -713,10 +862,12 @@ function compactStatusPanel(goal: WorkflowGoal | null): string[] {
   if (!goal) return ["Mahiro Goal · no goal for this conversation"];
   const progress = goalProgress(goal);
   const blockers = goal.blockers.filter((item) => item.status === "open").length;
+  const planDone = goal.plan.filter((item) => item.status === "done").length;
   return [
     `Mahiro Goal · ${goal.status} · revision ${goal.revision}`,
     `Objective  ${compactText(goal.objective, 100)}`,
     `Progress   ${progress.satisfied.length}/${progress.required.length} required · ${blockers} blocker${blockers === 1 ? "" : "s"}`,
+    `Plan       ${planDone}/${goal.plan.length} items done`,
     `State      ${compactText(goalStateLabel(goal), 100)}`,
     `Next       ${compactText(goal.nextAction ?? "not set", 100)}`,
   ];
@@ -734,11 +885,12 @@ Objective: ${goal.objective}
 Phase: ${goal.phase}
 Next action: ${goal.nextAction ?? "choose the smallest grounded next action"}
 DoD progress: ${progress.satisfied.length}/${progress.required.length} required criteria satisfied
+Plan: ${goal.plan.filter((item) => item.status === "done").length}/${goal.plan.length} items done
 Human gates pending: ${progress.humanPending.length ? progress.humanPending.map((item) => item.id).join(", ") : "none"}
 Open blockers: ${goal.blockers.filter((item) => item.status === "open").length}
 Revision: ${goal.revision}${workspaceWarning}
 
-Turn completion, a checkpoint report, an Execution Run report, and Herdr Done never mean this Goal is complete. Ending this turn with a checkpoint report while the Goal remains active is correct behavior. State the remaining criterion and next action; do not use final-project language unless the completion audit succeeds.
+This is a living mission: revise its objective, DoD, boundaries, or plan when Mahiro changes direction, then record one short reason in the mutation summary. Turn completion, a checkpoint report, an Execution Run report, and Herdr Done never mean the current plan is complete.
 
 ${progress.humanPending.length
   ? "A human gate is pending: report the checkpoint and wait for Mahiro's verification or direction."
@@ -746,7 +898,7 @@ ${progress.humanPending.length
     ? "Agent-owned work remains: if the next action is grounded and stays within scope, continue it in this turn; otherwise issue a checkpoint with the exact next action."
     : "All agent-owned criteria are claimed: issue a checkpoint and wait for any required human verification."}
 
-Use mh_get_goal before mutating stale state. Add concrete evidence before claiming an agent-owned criterion. Never verify a human-owned criterion yourself. Complete the Goal only when all required agent criteria are claimed, all required human criteria are verified, and no blockers remain.
+Use mh_get_goal before mutating stale state. Add concrete evidence before claiming an agent-owned criterion. Never verify a human-owned criterion yourself. Complete the current plan only when all required agent criteria are claimed, all required human criteria are verified, and no blockers remain. A later revise_mission explicitly reopens it.
 </system-reminder>`;
 }
 
@@ -781,6 +933,7 @@ function updateGoalFromTool(scope: Scope, args: any): WorkflowGoal {
     throw new Error("expected_revision must be the current positive goal revision.");
   }
   return mutateGoal(scope, "agent", action, args.summary ?? action, expectedRevision, (goal) => {
+    if (action === "revise_mission") return reviseMission(goal, args);
     if (action === "set_phase") {
       const phase = compactText(args.phase, 120);
       if (!phase) throw new Error("phase is required for set_phase.");
@@ -791,6 +944,13 @@ function updateGoalFromTool(scope: Scope, args: any): WorkflowGoal {
       const nextAction = compactText(args.next_action);
       if (!nextAction) throw new Error("next_action is required for set_next.");
       goal.nextAction = nextAction;
+      return goal;
+    }
+    if (action === "add_plan_item") return addPlanItem(goal, args);
+    if (action === "update_plan_item") return updatePlanItem(goal, args);
+    if (action === "remove_plan_item") {
+      const item = planItemById(goal, args.plan_id);
+      goal.plan = goal.plan.filter((candidate) => candidate.id !== item.id);
       return goal;
     }
     if (action === "add_evidence") return addEvidence(goal, args, "agent");
@@ -848,7 +1008,7 @@ function updateGoalFromTool(scope: Scope, args: any): WorkflowGoal {
       return goal;
     }
     throw new Error(`Unsupported Mahiro Goal action: ${action}`);
-  });
+  }, { allowCompleted: action === "revise_mission" });
 }
 
 function commandOutput(output: string, success = true) {
@@ -873,11 +1033,12 @@ function simpleCriterion(objective: string): CriterionInput {
 
 function helpText(): string {
   return [
-    "Mahiro Goal — structured workflow goal",
+    "Mahiro Goal — living mission and mutable plan",
     "",
     "Commands:",
     "  /mh-goal <objective>                     Create a simple goal",
-    "  /mh-goal replace <revision> <objective>  Replace the current Mahiro Goal",
+    "  /mh-goal revise <revision> <objective>   Revise the mission and reset its current plan",
+    "  /mh-goal replace <revision> <objective>  Legacy alias for revise",
     "  /mh-goal status                          Show objective, DoD, evidence state, and blockers",
     "  /mh-goal list                            List bounded Goal records across this agent (human-only)",
     "  /mh-goal pause | resume                  Control active reminders/time",
@@ -886,7 +1047,7 @@ function helpText(): string {
     "  /mh-goal evidence <criterion-id> <text>  Add human-provided evidence",
     "  /mh-goal verify <criterion-id> [note]    Verify a criterion as the human owner",
     "  /mh-goal resolve <blocker-id>            Resolve a blocker",
-    "  /mh-goal complete [--force]              Complete after DoD audit; --force is explicit human override",
+    "  /mh-goal complete [--force]              Complete the current plan after DoD audit; --force is explicit human override",
     "  /mh-goal clear                           Remove this conversation's Mahiro Goal",
     "  /mh-goal clear <goal-id> <revision>      Revision-guarded cross-scope clear (human-only)",
     "  /mh-goal unlock --force                  Explicitly remove an abandoned mutation lock",
@@ -1004,10 +1165,10 @@ function runCommand(ctx: any) {
       return commandOutput(formatGoal(goal));
     }
 
-    if (normalized === "replace") return commandOutput("Usage: /mh-goal replace <revision> <objective>", false);
-    const replaceMatch = input.match(/^replace\s+(\d+)\s+([\s\S]+)$/i);
-    if (normalized.startsWith("replace ") && !replaceMatch) {
-      return commandOutput("Usage: /mh-goal replace <revision> <objective>", false);
+    if (normalized === "replace" || normalized === "revise") return commandOutput("Usage: /mh-goal revise <revision> <objective>", false);
+    const replaceMatch = input.match(/^(?:replace|revise)\s+(\d+)\s+([\s\S]+)$/i);
+    if ((normalized.startsWith("replace ") || normalized.startsWith("revise ")) && !replaceMatch) {
+      return commandOutput("Usage: /mh-goal revise <revision> <objective>", false);
     }
     const createText = replaceMatch?.[2] ?? input;
     const parsed = parseCreateArgs(createText);
@@ -1021,7 +1182,7 @@ function runCommand(ctx: any) {
     return {
       type: "prompt" as const,
       systemReminder: true,
-      content: `${buildReminder(goal, workspace)}\n\nBegin with the smallest grounded next action. Refine the structured DoD through mh_create_goal when Mahiro explicitly requests replacement.`,
+      content: `${buildReminder(goal, workspace)}\n\nBegin with the smallest grounded next action. Revise the living mission and mutable plan through mh_update_goal only when Mahiro changes direction.`,
     };
   } catch (error) {
     return commandOutput(error instanceof Error ? error.message : String(error), false);
@@ -1029,10 +1190,18 @@ function runCommand(ctx: any) {
 }
 
 const GET_PARAMETERS = { type: "object", properties: {}, additionalProperties: false };
+const CLEAR_PARAMETERS = {
+  type: "object",
+  properties: {
+    expected_revision: { type: "integer", minimum: 1, description: "Current revision returned by mh_get_goal." },
+  },
+  required: ["expected_revision"],
+  additionalProperties: false,
+};
 const CREATE_PARAMETERS = {
   type: "object",
   properties: {
-    objective: { type: "string", description: "One concrete human-owned objective." },
+    objective: { type: "string", description: "One concrete human-owned mission objective." },
     criteria: {
       type: "array",
       minItems: 1,
@@ -1051,8 +1220,8 @@ const CREATE_PARAMETERS = {
     },
     non_goals: { type: "array", items: { type: "string" }, maxItems: MAX_NON_GOALS },
     next_action: { type: "string", description: "Immediate next action." },
-    replace: { type: "boolean", description: "Must be true only after Mahiro explicitly approved replacement." },
-    expected_revision: { type: "integer", minimum: 1, description: "Required with replace=true to guard against stale replacement." },
+    replace: { type: "boolean", description: "Compatibility alias: explicitly revise the current mission only after Mahiro approved the revision." },
+    expected_revision: { type: "integer", minimum: 1, description: "Required with replace=true to guard against stale mission revision." },
   },
   required: ["objective", "criteria"],
   additionalProperties: false,
@@ -1065,6 +1234,10 @@ const UPDATE_PARAMETERS = {
       enum: [
         "set_phase",
         "set_next",
+        "revise_mission",
+        "add_plan_item",
+        "update_plan_item",
+        "remove_plan_item",
         "add_evidence",
         "claim_criterion",
         "block_criterion",
@@ -1077,6 +1250,28 @@ const UPDATE_PARAMETERS = {
     expected_revision: { type: "integer", minimum: 1, description: "Current revision returned by mh_get_goal." },
     phase: { type: "string" },
     next_action: { type: "string" },
+    objective: { type: "string" },
+    criteria: {
+      type: "array",
+      minItems: 1,
+      maxItems: MAX_CRITERIA,
+      items: {
+        type: "object",
+        properties: {
+          text: { type: "string" },
+          owner: { type: "string", enum: ["agent", "human"] },
+          required: { type: "boolean" },
+        },
+        required: ["text"],
+        additionalProperties: false,
+      },
+    },
+    non_goals: { type: "array", items: { type: "string" }, maxItems: MAX_NON_GOALS },
+    plan_id: { type: "string" },
+    plan_text: { type: "string" },
+    plan_status: { type: "string", enum: ["pending", "in_progress", "done", "blocked"] },
+    plan_note: { type: "string" },
+    clear_plan_note: { type: "boolean" },
     criterion_id: { type: "string" },
     blocker_id: { type: "string" },
     summary: { type: "string" },
@@ -1102,8 +1297,8 @@ export default function activate(letta: any) {
   if (letta.capabilities?.commands && letta.commands?.register) {
     disposers.push(letta.commands.register({
       id: "mh-goal",
-      description: "Manage Mahiro's structured conversation goal, DoD, evidence, blockers, and human gates",
-      args: "[status|list|pause|resume|next|phase|evidence|verify|resolve|complete|clear|replace|<objective>]",
+      description: "Manage Mahiro's living conversation mission, mutable plan, DoD, evidence, blockers, and human gates",
+      args: "[status|list|pause|resume|next|phase|evidence|verify|resolve|complete|clear|revise|<objective>]",
       run: runCommand,
     }));
   }
@@ -1152,7 +1347,7 @@ export default function activate(letta: any) {
     }));
     disposers.push(letta.tools.register({
       name: "mh_create_goal",
-      description: "Create or explicitly replace a structured Mahiro Goal only after Mahiro directly requested or approved it. Include concrete DoD criteria and mark visual/product acceptance criteria as human-owned.",
+      description: "Create a structured Mahiro mission only after Mahiro directly requested or approved it. The replace compatibility field revises the existing mission in place; include concrete DoD criteria and mark visual/product acceptance criteria as human-owned.",
       parameters: CREATE_PARAMETERS,
       requiresApproval: false,
       parallelSafe: false,
@@ -1170,13 +1365,24 @@ export default function activate(letta: any) {
     }));
     disposers.push(letta.tools.register({
       name: "mh_update_goal",
-      description: "Update the current structured Mahiro Goal using its latest revision. Add evidence before claiming agent criteria. Never verify human-owned criteria; Mahiro must use /mh-goal verify. Complete only when all required criteria and blockers satisfy the runtime audit.",
+      description: "Update the current Mahiro living mission and mutable plan using its latest revision. Use revise_mission only after Mahiro changes direction. Add evidence before claiming agent criteria. Never verify human-owned criteria; Mahiro must use /mh-goal verify. Complete only the current plan when all required criteria and blockers satisfy the runtime audit.",
       parameters: UPDATE_PARAMETERS,
       requiresApproval: false,
       parallelSafe: false,
       run(ctx: any) {
         const goal = updateGoalFromTool(scopeFrom(ctx), ctx.args);
         return jsonResult({ goal, completion_issues: completionIssues(goal) });
+      },
+    }));
+    disposers.push(letta.tools.register({
+      name: "mh_clear_goal",
+      description: "Clear the current Mahiro mission after Mahiro explicitly asked to clear it and approves this destructive call. This is revision-guarded and removes the conversation record rather than creating a synthetic completed goal.",
+      parameters: CLEAR_PARAMETERS,
+      requiresApproval: true,
+      parallelSafe: false,
+      run(ctx: any) {
+        const cleared = clearGoalAtRevision(scopeFrom(ctx), Number(ctx.args.expected_revision));
+        return jsonResult({ cleared_goal_id: cleared.id, cleared_revision: cleared.revision });
       },
     }));
   }
@@ -1205,6 +1411,7 @@ export default function activate(letta: any) {
 
   return () => {
     closeBusyStatus();
+    if (letta.signal?.aborted) return;
     for (const dispose of disposers.reverse()) dispose();
   };
 }

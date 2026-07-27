@@ -204,12 +204,12 @@ workspace scope and is never shared with another workflow mod.
 ```text
 /mh-goal status
 /mh-goal-status  # transient TUI panel; works while the agent is busy
-/mh-goal list  # human-only bounded inventory across stored scopes
+/mh-goal list  # human-only remaining-work inventory across stored scopes
 /mh-goal pause
 /mh-goal resume
 /mh-goal verify criterion-02 Foreground behavior accepted
 /mh-goal complete
-/mh-goal replace 7 A revised objective
+/mh-goal revise 7 A revised objective
 /mh-goal clear <goal-id> <revision>  # human-only cross-scope cleanup
 /mh-goal unlock --force  # abandoned-lock recovery only
 ```
@@ -237,13 +237,27 @@ lanes, so unrelated agents/projects do not merge.
 The owner-token lock directory is never reclaimed merely because it is old:
 another process may still own it. If a crashed process leaves a lock behind,
 confirm no live mutation is running before `/mh-goal unlock --force` atomically
-quarantines it. Completed goals are immutable;
-clear or explicitly replace them. Every replacement requires the latest
-revision shown by `/mh-goal status`.
+quarantines it. A completed current plan requires an explicit revision before
+normal mutation. Every mission revision requires the latest revision shown by
+`/mh-goal status`.
 
-`/mh-goal list` is a human-only bounded inventory. Cross-scope cleanup requires
-the exact listed goal ID and current revision; it is deliberately not exposed to
-model tools. Record any disposition that matters before clearing a Goal.
+Mahiro Goal is a **living mission with a mutable plan**. A revision keeps the
+same mission ID and history while it can update the objective, DoD, non-goals,
+phase, or next action. `mh_update_goal` also owns bounded plan items
+(`pending`, `in_progress`, `done`, `blocked`) so normal reprioritisation does
+not require creating a replacement goal. Revising a completed current plan is
+explicit and reopens it; completion is never mission destruction. Plan items are
+mutable coordination, not hidden completion gates: the explicit DoD and open
+blockers remain the completion audit.
+
+`/mh-goal list` shows only missions that still need attention; completed current
+plans stay available through their own conversation status/history but are
+intentionally hidden from the inventory. Cross-scope cleanup requires the exact
+known goal ID and current revision. The model may use the
+revision-guarded `mh_clear_goal` only after Mahiro explicitly asked to clear the
+current mission; the destructive call requires runtime approval and removes the
+record rather than creating a synthetic completed goal. Record any disposition
+that matters before clearing a mission.
 
 Goal evidence/history may contain private paths, commands, URLs, or review
 notes. They remain local runtime state but may enter tool output/transcripts;

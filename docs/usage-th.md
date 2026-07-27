@@ -111,7 +111,7 @@ adapter จะ no-op จนกว่าจะลบไฟล์และ reload 
 
 ### ใช้เมื่อไร
 
-ใช้กับงานที่มีเป้าหมายชัด มีหลายเงื่อนไขก่อนเรียกว่าเสร็จ หรือต้องให้ Mahiro ตรวจรับ เช่น feature ใหญ่ การเปลี่ยน global config งาน visual และ release
+ใช้กับงานที่มี mission ชัด มีหลายเงื่อนไขก่อนเรียกว่าเสร็จ หรือต้องให้ Mahiro ตรวจรับ เช่น feature ใหญ่ การเปลี่ยน global config งาน visual และ release
 
 งานเล็กไม่จำเป็นต้องมี Goal ถ้า agent ทำ แก้ และตรวจได้ในรอบสั้น ๆ ก็ทำงานต่อได้เลย
 
@@ -141,6 +141,7 @@ adapter จะ no-op จนกว่าจะลบไฟล์และ reload 
 /mh-goal resume
 /mh-goal verify criterion-02 UI ผ่านแล้ว
 /mh-goal complete
+/mh-goal revise <revision> ปรับ objective ตาม direction ใหม่
 /mh-goal clear
 /mh-goal clear <goal-id> <revision>
 ```
@@ -155,16 +156,20 @@ adapter จะ no-op จนกว่าจะลบไฟล์และ reload 
 - `claimed` — agent ตรวจหลักฐานแล้วและขอปิด criterion ฝั่ง agent
 - `verified` — Mahiro ยืนยัน criterion ฝั่ง human แล้ว
 - `blocked` — ไปต่อไม่ได้จนกว่าจะแก้ blocker
-- `complete` — ทุก required criterion ผ่านและไม่มี blocker เปิดอยู่
+- `complete` — แผนรอบปัจจุบันผ่านทุก required criterion และไม่มี blocker เปิดอยู่
 
 ### ต้องรู้
 
 - Agent ห้าม verify criterion ที่เป็นของ human
 - ก่อน `claimed` ต้องมี evidence จริง
 - `complete --force` เป็นทางลัดของมนุษย์ ใช้เฉพาะตอนตั้งใจข้าม audit
-- Completed Goal แก้ต่อไม่ได้ ถ้าจะเปลี่ยน objective ให้ replace ด้วย revision ล่าสุด หรือ clear แล้วเริ่มใหม่
+- Goal คือ **living mission + mutable plan**: ระหว่างทาง agent ใช้ `revise_mission` เพื่อปรับ objective, DoD, non-goals, phase หรือ next action ได้เมื่อ Mahiro เปลี่ยน direction; ทุกครั้งต้องมี revision ล่าสุดและสรุปสั้น ๆ ว่าเปลี่ยนเพราะอะไร
+- Plan item ใช้ `pending`, `in_progress`, `done`, `blocked` จึงเพิ่ม ตัด หรือสลับงานระหว่างทางได้โดยไม่ต้องสร้าง Goal ใหม่
+- Plan item เป็น coordination ที่แก้ได้ตลอด ไม่ใช่ gate ซ่อนของ completion; การปิดแผนยังยึด DoD และ blocker ที่ประกาศไว้
+- `complete` ปิดเฉพาะแผนรอบนั้น ไม่ทำลาย mission; ถ้าจะทำต่อให้ `revise_mission` อย่างชัดเจนเพื่อ reopen แผน
+- Agent ใช้ `mh_clear_goal` ได้เมื่อ Mahiro สั่ง clear โดยตรง พร้อม `expected_revision` และ runtime approval; มันลบ state จริง ไม่สร้าง Goal ปลอมเพื่อแทนคำสั่ง clear
 - Goal ไม่มี token quota; state เก่าที่มีข้อมูล token budget จะถูกละทิ้ง และ Goal ที่เคย `budget_limited` จะกลับเป็น `active`
-- `/mh-goal list` เป็น inventory สำหรับ Mahiro เท่านั้น ถ้าจะล้าง Goal จาก conversation เก่า ต้องใช้ goal ID และ revision ที่ list แสดง จึงไม่มี model tool ตัวไหนล้างข้าม scope ได้เอง
+- `/mh-goal list` เป็น inventory สำหรับ Mahiro ที่แสดงเฉพาะ mission ที่ยังต้องจัดการ; current plan ที่ complete แล้วจะซ่อน แต่ยังดูจาก `/mh-goal status` ใน conversation เดิมได้ ถ้าจะล้าง Goal จาก conversation เก่า ต้องใช้ goal ID และ revision ที่ทราบอยู่ จึงไม่มี model tool ตัวไหนล้างข้าม scope ได้เอง
 
 ---
 
@@ -442,6 +447,8 @@ Mahiro Goal → Execution Run → external lanes report
 → handed_off → fresh Code Evidence → Goal attachment
 → human verification → complete
 ```
+
+`/mh-run list` ก็แสดงเฉพาะ run ที่ยังไม่ terminal (`handed_off`/`abandoned`) และแสดง Goal refs ที่ประกาศไว้เพื่อให้ตาม mission ได้ง่ายขึ้น; refs เหล่านี้เป็น coordination metadata ไม่ได้ยืนยันว่า mission ยัง revision ล่าสุด
 
 ### งาน UX/UI เต็ม flow
 
