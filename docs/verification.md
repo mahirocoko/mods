@@ -96,6 +96,17 @@ independent re-review. Current source/isolated evidence passes:
 Do not record `/reload`, live diagnostics, or foreground dogfood as passed until
 those actions actually occur.
 
+### Living Mission follow-up (2026-07-27)
+
+The Phase 1 notes above are historical evidence. The active Goal contract now
+supersedes its immutable-completed-goal assertion: one mission keeps its ID and
+history while a revision can adjust objective/DoD/boundaries and its bounded
+mutable plan. `complete` applies to the current plan only; a later explicit
+revision reopens it. The source smoke suite additionally covers stable-ID
+revision, plan add/update/remove, revision-guarded agent clear without a
+synthetic completed record, legacy state normalization, and engine-aborted
+reload cleanup.
+
 ### Managed install checkpoint
 
 Global managed installation passed after the pre-install verifier returned
