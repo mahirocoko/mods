@@ -38,8 +38,12 @@ type StatusSegment = {
 type CachedStatus = {
   cwd: string | null;
   agentId: string | null;
+  agentName: string | null;
   conversationId: string | null;
   permissionMode: string | null;
+  modelName: string | null;
+  reasoningEffort: string | null;
+  backend: string | null;
   branch: string | null;
   git: GitStatus;
   memfsStatus: MemfsStatus | null;
@@ -109,8 +113,12 @@ export default function activate(letta: LettaApi) {
   let status: CachedStatus = {
     cwd: process.cwd(),
     agentId: process.env.AGENT_ID || null,
+    agentName: null,
     conversationId: process.env.CONVERSATION_ID || null,
     permissionMode: null,
+    modelName: null,
+    reasoningEffort: null,
+    backend: null,
     branch: null,
     git: emptyGitStatus(),
     memfsStatus: getMemoryDir(process.env.AGENT_ID || null) ? { state: "unknown", dirtyCount: 0 } : null,
@@ -170,8 +178,12 @@ export default function activate(letta: LettaApi) {
         status.cwd,
       ),
       agentId: pick(event?.agentId, context?.agent?.id, status.agentId),
+      agentName: pick(getAgentName(context), status.agentName),
       conversationId: pick(event?.conversationId, context?.conversation?.id, status.conversationId),
       permissionMode: pick(context?.permissionMode, status.permissionMode),
+      modelName: pick(getModelName(context), status.modelName),
+      reasoningEffort: pick(getReasoningEffort(context), status.reasoningEffort),
+      backend: pick(getBackendLabel(context), status.backend),
     };
     if (!status.memfsStatus && getMemoryDir(status.agentId)) status.memfsStatus = { state: "unknown", dirtyCount: 0 };
   };
@@ -332,32 +344,14 @@ function renderStatusline(context: any, status: CachedStatus): string | string[]
 
   const reflectionStatus = getReflectionStatus(context) ?? status.reflectionStatus;
   const mode = getModeLabel(context) ?? status.permissionMode;
-  const agentName = pick(context?.agent?.name, context?.rawPayload?.agent?.name);
+  const agentName = pick(getAgentName(context), status.agentName);
   const modelName = compactModelName(
-    pick(
-      context?.model?.displayName,
-      context?.model?.display_name,
-      context?.rawPayload?.model?.display_name,
-      context?.rawPayload?.model?.displayName,
-      context?.model?.id,
-      context?.rawPayload?.model?.id,
-    ),
+    pick(getModelName(context), status.modelName),
   );
   const reasoningEffort = formatReasoningEffort(
-    pick(
-      context?.model?.reasoningEffort,
-      context?.model?.reasoning_effort,
-      context?.model?.reasoning?.reasoning_effort,
-      context?.rawPayload?.model?.reasoningEffort,
-      context?.rawPayload?.model?.reasoning_effort,
-      context?.rawPayload?.model?.reasoning?.reasoning_effort,
-      context?.rawPayload?.model_settings?.reasoning_effort,
-      context?.rawPayload?.model_settings?.reasoning?.reasoning_effort,
-      context?.rawPayload?.llm_config?.reasoning_effort,
-      context?.rawPayload?.reasoning_effort,
-    ),
+    pick(getReasoningEffort(context), status.reasoningEffort),
   );
-  const backend = getBackendLabel(context);
+  const backend = pick(getBackendLabel(context), status.backend);
 
   const leftCandidates: StatusSegment[] = [];
   if (folder) leftCandidates.push({ text: `📁 ${shortId(folder, 18)}`, color: STATUS_COLORS.folder });
@@ -608,6 +602,36 @@ function normalizeLegacyReflectionTrigger(value: unknown): string | null {
   if (value === "compaction" || value === "auto-compaction") return "compaction-event";
   if (value === "off" || value === "step-count" || value === "compaction-event") return value;
   return null;
+}
+
+function getAgentName(context: any): string | null {
+  return pick(context?.agent?.name, context?.rawPayload?.agent?.name);
+}
+
+function getModelName(context: any): string | null {
+  return pick(
+    context?.model?.displayName,
+    context?.model?.display_name,
+    context?.rawPayload?.model?.display_name,
+    context?.rawPayload?.model?.displayName,
+    context?.model?.id,
+    context?.rawPayload?.model?.id,
+  );
+}
+
+function getReasoningEffort(context: any): string | null {
+  return pick(
+    context?.model?.reasoningEffort,
+    context?.model?.reasoning_effort,
+    context?.model?.reasoning?.reasoning_effort,
+    context?.rawPayload?.model?.reasoningEffort,
+    context?.rawPayload?.model?.reasoning_effort,
+    context?.rawPayload?.model?.reasoning?.reasoning_effort,
+    context?.rawPayload?.model_settings?.reasoning_effort,
+    context?.rawPayload?.model_settings?.reasoning?.reasoning_effort,
+    context?.rawPayload?.llm_config?.reasoning_effort,
+    context?.rawPayload?.reasoning_effort,
+  );
 }
 
 function getBackendLabel(context: any): string | null {

@@ -1122,7 +1122,7 @@ function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-mcp-proxy.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.8.2", "Package version must be 0.8.2");
+  assert(packageJson.version === "0.8.3", "Package version must be 0.8.3");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
 
@@ -1661,6 +1661,7 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
 
 function checkStatuslineRegistration(activate) {
   const eventNames = [];
+  const eventHandlers = new Map();
   let panelOptions = null;
   let panelClosed = 0;
   const disposer = activate({
@@ -1676,8 +1677,9 @@ function checkStatuslineRegistration(activate) {
     },
     diagnostics: { report: () => {} },
     events: {
-      on(name) {
+      on(name, handler) {
         eventNames.push(name);
+        eventHandlers.set(name, handler);
         return () => {};
       },
     },
@@ -1722,6 +1724,21 @@ function checkStatuslineRegistration(activate) {
       overflowModeIndex > overflowReflectionIndex &&
       narrowOverflow.includes("accept-edits"),
     `statusline must move complete left segments to the second row in order: ${JSON.stringify(narrowLayout)}`,
+  );
+  eventHandlers.get("turn_start")?.(
+    { agentId: "agent-statusline" },
+    layoutContext,
+  );
+  const sparseLayout = panelOptions?.render({
+    width: 220,
+    workspace: { cwd: "/Users/mahiro/ghq/github.com/mahirocoko/mods" },
+  });
+  assert(
+    typeof sparseLayout === "string"
+      && sparseLayout.includes("Mahiro Code")
+      && sparseLayout.includes("[GPT-5.6 Sol r:xhigh]")
+      && sparseLayout.includes("local"),
+    `statusline must retain the right group when a later render has sparse context: ${JSON.stringify(sparseLayout)}`,
   );
   const expectedEvents = [
     "compact_end",
