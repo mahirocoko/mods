@@ -791,5 +791,8 @@ export default function activate(letta: any) {
     letta.diagnostics?.report?.({ severity: "warning", message: "Mahiro UX Workflow requires commands or tools capability." });
     return;
   }
-  return () => { for (const dispose of disposers.reverse()) dispose(); };
+  return () => {
+    if (letta.signal?.aborted) return;
+    for (const dispose of disposers.reverse()) dispose();
+  };
 }

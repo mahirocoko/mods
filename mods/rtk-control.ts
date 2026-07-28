@@ -684,6 +684,7 @@ export default function activate(letta: any) {
   }
 
   return () => {
+    if (letta.signal?.aborted) return;
     for (const dispose of disposers.reverse()) dispose();
   };
 }

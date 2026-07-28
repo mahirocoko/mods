@@ -295,5 +295,8 @@ export default function activate(letta: any) {
       return renderGuidance(workspace, parseInput(ctx?.args ?? {}));
     },
   });
-  return () => dispose();
+  return () => {
+    if (letta.signal?.aborted) return;
+    dispose();
+  };
 }

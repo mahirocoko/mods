@@ -120,8 +120,13 @@ export default function activate(letta: any) {
     return;
   }
 
-  return letta.events.on("turn_start", (event: any) => {
+  const dispose = letta.events.on("turn_start", (event: any) => {
     const input = transformUserInput(event?.input);
     return input ? { input } : undefined;
   });
+
+  return () => {
+    if (letta.signal?.aborted) return;
+    dispose();
+  };
 }

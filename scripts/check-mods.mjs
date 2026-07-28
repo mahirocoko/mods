@@ -87,6 +87,18 @@ function checkMcpPermissionGuard(activate) {
   );
   if (typeof permissionlessDisposer === "function") permissionlessDisposer();
 
+  let abortedCleanupCount = 0;
+  const abortedDisposer = activate({
+    signal: { aborted: true },
+    capabilities: { permissions: true, tools: true, commands: true },
+    permissions: { register() { return () => { abortedCleanupCount += 1; }; } },
+    tools: { register() { return () => { abortedCleanupCount += 1; }; } },
+    commands: { register() { return () => { abortedCleanupCount += 1; }; } },
+  });
+  assert(typeof abortedDisposer === "function", "MCP proxy must return cleanup during engine-aborted reload");
+  abortedDisposer();
+  assert(abortedCleanupCount === 0, "engine-aborted MCP proxy cleanup must skip redundant registration removals");
+
   const guardedTools = [];
   const permissions = [];
   const guardedDisposer = activate({
@@ -135,6 +147,17 @@ function checkRtkRegistration(activate) {
   assert(commands.length === 1 && commands[0].id === "rtk", "rtk-control must register /rtk");
   assert(events.length === 1 && events[0] === "tool_start", "rtk-control must register tool_start");
   if (typeof disposer === "function") disposer();
+
+  let abortedCleanupCount = 0;
+  const abortedDisposer = activate({
+    signal: { aborted: true },
+    capabilities: { commands: true, events: { tools: true } },
+    commands: { register() { return () => { abortedCleanupCount += 1; }; } },
+    events: { on() { return () => { abortedCleanupCount += 1; }; } },
+  });
+  assert(typeof abortedDisposer === "function", "RTK control must return cleanup during engine-aborted reload");
+  abortedDisposer();
+  assert(abortedCleanupCount === 0, "engine-aborted RTK cleanup must skip redundant registration removals");
 }
 
 function countMarker(value, marker) {
@@ -166,6 +189,16 @@ function checkMahiroTimestampRegistration(activate, testing) {
   });
   assert(typeof handler === "function", "mahiro timestamps must expose one turn_start handler");
   assert(testing && typeof testing.timestampMetadata === "function", "mahiro timestamps test seam must load only in isolated checks");
+
+  let abortedCleanupCount = 0;
+  const abortedDisposer = activate({
+    signal: { aborted: true },
+    capabilities: { events: { turns: true } },
+    events: { on() { return () => { abortedCleanupCount += 1; }; } },
+  });
+  assert(typeof abortedDisposer === "function", "mahiro timestamps must return cleanup during engine-aborted reload");
+  abortedDisposer();
+  assert(abortedCleanupCount === 0, "engine-aborted timestamp cleanup must skip redundant event unregister publishes");
 
   const fixed = testing.timestampMetadata(new Date("2026-07-21T04:00:00.000Z"));
   assert(typeof fixed.local === "string" && fixed.local.length > 0, "safe Intl formatter must produce a local date without throwing for the host locale/calendar");
@@ -476,6 +509,17 @@ async function checkMahiroCodeEvidenceRegistration(activate, testing, testRoot) 
   const commands = [];
   const tools = [];
   let cleanupCount = 0;
+  let abortedCleanupCount = 0;
+  const abortedDisposer = activate({
+    signal: { aborted: true },
+    capabilities: { commands: true, tools: true },
+    commands: { register() { return () => { abortedCleanupCount += 1; }; } },
+    tools: { register() { return () => { abortedCleanupCount += 1; }; } },
+  });
+  assert(typeof abortedDisposer === "function", "code evidence must return cleanup during engine-aborted reload");
+  abortedDisposer();
+  assert(abortedCleanupCount === 0, "engine-aborted Code Evidence cleanup must skip redundant registration removals");
+
   const disposer = activate({
     capabilities: { commands: true, tools: true },
     commands: {
@@ -1241,6 +1285,17 @@ function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
   assert(toolsOnly.map(({ name }) => name).join(",") === "mh_get_ux_workflow,mh_create_ux_workflow,mh_update_ux_workflow", "tools-only hosts must receive exactly the three UX tools");
   if (typeof toolsOnlyDisposer === "function") toolsOnlyDisposer();
 
+  let abortedCleanupCount = 0;
+  const abortedDisposer = activate({
+    signal: { aborted: true },
+    capabilities: { commands: true, tools: true },
+    commands: { register() { return () => { abortedCleanupCount += 1; }; } },
+    tools: { register() { return () => { abortedCleanupCount += 1; }; } },
+  });
+  assert(typeof abortedDisposer === "function", "UX workflow must return cleanup during engine-aborted reload");
+  abortedDisposer();
+  assert(abortedCleanupCount === 0, "engine-aborted UX cleanup must skip redundant registration removals");
+
   const commands = [];
   const tools = [];
   const cleanupOrder = [];
@@ -1479,6 +1534,16 @@ function checkMahiroCodeMapRegistration(activate, testing) {
   let commandRegistrations = 0;
   let eventRegistrations = 0;
   let permissionRegistrations = 0;
+  let abortedCleanupCount = 0;
+  const abortedDisposer = activate({
+    signal: { aborted: true },
+    capabilities: { tools: true },
+    tools: { register() { return () => { abortedCleanupCount += 1; }; } },
+  });
+  assert(typeof abortedDisposer === "function", "Code Map must return cleanup during engine-aborted reload");
+  abortedDisposer();
+  assert(abortedCleanupCount === 0, "engine-aborted Code Map cleanup must skip redundant registration removal");
+
   const disposer = activate({
     capabilities: { tools: true, commands: true, events: { turns: true }, permissions: true },
     tools: { register(definition) { tools.push(definition); return () => { cleanupCount += 1; }; } },
@@ -1576,6 +1641,17 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   const toolsOnlyDisposer = activate({ capabilities: { tools: true }, tools: { register(item) { toolsOnly.push(item); return () => {}; } } });
   assert(toolsOnly.map(({ name }) => name).join(",") === "mh_get_execution_run,mh_create_execution_run,mh_update_execution_run", "tools-only host must receive exactly three Execution Run tools");
   if (typeof toolsOnlyDisposer === "function") toolsOnlyDisposer();
+
+  let abortedCleanupCount = 0;
+  const abortedDisposer = activate({
+    signal: { aborted: true },
+    capabilities: { commands: true, tools: true },
+    commands: { register() { return () => { abortedCleanupCount += 1; }; } },
+    tools: { register() { return () => { abortedCleanupCount += 1; }; } },
+  });
+  assert(typeof abortedDisposer === "function", "Execution Run must return cleanup during engine-aborted reload");
+  abortedDisposer();
+  assert(abortedCleanupCount === 0, "engine-aborted Execution Run cleanup must skip redundant registration removals");
 
   const commands = []; const tools = []; const cleanup = []; let events = 0; let panels = 0; let permissions = 0;
   const disposer = activate({
@@ -1768,6 +1844,27 @@ function checkStatuslineRegistration(activate) {
   const eventHandlers = new Map();
   let panelOptions = null;
   let panelClosed = 0;
+  let abortedCleanupCount = 0;
+  let abortedPanelClosed = 0;
+  const abortedDisposer = activate({
+    signal: { aborted: true },
+    capabilities: {
+      ui: { panels: true },
+      events: { compact: true, lifecycle: true, llm: true, tools: true, turns: true },
+    },
+    diagnostics: { report: () => {} },
+    events: { on() { return () => { abortedCleanupCount += 1; }; } },
+    ui: {
+      openPanel() {
+        return { close() { abortedPanelClosed += 1; }, update() {} };
+      },
+    },
+  });
+  assert(typeof abortedDisposer === "function", "statusline must return cleanup during engine-aborted reload");
+  abortedDisposer();
+  assert(abortedCleanupCount === 0, "engine-aborted statusline cleanup must skip redundant registration removals");
+  assert(abortedPanelClosed === 0, "engine-aborted statusline cleanup must leave registry panel teardown to the engine");
+
   const disposer = activate({
     capabilities: {
       ui: { panels: true },

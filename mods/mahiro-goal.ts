@@ -1287,10 +1287,10 @@ export default function activate(letta: any) {
   let busyStatusPanel: any = null;
   let busyStatusTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const closeBusyStatus = () => {
+  const closeBusyStatus = (closePanel = true) => {
     if (busyStatusTimer) clearTimeout(busyStatusTimer);
     busyStatusTimer = null;
-    busyStatusPanel?.close?.();
+    if (closePanel) busyStatusPanel?.close?.();
     busyStatusPanel = null;
   };
 
@@ -1410,8 +1410,9 @@ export default function activate(letta: any) {
   }
 
   return () => {
-    closeBusyStatus();
-    if (letta.signal?.aborted) return;
+    const aborted = Boolean(letta.signal?.aborted);
+    closeBusyStatus(!aborted);
+    if (aborted) return;
     for (const dispose of disposers.reverse()) dispose();
   };
 }

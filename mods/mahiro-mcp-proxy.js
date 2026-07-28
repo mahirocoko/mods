@@ -1153,6 +1153,7 @@ export default function activate(letta) {
 
   return () => {
     closeAllStdioConnections();
+    if (letta.signal?.aborted) return;
     for (const dispose of disposers.reverse()) dispose();
   };
 }

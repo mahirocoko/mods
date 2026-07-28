@@ -72,6 +72,9 @@ type MemfsStatus = {
 };
 
 type LettaApi = {
+  signal?: {
+    aborted?: boolean;
+  };
   capabilities?: {
     ui?: {
       panels?: boolean;
@@ -296,12 +299,15 @@ export default function activate(letta: LettaApi) {
   });
 
   return () => {
+    const aborted = Boolean(letta.signal?.aborted);
     disposed = true;
     clearInterval(timer);
     if (activityClearTimer) clearTimeout(activityClearTimer);
     if (compactClearTimer) clearTimeout(compactClearTimer);
-    for (const dispose of disposers.reverse()) dispose();
-    panel.close();
+    if (!aborted) {
+      for (const dispose of disposers.reverse()) dispose();
+      panel.close();
+    }
   };
 }
 
