@@ -105,9 +105,10 @@ Design references inspected without copying implementation:
   and HEAD. A later collection makes old records visibly stale and excludes
   them from Goal handoff/verdict calculation.
 - External proof is recorded only after existing approved tools perform it.
-  `mh_record_code_evidence` stores bounded single-line summaries/references/
-  command labels, rejects multiline/raw-diff-shaped payloads, and never runs
-  arbitrary commands.
+  `mh_code_evidence` action `record` stores bounded single-line summaries/
+  references/command labels, rejects multiline/raw-diff-shaped payloads, and
+  never runs arbitrary commands. Its closed `get`, `collect`, and `record`
+  actions share one model-tool registration to keep reload pressure bounded.
 - Return criterion-ready evidence for the agent to attach with
   `mh_update_goal`. Code Evidence never reads/writes Goal state, claims or
   verifies criteria, or completes a Goal.

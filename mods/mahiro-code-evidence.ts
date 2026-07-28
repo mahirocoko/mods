@@ -32,6 +32,8 @@ const SCHEMA_VERSION = 1;
 const STATE_PATH = process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH
   ?? join(homedir(), ".letta", "mods", "mahiro-code-evidence.state.json");
 const LOCK_PATH = `${STATE_PATH}.lock`;
+const DISABLE_PATH = process.env.MAHIRO_CODE_EVIDENCE_DISABLE_PATH
+  ?? join(homedir(), ".letta", "mods", "mahiro-code-evidence.disabled");
 const MAX_SCOPES = 256;
 const MAX_CHANGE_ENTRIES = 512;
 const MAX_RECORDS = 50;
@@ -709,7 +711,7 @@ async function recordEvidence(ctx: any, args: any): Promise<CodeEvidenceReport> 
     const state = readState();
     const reports = conversationReports(state, ctx);
     const matching = reports.filter((report) => workspace === report.repositoryRoot || workspace === report.requestedWorkspace || workspace.startsWith(`${report.repositoryRoot}/`));
-    if (matching.length !== 1) throw new Error(`Expected exactly one collected report for ${workspace}; run mh_collect_code_evidence first with an explicit workspace.`);
+    if (matching.length !== 1) throw new Error(`Expected exactly one collected report for ${workspace}; run mh_code_evidence with action "collect" first and pass an explicit workspace.`);
     const report = state.reports[scopeFrom(ctx, matching[0].repositoryRoot).key];
     if (report.revision !== expectedRevision) throw new Error(`Stale Code Evidence revision ${expectedRevision}; current revision is ${report.revision}.`);
     if (report.records.length >= MAX_RECORDS) throw new Error(`Code Evidence report already contains ${MAX_RECORDS} records.`);
@@ -796,7 +798,7 @@ async function runCommand(ctx: any) {
         "  /mh-evidence report [workspace]",
         "  /mh-evidence clear <revision> [workspace]",
         "  /mh-evidence unlock --force",
-        "Collection is fixed read-only Git inspection. External checks are recorded by the agent through mh_record_code_evidence.",
+        "Collection is fixed read-only Git inspection. The agent uses mh_code_evidence actions to collect, read, or record external checks.",
       ].join("\n"));
     }
     if (subcommand === "collect") {
@@ -825,10 +827,29 @@ async function runCommand(ctx: any) {
 
 // Isolated repository smoke seam; normal packaged runtimes export null.
 export const __testing = process.env.MAHIRO_CODE_EVIDENCE_TESTING === "1"
-  ? Object.freeze({ collectRepositoryEvidence, readState, reportSummary, statePath: STATE_PATH, lockPath: LOCK_PATH })
+  ? Object.freeze({ collectRepositoryEvidence, readState, reportSummary, statePath: STATE_PATH, lockPath: LOCK_PATH, disablePath: DISABLE_PATH })
   : null;
 
+const CODE_EVIDENCE_PARAMETERS = {
+  type: "object",
+  required: ["action"],
+  properties: {
+    action: { type: "string", enum: ["get", "collect", "record"] },
+    workspace: { type: "string", description: "Repository or child path. Optional for get/collect; required for record." },
+    base_ref: { type: "string", description: "Optional explicit Git base ref for collect. Without it, uses the upstream merge-base when available." },
+    expected_revision: { type: "integer", minimum: 1 },
+    kind: { type: "string", enum: ["file", "command", "test", "browser", "native", "manual", "other"] },
+    result: { type: "string", enum: ["passed", "failed", "observed", "blocked"] },
+    summary: { type: "string", maxLength: MAX_TEXT_CHARS },
+    reference: { type: "string", maxLength: MAX_REFERENCE_CHARS },
+    command: { type: "string", maxLength: 500 },
+    criterion_ids: { type: "array", maxItems: 20, items: { type: "string", maxLength: 120 } },
+  },
+  additionalProperties: false,
+};
+
 export default function activate(letta: any) {
+  if (existsSync(DISABLE_PATH)) return;
   const disposers: Array<() => void> = [];
 
   if (letta.capabilities?.commands && letta.commands?.register) {
@@ -842,64 +863,29 @@ export default function activate(letta: any) {
 
   if (letta.capabilities?.tools && letta.tools?.register) {
     disposers.push(letta.tools.register({
-      name: "mh_get_code_evidence",
-      description: "Read the latest bounded Code Evidence report for the current conversation and optional repository workspace. This never changes Goal state.",
-      parameters: {
-        type: "object",
-        properties: { workspace: { type: "string", description: "Optional repository path; omit when the current cwd identifies the only report." } },
-        additionalProperties: false,
-      },
-      parallelSafe: true,
-      async run(ctx: any) {
-        const args = ctx.args ?? {};
-        const report = await findReport(ctx, args.workspace);
-        if (report) return reportSummary(report);
-        const reports = conversationReports(readState(), ctx).map((item) => ({ repositoryRoot: item.repositoryRoot, revision: item.revision, updatedAt: item.updatedAt }));
-        return { status: "empty", message: "No unique Code Evidence report found. Pass workspace or collect first.", reports };
-      },
-    }));
-
-    disposers.push(letta.tools.register({
-      name: "mh_collect_code_evidence",
-      description: "Collect fixed read-only Git evidence: branch/HEAD/base plus separate staged, unstaged, untracked, and base-to-HEAD lanes. Never runs arbitrary commands or mutates repository state.",
-      parameters: {
-        type: "object",
-        properties: {
-          workspace: { type: "string", description: "Optional repository or child path; defaults to current cwd." },
-          base_ref: { type: "string", description: "Optional explicit Git base ref. Without it, uses the upstream merge-base when available." },
-        },
-        additionalProperties: false,
-      },
+      name: "mh_code_evidence",
+      description: "Unified bounded Code Evidence actions: get the latest report, collect fixed read-only Git metadata, or record a summary of an already-performed check. Never runs arbitrary commands, verifies human criteria, or mutates Goal state.",
+      parameters: CODE_EVIDENCE_PARAMETERS,
       parallelSafe: false,
       async run(ctx: any) {
         const args = ctx.args ?? {};
-        const collected = await collectRepositoryEvidence(args.workspace, ctx.cwd, args.base_ref);
-        return reportSummary(saveCollection(ctx, collected));
-      },
-    }));
-
-    disposers.push(letta.tools.register({
-      name: "mh_record_code_evidence",
-      description: "Record a bounded summary of an already-performed command/test/browser/native/manual proof. Does not execute commands, verify human criteria, or mutate Goal state.",
-      parameters: {
-        type: "object",
-        required: ["workspace", "expected_revision", "kind", "result", "summary"],
-        properties: {
-          workspace: { type: "string" },
-          expected_revision: { type: "integer", minimum: 1 },
-          kind: { type: "string", enum: ["file", "command", "test", "browser", "native", "manual", "other"] },
-          result: { type: "string", enum: ["passed", "failed", "observed", "blocked"] },
-          summary: { type: "string", maxLength: MAX_TEXT_CHARS },
-          reference: { type: "string", maxLength: MAX_REFERENCE_CHARS },
-          command: { type: "string", maxLength: 500 },
-          criterion_ids: { type: "array", maxItems: 20, items: { type: "string", maxLength: 120 } },
-        },
-        additionalProperties: false,
-      },
-      parallelSafe: false,
-      async run(ctx: any) {
-        const args = ctx.args ?? {};
-        return reportSummary(await recordEvidence(ctx, args));
+        if (args.action === "get") {
+          const report = await findReport(ctx, args.workspace);
+          if (report) return reportSummary(report);
+          const reports = conversationReports(readState(), ctx).map((item) => ({ repositoryRoot: item.repositoryRoot, revision: item.revision, updatedAt: item.updatedAt }));
+          return { status: "empty", message: "No unique Code Evidence report found. Pass workspace or collect first.", reports };
+        }
+        if (args.action === "collect") {
+          const collected = await collectRepositoryEvidence(args.workspace, ctx.cwd, args.base_ref);
+          return reportSummary(saveCollection(ctx, collected));
+        }
+        if (args.action === "record") {
+          for (const field of ["workspace", "expected_revision", "kind", "result", "summary"]) {
+            if (args[field] == null || args[field] === "") throw new Error(`Code Evidence record action requires ${field}.`);
+          }
+          return reportSummary(await recordEvidence(ctx, args));
+        }
+        throw new Error('Code Evidence action must be "get", "collect", or "record".');
       },
     }));
   }

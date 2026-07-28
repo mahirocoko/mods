@@ -11,6 +11,7 @@ import { dirname, join, resolve } from "node:path";
 const SCHEMA_VERSION = 1;
 const STATE_PATH = resolve(process.env.MAHIRO_EXECUTION_RUN_STATE_PATH ?? join(homedir(), ".letta", "mods", "mahiro-execution-run.state.json"));
 const LOCK_PATH = `${STATE_PATH}.lock`;
+const DISABLE_PATH = resolve(process.env.MAHIRO_EXECUTION_RUN_DISABLE_PATH ?? join(homedir(), ".letta", "mods", "mahiro-execution-run.disabled"));
 const MAX_STATE_BYTES = 8 * 1024 * 1024;
 const MAX_SCOPES = 256;
 const MAX_TEXT = 1_200;
@@ -303,5 +304,34 @@ const TARGET_SCHEMA = { type: "object", required: ["id", "path", "intent", "work
 const QUESTION_SCHEMA = { type: "object", required: ["question", "blocking"], properties: { question: { type: "string", maxLength: MAX_TEXT }, blocking: { type: "boolean" } }, additionalProperties: false };
 const CREATE_PARAMETERS = { type: "object", required: ["summary", "acceptance_criteria", "targets", "non_goals", "protected_contracts", "open_questions", "suggested_checks"], properties: { workspace: { type: "string", maxLength: 4096 }, summary: { type: "string", maxLength: MAX_LONG }, acceptance_criteria: STRING_ARRAY(MAX_REFS, 1), non_goals: STRING_ARRAY(MAX_REFS), protected_contracts: STRING_ARRAY(MAX_REFS), open_questions: { type: "array", maxItems: MAX_REFS, items: QUESTION_SCHEMA }, suggested_checks: STRING_ARRAY(MAX_CHECKS, 1), worktree_refs: STRING_ARRAY(MAX_WORKTREES, 1), targets: { type: "array", minItems: 1, maxItems: MAX_TARGETS, items: TARGET_SCHEMA }, goal_refs: STRING_ARRAY(MAX_REFS), ux_workflow_refs: STRING_ARRAY(MAX_REFS), code_evidence_refs: STRING_ARRAY(MAX_REFS), replace_terminal: { type: "boolean" }, expected_run_id: { type: "string", maxLength: 160 }, expected_revision: { type: "integer", minimum: 1 } }, additionalProperties: false };
 const UPDATE_PARAMETERS = { type: "object", required: ["action", "expected_run_id", "expected_revision"], properties: { workspace: { type: "string", maxLength: 4096 }, action: { type: "string", enum: ["add_lane", "set_lane_sessions", "set_lane_status", "add_report", "add_blocker", "resolve_blocker", "set_open_questions", "set_goal_refs", "set_handoff", "set_stage"] }, expected_run_id: { type: "string", maxLength: 160 }, expected_revision: { type: "integer", minimum: 1 }, lane_id: { type: "string", maxLength: 120 }, required: { type: "boolean" }, executor_kind: { type: "string", enum: EXECUTORS }, executor_label: { type: ["string", "null"], maxLength: MAX_TEXT }, role: { type: "string", enum: ROLES }, worktree_ref: { type: ["string", "null"], maxLength: 240 }, status: { type: "string", enum: LANE_STATUSES }, report_id: { type: "string", maxLength: 120 }, summary: { type: "string", maxLength: MAX_LONG }, session_refs: STRING_ARRAY(MAX_SESSION_REFS), changed_paths: { type: "array", maxItems: MAX_PATHS_PER_REPORT, items: { type: "string", maxLength: 4096 } }, checks: STRING_ARRAY(MAX_CHECKS), refs: STRING_ARRAY(MAX_REFS), blocker_id: { type: "string", maxLength: 120 }, stage: { type: "string", enum: STAGES }, open_questions: { type: "array", maxItems: MAX_REFS, items: QUESTION_SCHEMA }, final_handoff: { type: "string", maxLength: MAX_LONG }, unresolved_items: STRING_ARRAY(MAX_REFS), suggested_checks: STRING_ARRAY(MAX_CHECKS), goal_refs: STRING_ARRAY(MAX_REFS), included: STRING_ARRAY(MAX_LANES), exceptions: STRING_ARRAY(MAX_LANES) }, additionalProperties: false };
+const EXECUTION_RUN_PARAMETERS = { type: "object", required: ["operation"], properties: { operation: { type: "string", enum: ["get", "create", "update"] }, ...CREATE_PARAMETERS.properties, ...UPDATE_PARAMETERS.properties }, additionalProperties: false };
+function requireOperationFields(args: Record<string, any>, fields: string[], operation: string) { const missing = fields.filter((field) => args[field] === undefined); if (missing.length) throw new Error(`Execution Run ${operation} requires: ${missing.join(", ")}`); }
 export const __testing = process.env.MAHIRO_EXECUTION_RUN_TESTING === "1" ? Object.freeze({ readState, writeState, acquireStateLock, releaseStateLock, forceUnlock, statePath: STATE_PATH, lockPath: LOCK_PATH, limits: Object.freeze({ MAX_STATE_BYTES, MAX_LANES, MAX_WORKTREES, MAX_TARGETS, MAX_BLOCKERS, MAX_HISTORY, MAX_SESSION_REFS, MAX_REPORTS, MAX_PATHS_PER_REPORT, MAX_PATHS_PER_RUN, MAX_CHECKS, MAX_REFS, MAX_TEXT, MAX_LONG }) }) : null;
-export default function activate(letta: any) { const disposers: Array<() => void> = []; if (letta.capabilities?.commands && letta.commands?.register) disposers.push(letta.commands.register({ id: "mh-run", description: "Coordinate a bounded execution run without controlling executors or asserting proof", args: "status|list|clear <revision>|clear <run-id> <revision>|abandon <revision> [note]|abandon <run-id> <revision> [note]|unlock --force", run: command })); if (letta.capabilities?.tools && letta.tools?.register) { disposers.push(letta.tools.register({ name: "mh_get_execution_run", description: "Read the scoped, bounded Execution Run. All recorded metadata is caller-supplied coordination data, not proof.", parameters: { type: "object", properties: { workspace: { type: "string", maxLength: 4096 } }, additionalProperties: false }, parallelSafe: true, run(ctx: any) { return response(getRun(scopeFrom(ctx, ctx.args ?? {}))); } })); disposers.push(letta.tools.register({ name: "mh_create_execution_run", description: "Create one scoped plan-stage Execution Run. Terminal replacement requires replace_terminal plus matching run ID and revision.", parameters: CREATE_PARAMETERS, parallelSafe: false, run(ctx: any) { return response(createRun(scopeFrom(ctx, ctx.args ?? {}), ctx.args ?? {})); } })); disposers.push(letta.tools.register({ name: "mh_update_execution_run", description: "Apply revision- and run-ID-guarded bounded lane, blocker, report, stage, and handoff metadata updates. Never treats metadata as proof.", parameters: UPDATE_PARAMETERS, parallelSafe: false, run(ctx: any) { return response(updateRun(scopeFrom(ctx, ctx.args ?? {}), ctx.args ?? {})); } })); } if (!disposers.length) { letta.diagnostics?.report?.({ severity: "warning", message: "Mahiro Execution Run requires commands or tools capability." }); return; } return () => { if (letta.signal?.aborted) return; for (const dispose of disposers.reverse()) dispose(); }; }
+export default function activate(letta: any) {
+  if (existsSync(DISABLE_PATH)) return;
+  const disposers: Array<() => void> = [];
+  if (letta.capabilities?.commands && letta.commands?.register) disposers.push(letta.commands.register({ id: "mh-run", description: "Coordinate a bounded execution run without controlling executors or asserting proof", args: "status|list|clear <revision>|clear <run-id> <revision>|abandon <revision> [note]|abandon <run-id> <revision> [note]|unlock --force", run: command }));
+  if (letta.capabilities?.tools && letta.tools?.register) {
+    disposers.push(letta.tools.register({
+      name: "mh_execution_run",
+      description: "Read, create, or update the scoped bounded Execution Run through one operation selector. Metadata remains caller-supplied coordination data, never proof.",
+      parameters: EXECUTION_RUN_PARAMETERS,
+      parallelSafe: false,
+      run(ctx: any) {
+        const { operation, ...args } = ctx.args ?? {};
+        if (operation === "get") return response(getRun(scopeFrom(ctx, args)));
+        if (operation === "create") {
+          requireOperationFields(args, CREATE_PARAMETERS.required, operation);
+          return response(createRun(scopeFrom(ctx, args), args));
+        }
+        if (operation === "update") {
+          requireOperationFields(args, UPDATE_PARAMETERS.required, operation);
+          return response(updateRun(scopeFrom(ctx, args), args));
+        }
+        throw new Error("Execution Run operation must be get, create, or update");
+      },
+    }));
+  }
+  if (!disposers.length) { letta.diagnostics?.report?.({ severity: "warning", message: "Mahiro Execution Run requires commands or tools capability." }); return; }
+  return () => { if (letta.signal?.aborted) return; for (const dispose of disposers.reverse()) dispose(); };
+}

@@ -1,6 +1,6 @@
 {
   "name": "@mahirocoko/letta-mods",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "private": true,
   "description": "Mahiro's private workflow, Herdr lifecycle, execution coordination, Code Map, UX coordination, code evidence, timestamps, RTK, statusline, and MCP mods for Letta Code.",
   "license": "UNLICENSED",
@@ -10,11 +10,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "node --check scripts/manage-local.mjs && node scripts/validate-manifest.mjs && node scripts/check-mods.mjs",
+    "check": "node --check scripts/manage-local.mjs && node --check scripts/manage-entries.mjs && node scripts/check-entry-manager.mjs && node scripts/validate-manifest.mjs && node scripts/check-mods.mjs",
     "prepack": "pnpm check",
     "mods:status": "node scripts/manage-local.mjs status",
     "mods:install": "node scripts/manage-local.mjs install",
     "mods:update": "node scripts/manage-local.mjs install",
+    "mods:entry": "node scripts/manage-entries.mjs",
     "mods:uninstall": "node scripts/manage-local.mjs uninstall"
   },
   "keywords": [

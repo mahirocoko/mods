@@ -50,9 +50,9 @@ async function loadMod(relativePath) {
   return { activate: loaded.default, testing: loaded.__testing ?? null };
 }
 
-function smokeActivate(activate, relativePath) {
+async function smokeActivate(activate, relativePath) {
   const diagnostics = [];
-  const disposer = activate({
+  const disposer = await activate({
     capabilities: {},
     diagnostics: { report: (diagnostic) => diagnostics.push(diagnostic) },
   });
@@ -61,6 +61,202 @@ function smokeActivate(activate, relativePath) {
     `${relativePath} activation must return undefined or a cleanup function`,
   );
   if (typeof disposer === "function") disposer();
+}
+
+async function checkRegistrationBudget(activations) {
+  const budget = 39;
+  const deferredEntries = new Set([
+    "mods/mahiro-herdr-lifecycle.ts",
+    "mods/mahiro-goal.ts",
+    "mods/mahiro-ux-workflow.ts",
+    "mods/statusline.tsx",
+  ]);
+  const expectedByEntry = new Map([
+    ["mods/mahiro-user-timestamps.ts", 1],
+    ["mods/mahiro-herdr-lifecycle.ts", 7],
+    ["mods/mahiro-goal.ts", 7],
+    ["mods/mahiro-code-evidence.ts", 2],
+    ["mods/mahiro-ux-workflow.ts", 4],
+    ["mods/mahiro-code-map.ts", 1],
+    ["mods/mahiro-execution-run.ts", 2],
+    ["mods/rtk-control.ts", 2],
+    ["mods/statusline.tsx", 9],
+    ["mods/mahiro-mcp-proxy.js", 4],
+  ]);
+  const actualByEntry = new Map();
+
+  for (const [entry, activate] of activations) {
+    const previousHerdrEnv = process.env.HERDR_ENV;
+    const previousHerdrSocket = process.env.HERDR_SOCKET_PATH;
+    const previousHerdrPane = process.env.HERDR_PANE_ID;
+    const previousAgentRole = process.env.LETTA_CODE_AGENT_ROLE;
+    if (entry === "mods/mahiro-herdr-lifecycle.ts") {
+      process.env.HERDR_ENV = "1";
+      process.env.HERDR_SOCKET_PATH = join(tmpdir(), "mahiro-registration-budget.sock");
+      process.env.HERDR_PANE_ID = "w-budget:p1";
+      delete process.env.LETTA_CODE_AGENT_ROLE;
+    }
+    let registrations = 0;
+    const signal = { aborted: false };
+    const register = () => {
+      registrations += 1;
+      return () => {};
+    };
+    let registrationTurnReached = false;
+    if (deferredEntries.has(entry)) setTimeout(() => { registrationTurnReached = true; }, 0);
+    const activation = activate({
+      signal,
+      capabilities: {
+        commands: true,
+        tools: true,
+        permissions: true,
+        providers: true,
+        events: { lifecycle: true, turns: true, tools: true, llm: true, compact: true },
+        ui: { panels: true },
+      },
+      commands: { register },
+      tools: { register },
+      permissions: { register },
+      providers: { register },
+      events: { on: register },
+      ui: { openPanel() { registrations += 1; return { close() {}, update() {} }; } },
+      diagnostics: { report() {} },
+    });
+    if (deferredEntries.has(entry)) assert(registrations === 0, `${entry} must not register synchronously in the current React update burst`);
+    const disposer = await activation;
+    if (deferredEntries.has(entry)) assert(registrationTurnReached, `${entry} registrations must start only after a macrotask boundary`);
+    assert(disposer === undefined || typeof disposer === "function", `${entry} registration-budget activation must return a disposer or undefined`);
+    signal.aborted = true;
+    if (typeof disposer === "function") disposer();
+    actualByEntry.set(entry, registrations);
+    if (previousHerdrEnv === undefined) delete process.env.HERDR_ENV;
+    else process.env.HERDR_ENV = previousHerdrEnv;
+    if (previousHerdrSocket === undefined) delete process.env.HERDR_SOCKET_PATH;
+    else process.env.HERDR_SOCKET_PATH = previousHerdrSocket;
+    if (previousHerdrPane === undefined) delete process.env.HERDR_PANE_ID;
+    else process.env.HERDR_PANE_ID = previousHerdrPane;
+    if (previousAgentRole === undefined) delete process.env.LETTA_CODE_AGENT_ROLE;
+    else process.env.LETTA_CODE_AGENT_ROLE = previousAgentRole;
+  }
+
+  for (const [entry, expected] of expectedByEntry) {
+    assert(actualByEntry.get(entry) === expected, `${entry} registration count changed: expected ${expected}, received ${actualByEntry.get(entry)}`);
+  }
+  const total = [...actualByEntry.values()].reduce((sum, count) => sum + count, 0);
+  assert(total <= budget, `bundle registration budget exceeded: ${total}/${budget}`);
+}
+
+async function checkEntryDisableSwitches(activations) {
+  const paths = new Map([
+    ["mods/mahiro-user-timestamps.ts", process.env.MAHIRO_USER_TIMESTAMPS_DISABLE_PATH],
+    ["mods/mahiro-herdr-lifecycle.ts", process.env.MAHIRO_HERDR_DISABLE_PATH],
+    ["mods/mahiro-goal.ts", process.env.MAHIRO_GOAL_DISABLE_PATH],
+    ["mods/mahiro-code-evidence.ts", process.env.MAHIRO_CODE_EVIDENCE_DISABLE_PATH],
+    ["mods/mahiro-ux-workflow.ts", process.env.MAHIRO_UX_WORKFLOW_DISABLE_PATH],
+    ["mods/mahiro-code-map.ts", process.env.MAHIRO_CODE_MAP_DISABLE_PATH],
+    ["mods/mahiro-execution-run.ts", process.env.MAHIRO_EXECUTION_RUN_DISABLE_PATH],
+    ["mods/rtk-control.ts", process.env.MAHIRO_RTK_CONTROL_DISABLE_PATH],
+    ["mods/statusline.tsx", process.env.MAHIRO_STATUSLINE_DISABLE_PATH],
+    ["mods/mahiro-mcp-proxy.js", process.env.MAHIRO_MCP_PROXY_DISABLE_PATH],
+  ]);
+
+  for (const [entry, activate] of activations) {
+    const path = paths.get(entry);
+    assert(typeof path === "string" && path.length > 0, `${entry} must have an isolated disable path`);
+    writeFileSync(path, "disabled\n", { mode: 0o600 });
+    const previousHerdrEnv = process.env.HERDR_ENV;
+    const previousHerdrSocket = process.env.HERDR_SOCKET_PATH;
+    const previousHerdrPane = process.env.HERDR_PANE_ID;
+    const previousAgentRole = process.env.LETTA_CODE_AGENT_ROLE;
+    if (entry === "mods/mahiro-herdr-lifecycle.ts") {
+      process.env.HERDR_ENV = "1";
+      process.env.HERDR_SOCKET_PATH = join(tmpdir(), "mahiro-entry-disable.sock");
+      process.env.HERDR_PANE_ID = "w-disable:p1";
+      delete process.env.LETTA_CODE_AGENT_ROLE;
+    }
+    let registrations = 0;
+    const register = () => {
+      registrations += 1;
+      return () => {};
+    };
+    const disposer = await activate({
+      capabilities: {
+        commands: true,
+        tools: true,
+        permissions: true,
+        providers: true,
+        events: { lifecycle: true, turns: true, tools: true, llm: true, compact: true },
+        ui: { panels: true },
+      },
+      commands: { register },
+      tools: { register },
+      permissions: { register },
+      providers: { register },
+      events: { on: register },
+      ui: { openPanel() { registrations += 1; return { close() {}, update() {} }; } },
+      diagnostics: { report() {} },
+    });
+    assert(disposer === undefined && registrations === 0, `${entry} disable switch must produce zero registrations`);
+    rmSync(path, { force: true });
+    if (previousHerdrEnv === undefined) delete process.env.HERDR_ENV;
+    else process.env.HERDR_ENV = previousHerdrEnv;
+    if (previousHerdrSocket === undefined) delete process.env.HERDR_SOCKET_PATH;
+    else process.env.HERDR_SOCKET_PATH = previousHerdrSocket;
+    if (previousHerdrPane === undefined) delete process.env.HERDR_PANE_ID;
+    else process.env.HERDR_PANE_ID = previousHerdrPane;
+    if (previousAgentRole === undefined) delete process.env.LETTA_CODE_AGENT_ROLE;
+    else process.env.LETTA_CODE_AGENT_ROLE = previousAgentRole;
+  }
+}
+
+async function checkAbortDuringRegistrationYield(activations) {
+  const deferredEntries = [
+    "mods/mahiro-herdr-lifecycle.ts",
+    "mods/mahiro-goal.ts",
+    "mods/mahiro-ux-workflow.ts",
+    "mods/statusline.tsx",
+  ];
+  const previousHerdrEnv = process.env.HERDR_ENV;
+  const previousHerdrSocket = process.env.HERDR_SOCKET_PATH;
+  const previousHerdrPane = process.env.HERDR_PANE_ID;
+  const previousAgentRole = process.env.LETTA_CODE_AGENT_ROLE;
+  process.env.HERDR_ENV = "1";
+  process.env.HERDR_SOCKET_PATH = join(tmpdir(), "mahiro-aborted-yield.sock");
+  process.env.HERDR_PANE_ID = "w-aborted:p1";
+  delete process.env.LETTA_CODE_AGENT_ROLE;
+  try {
+    for (const entry of deferredEntries) {
+      let registrations = 0;
+      const signal = { aborted: false };
+      const register = () => { registrations += 1; return () => {}; };
+      const activation = activations.get(entry)({
+        signal,
+        capabilities: {
+          commands: true,
+          tools: true,
+          events: { lifecycle: true, turns: true, tools: true, llm: true, compact: true },
+          ui: { panels: true },
+        },
+        commands: { register },
+        tools: { register },
+        events: { on: register },
+        ui: { openPanel() { registrations += 1; return { close() {}, update() {} }; } },
+        diagnostics: { report() {} },
+      });
+      signal.aborted = true;
+      const disposer = await activation;
+      assert(disposer === undefined && registrations === 0, `${entry} must abandon a stale generation before deferred registrations begin`);
+    }
+  } finally {
+    if (previousHerdrEnv === undefined) delete process.env.HERDR_ENV;
+    else process.env.HERDR_ENV = previousHerdrEnv;
+    if (previousHerdrSocket === undefined) delete process.env.HERDR_SOCKET_PATH;
+    else process.env.HERDR_SOCKET_PATH = previousHerdrSocket;
+    if (previousHerdrPane === undefined) delete process.env.HERDR_PANE_ID;
+    else process.env.HERDR_PANE_ID = previousHerdrPane;
+    if (previousAgentRole === undefined) delete process.env.LETTA_CODE_AGENT_ROLE;
+    else process.env.LETTA_CODE_AGENT_ROLE = previousAgentRole;
+  }
 }
 
 function checkMcpPermissionGuard(activate) {
@@ -189,6 +385,14 @@ function checkMahiroTimestampRegistration(activate, testing) {
   });
   assert(typeof handler === "function", "mahiro timestamps must expose one turn_start handler");
   assert(testing && typeof testing.timestampMetadata === "function", "mahiro timestamps test seam must load only in isolated checks");
+  writeFileSync(testing.disablePath, "disabled\n", { mode: 0o600 });
+  let disabledRegistrations = 0;
+  const disabledDisposer = activate({
+    capabilities: { events: { turns: true } },
+    events: { on() { disabledRegistrations += 1; return () => {}; } },
+  });
+  assert(disabledDisposer === undefined && disabledRegistrations === 0, "mahiro timestamps isolation sentinel must disable only its activation");
+  rmSync(testing.disablePath, { force: true });
 
   let abortedCleanupCount = 0;
   const abortedDisposer = activate({
@@ -346,7 +550,7 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
 
   process.env.LETTA_CODE_AGENT_ROLE = "subagent";
   let childRegistrations = 0;
-  const childDisposer = activate({
+  const childDisposer = await activate({
     capabilities: { events: { lifecycle: true } },
     events: { on() { childRegistrations += 1; return () => {}; } },
   });
@@ -354,12 +558,14 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
   delete process.env.LETTA_CODE_AGENT_ROLE;
 
   let abortedCleanupCount = 0;
-  const abortedDisposer = activate({
-    signal: { aborted: true },
+  const abortedSignal = { aborted: false };
+  const abortedDisposer = await activate({
+    signal: abortedSignal,
     capabilities: { events: { lifecycle: true, turns: true, tools: true, llm: true, compact: true } },
     events: { on() { return () => { abortedCleanupCount += 1; }; } },
   });
   assert(typeof abortedDisposer === "function", "Herdr lifecycle must still return non-registration cleanup under engine disposal");
+  abortedSignal.aborted = true;
   abortedDisposer();
   assert(abortedCleanupCount === 0, "engine-aborted reload must skip redundant per-event unregister publishes");
 
@@ -372,7 +578,7 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
   };
   let disposer;
   try {
-    disposer = activate({
+    disposer = await activate({
       capabilities: {
         events: { lifecycle: true, turns: true, tools: true, llm: true, compact: true },
       },
@@ -541,10 +747,20 @@ async function checkMahiroCodeEvidenceRegistration(activate, testing, testRoot) 
   });
   assert(commands.length === 1 && commands[0].id === "mh-evidence", "code evidence must register one namespaced command");
   assert(
-    tools.map(({ name }) => name).sort().join(",") === "mh_collect_code_evidence,mh_get_code_evidence,mh_record_code_evidence",
-    "code evidence must register exactly three namespaced tools",
+    tools.length === 1 && tools[0].name === "mh_code_evidence",
+    "code evidence must register exactly one unified namespaced tool",
   );
+  assert(tools[0].parameters.required.includes("action") && tools[0].parameters.properties.action.enum.join(",") === "get,collect,record", "code evidence unified tool must require one closed action selector");
   assert(testing && typeof testing.collectRepositoryEvidence === "function", "code evidence test seam must load only in isolated checks");
+  writeFileSync(testing.disablePath, "disabled\n", { mode: 0o600 });
+  let disabledRegistrations = 0;
+  const disabledDisposer = activate({
+    capabilities: { commands: true, tools: true },
+    commands: { register() { disabledRegistrations += 1; return () => {}; } },
+    tools: { register() { disabledRegistrations += 1; return () => {}; } },
+  });
+  assert(disabledDisposer === undefined && disabledRegistrations === 0, "code evidence isolation sentinel must disable only Code Evidence activation");
+  rmSync(testing.disablePath, { force: true });
 
   const repo = join(testRoot, "evidence-repo");
   mkdirSync(repo, { recursive: true });
@@ -581,9 +797,22 @@ async function checkMahiroCodeEvidenceRegistration(activate, testing, testRoot) 
     conversation: { id: "conversation-evidence" },
     cwd: testRoot,
   };
-  const collect = tools.find(({ name }) => name === "mh_collect_code_evidence");
-  const get = tools.find(({ name }) => name === "mh_get_code_evidence");
-  const record = tools.find(({ name }) => name === "mh_record_code_evidence");
+  const evidence = tools[0];
+  const action = (name) => ({
+    run(ctx) {
+      return evidence.run({ ...ctx, args: { action: name, ...(ctx.args ?? {}) } });
+    },
+  });
+  const collect = action("collect");
+  const get = action("get");
+  const record = action("record");
+  let invalidActionBlocked = false;
+  try {
+    await evidence.run({ ...context, args: { action: "delete" } });
+  } catch (error) {
+    invalidActionBlocked = String(error).includes('must be "get", "collect", or "record"');
+  }
+  assert(invalidActionBlocked, "code evidence unified tool must reject unsupported actions");
   const first = await collect.run({ ...context, args: { workspace: repoLink, base_ref: "HEAD^" } });
   assert(!existsSync(helperMarker), "code evidence collection must disable repository-configured textconv/external diff helpers");
   assert(first.revision === 1 && first.repository.root === realpathSync(repo), "first code evidence collection must create revision 1 for the resolved repository");
@@ -756,7 +985,7 @@ async function checkMahiroCodeEvidenceRegistration(activate, testing, testRoot) 
   assert(readFileSync(testing.statePath, "utf8") === "{invalid-json", "corrupt code evidence state must remain untouched for recovery");
 
   if (typeof disposer === "function") disposer();
-  assert(cleanupCount === 4, "code evidence cleanup must dispose one command and three tools");
+  assert(cleanupCount === 2, "code evidence cleanup must dispose one command and one unified tool");
 }
 
 function parseToolOutput(result) {
@@ -764,7 +993,7 @@ function parseToolOutput(result) {
   return JSON.parse(result.output);
 }
 
-function checkMahiroGoalRegistration(activate, statePath, testing, timestampHandler) {
+async function checkMahiroGoalRegistration(activate, statePath, testing, timestampHandler) {
   const commands = [];
   const tools = [];
   const eventHandlers = new Map();
@@ -778,7 +1007,7 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
       cleanupCount += 1;
     };
   };
-  const disposer = activate({
+  const disposer = await activate({
     capabilities: { commands: true, tools: true, events: { turns: true }, ui: { panels: true } },
     commands: { register: (definition) => register(commands, definition) },
     tools: { register: (definition) => register(tools, definition) },
@@ -814,16 +1043,29 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
   );
   assert(eventHandlers.size === 1 && eventHandlers.has("turn_start"), "mahiro-goal must register one turn_start reminder");
   assert(testing && typeof testing.acquireStateLock === "function", "mahiro-goal test lock seam must load only in the isolated smoke environment");
+  writeFileSync(testing.disablePath, "disabled\n", { mode: 0o600 });
+  let disabledRegistrations = 0;
+  const disabledDisposer = await activate({
+    capabilities: { commands: true, tools: true, events: { turns: true }, ui: { panels: true } },
+    commands: { register() { disabledRegistrations += 1; return () => {}; } },
+    tools: { register() { disabledRegistrations += 1; return () => {}; } },
+    events: { on() { disabledRegistrations += 1; return () => {}; } },
+    ui: { openPanel() { disabledRegistrations += 1; return { close() {}, update() {} }; } },
+  });
+  assert(disabledDisposer === undefined && disabledRegistrations === 0, "mahiro-goal isolation sentinel must disable only Goal activation");
+  rmSync(testing.disablePath, { force: true });
 
   let abortedCleanupCount = 0;
-  const abortedDisposer = activate({
-    signal: { aborted: true },
+  const abortedSignal = { aborted: false };
+  const abortedDisposer = await activate({
+    signal: abortedSignal,
     capabilities: { commands: true, tools: true, events: { turns: true } },
     commands: { register() { return () => { abortedCleanupCount += 1; }; } },
     tools: { register() { return () => { abortedCleanupCount += 1; }; } },
     events: { on() { return () => { abortedCleanupCount += 1; }; } },
   });
   assert(typeof abortedDisposer === "function", "mahiro-goal must return cleanup during engine-aborted reload");
+  abortedSignal.aborted = true;
   abortedDisposer();
   assert(abortedCleanupCount === 0, "engine-aborted Goal cleanup must not republish redundant registration removals");
 
@@ -1233,7 +1475,7 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
   assert(goalPanelClosed === 1, "mahiro-goal cleanup must close the transient busy status panel");
 
   const noUiCommands = [];
-  const noUiDisposer = activate({
+  const noUiDisposer = await activate({
     capabilities: { commands: true },
     commands: {
       register(definition) {
@@ -1246,7 +1488,7 @@ function checkMahiroGoalRegistration(activate, statePath, testing, timestampHand
   if (typeof noUiDisposer === "function") noUiDisposer();
 }
 
-function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
+async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
   const source = readFileSync(join(repositoryRoot, "mods/mahiro-ux-workflow.ts"), "utf8");
   const goalStateBefore = readFileSync(process.env.MAHIRO_GOAL_STATE_PATH, "utf8");
   const codeEvidenceStateBefore = readFileSync(process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH, "utf8");
@@ -1268,31 +1510,33 @@ function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-mcp-proxy.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.8.4", "Package version must be 0.8.4");
+  assert(packageJson.version === "0.8.5", "Package version must be 0.8.5");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
 
   const missingDiagnostics = [];
-  const missing = activate({ capabilities: {}, diagnostics: { report: (item) => missingDiagnostics.push(item) } });
+  const missing = await activate({ capabilities: {}, diagnostics: { report: (item) => missingDiagnostics.push(item) } });
   assert(missing === undefined, "UX workflow must fail closed without commands or tools capability");
   assert(missingDiagnostics.some(({ message }) => String(message).includes("requires commands or tools")), "UX workflow must explain missing capabilities");
   const commandsOnly = [];
-  const commandsOnlyDisposer = activate({ capabilities: { commands: true }, commands: { register(definition) { commandsOnly.push(definition); return () => {}; } } });
+  const commandsOnlyDisposer = await activate({ capabilities: { commands: true }, commands: { register(definition) { commandsOnly.push(definition); return () => {}; } } });
   assert(commandsOnly.map(({ id }) => id).join(",") === "mh-ux", "commands-only hosts must receive only /mh-ux");
   if (typeof commandsOnlyDisposer === "function") commandsOnlyDisposer();
   const toolsOnly = [];
-  const toolsOnlyDisposer = activate({ capabilities: { tools: true }, tools: { register(definition) { toolsOnly.push(definition); return () => {}; } } });
+  const toolsOnlyDisposer = await activate({ capabilities: { tools: true }, tools: { register(definition) { toolsOnly.push(definition); return () => {}; } } });
   assert(toolsOnly.map(({ name }) => name).join(",") === "mh_get_ux_workflow,mh_create_ux_workflow,mh_update_ux_workflow", "tools-only hosts must receive exactly the three UX tools");
   if (typeof toolsOnlyDisposer === "function") toolsOnlyDisposer();
 
   let abortedCleanupCount = 0;
-  const abortedDisposer = activate({
-    signal: { aborted: true },
+  const abortedSignal = { aborted: false };
+  const abortedDisposer = await activate({
+    signal: abortedSignal,
     capabilities: { commands: true, tools: true },
     commands: { register() { return () => { abortedCleanupCount += 1; }; } },
     tools: { register() { return () => { abortedCleanupCount += 1; }; } },
   });
   assert(typeof abortedDisposer === "function", "UX workflow must return cleanup during engine-aborted reload");
+  abortedSignal.aborted = true;
   abortedDisposer();
   assert(abortedCleanupCount === 0, "engine-aborted UX cleanup must skip redundant registration removals");
 
@@ -1301,7 +1545,7 @@ function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
   const cleanupOrder = [];
   let eventRegistrations = 0;
   let panelRegistrations = 0;
-  const disposer = activate({
+  const disposer = await activate({
     capabilities: { commands: true, tools: true, events: { turns: true }, ui: { panels: true } },
     commands: { register(definition) { commands.push(definition); return () => cleanupOrder.push(`command:${definition.id}`); } },
     tools: { register(definition) { tools.push(definition); return () => cleanupOrder.push(`tool:${definition.name}`); } },
@@ -1519,8 +1763,8 @@ function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
 
 function checkMahiroCodeMapRegistration(activate, testing) {
   const source = readFileSync(join(repositoryRoot, "mods/mahiro-code-map.ts"), "utf8");
-  assert(!/^\s*import\s/m.test(source), "Code Map must remain a dependency-free metadata-only mod");
-  assert(!/node:(?:fs|child_process)|\breadFile(?:Sync)?\b|\breaddir(?:Sync)?\b|\bexec(?:File)?\b|\bspawn\b|permissions\.register|events\.on|commands\.register/.test(source), "Code Map must not read/scan source, run subprocesses, or register enforcement/events/commands");
+  assert(source.includes('import { existsSync } from "node:fs"') && source.includes("existsSync(DISABLE_PATH)"), "Code Map filesystem access must stay limited to its fixed per-entry disable sentinel");
+  assert(!/node:child_process|\breadFile(?:Sync)?\b|\breaddir(?:Sync)?\b|\bexec(?:File)?\b|\bspawn\b|permissions\.register|events\.on|commands\.register/.test(source), "Code Map must not read/scan source, run subprocesses, or register enforcement/events/commands");
   assert(source.includes("navigation metadata, not verification evidence") && source.includes("caller-supplied metadata only"), "Code Map source must preserve trust/provenance boundaries");
   assert(source.includes("does not generate outlines") && source.includes("Advisory only—not permission or a security boundary"), "Code Map source must preserve outline and large-read boundaries");
 
@@ -1630,6 +1874,7 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   const source = readFileSync(join(repositoryRoot, "mods/mahiro-execution-run.ts"), "utf8");
   assert(!/node:child_process|\b(?:execFile|spawn)\b|\b(?:git|repository)\s*(?:status|diff|log|show)\b|from\s+["'][^"']*mahiro-/.test(source), "Execution Run must not execute child processes, read Git/repositories, or import other mods");
   assert(source.includes("not execution, repository, check, or acceptance proof") && source.includes("Metadata is coordination only, not proof."), "Execution Run must preserve metadata-not-proof language");
+  assert(!source.includes('name: "mh_get_execution_run"') && !source.includes('name: "mh_create_execution_run"') && !source.includes('name: "mh_update_execution_run"'), "Execution Run must not restore the three superseded tool registrations");
   const missingDiagnostics = [];
   assert(activate({ capabilities: {}, diagnostics: { report(item) { missingDiagnostics.push(item); } } }) === undefined, "Execution Run must fail closed without commands or tools");
   assert(missingDiagnostics.some(({ message }) => String(message).includes("requires commands or tools")), "Execution Run must explain missing capabilities");
@@ -1639,7 +1884,7 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   if (typeof commandsOnlyDisposer === "function") commandsOnlyDisposer();
   const toolsOnly = [];
   const toolsOnlyDisposer = activate({ capabilities: { tools: true }, tools: { register(item) { toolsOnly.push(item); return () => {}; } } });
-  assert(toolsOnly.map(({ name }) => name).join(",") === "mh_get_execution_run,mh_create_execution_run,mh_update_execution_run", "tools-only host must receive exactly three Execution Run tools");
+  assert(toolsOnly.map(({ name }) => name).join(",") === "mh_execution_run", "tools-only host must receive exactly one unified Execution Run tool");
   if (typeof toolsOnlyDisposer === "function") toolsOnlyDisposer();
 
   let abortedCleanupCount = 0;
@@ -1661,11 +1906,13 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
     events: { on() { events += 1; return () => {}; } }, ui: { openPanel() { panels += 1; return { close() {} }; } }, permissions: { register() { permissions += 1; return () => {}; } },
   });
   assert(commands.length === 1 && commands[0].id === "mh-run", "Execution Run must register exactly /mh-run");
-  assert(tools.map(({ name }) => name).join(",") === "mh_get_execution_run,mh_create_execution_run,mh_update_execution_run", "Execution Run tools must have exact ordered names");
+  assert(tools.map(({ name }) => name).join(",") === "mh_execution_run", "Execution Run must register exactly one unified model tool");
   assert([...commands, ...tools].every(({ run }) => run.length === 1), "Execution Run command and tools must use one-context ctx.args runs");
   assert(events === 0 && panels === 0 && permissions === 0, "Execution Run must not register events, panels, or permissions");
   assert(tools.every(({ parameters }) => parameters.additionalProperties === false), "Execution Run tool schemas must be closed");
-  const get = tools[0]; const create = tools[1]; const update = tools[2];
+  const execution = tools[0];
+  const operation = (name) => ({ run(context) { return execution.run({ ...context, args: { operation: name, ...(context.args ?? {}) } }); } });
+  const get = operation("get"); const create = operation("create"); const update = operation("update");
   const workspace = join(testRoot, "execution-target"); const cwd = join(testRoot, "execution-host-cwd"); mkdirSync(workspace, { recursive: true }); mkdirSync(cwd, { recursive: true });
   const ctx = { agent: { id: "agent-run" }, conversation: { id: "conversation-run" }, cwd };
   const base = (extra = {}) => ({ workspace, summary: "Coordinate bounded implementation", acceptance_criteria: ["Focused checks pass"], non_goals: ["No executor control"], protected_contracts: ["Public contract"], open_questions: [], suggested_checks: ["pnpm check"], goal_refs: ["criterion-1"], worktree_refs: ["main", "cli"], targets: [{ id: "write-main", path: "src/feature", intent: "Implement focused change", worktree_ref: "main", access: "write", writer_lane_id: "main", reader_lane_ids: ["reader"] }, { id: "read-shared", path: "src/shared", intent: "Read shared contract", worktree_ref: "main", access: "read", writer_lane_id: null, reader_lane_ids: ["main", "reader"] }], ...extra });
@@ -1673,6 +1920,9 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   const run = (args) => call(create, args).run;
   const updateRun = (current, args) => call(update, { expected_run_id: current.id, expected_revision: current.revision, workspace, ...args }).run;
   const fail = (fn, needle) => { let blocked = false; try { fn(); } catch (error) { blocked = String(error).includes(needle); } assert(blocked, `Execution Run must reject: ${needle}`); };
+  fail(() => execution.run({ ...ctx, args: { operation: "create", workspace } }), "create requires");
+  fail(() => execution.run({ ...ctx, args: { operation: "update", workspace } }), "update requires");
+  fail(() => execution.run({ ...ctx, args: { operation: "unknown", workspace } }), "operation must be");
   const initial = run(base());
   assert(initial.revision === 1 && initial.stage === "plan" && Object.values(testing.readState().runs)[0].workspace === resolve(workspace), "Execution Run must use explicit target workspace rather than ctx.cwd");
   const archivedContext = { agent: { id: "agent-run" }, conversation: { id: "stale-run" }, cwd };
@@ -1693,7 +1943,7 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   fail(() => call(update, { workspace: join(testRoot, "wrong-target"), action: "set_open_questions", expected_run_id: initial.id, expected_revision: initial.revision, open_questions: [] }), "workspace mismatch");
   assert((statSync(testing.statePath).mode & 0o777) === 0o600, "Execution Run state must use mode 0600");
   assert(get.run({ ...ctx, args: { workspace } }).execution_handoff === null, "plan responses must not emit executable handoff controls");
-  assert(tools[0].parameters.properties.workspace && tools[1].parameters.required.includes("targets") && tools[2].parameters.properties.action.enum.join(",") === "add_lane,set_lane_sessions,set_lane_status,add_report,add_blocker,resolve_blocker,set_open_questions,set_goal_refs,set_handoff,set_stage", "Execution Run schemas must match current actions");
+  assert(execution.parameters.required.join(",") === "operation" && execution.parameters.properties.operation.enum.join(",") === "get,create,update" && execution.parameters.properties.targets && execution.parameters.properties.action.enum.join(",") === "add_lane,set_lane_sessions,set_lane_status,add_report,add_blocker,resolve_blocker,set_open_questions,set_goal_refs,set_handoff,set_stage", "Execution Run unified schema must preserve every current operation and update action");
   fail(() => updateRun(initial, { action: "set_stage", stage: "active" }), "Invalid Execution Run transition");
   let current = updateRun(initial, { action: "add_lane", lane_id: "main", required: true, executor_kind: "main_agent", role: "implement", worktree_ref: "main", summary: "Main implementation" });
   current = updateRun(current, { action: "add_lane", lane_id: "reader", required: false, executor_kind: "letta_subagent", role: "research", worktree_ref: "main", summary: "Reader overlap" });
@@ -1836,18 +2086,19 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   rmSync(testing.statePath);
   const owner = testing.acquireStateLock(); fail(() => testing.acquireStateLock(), "state is busy"); assert(testing.forceUnlock() === true, "force unlock must remove a lock"); const successor = testing.acquireStateLock(); testing.releaseStateLock(owner); assert(existsSync(successor.tokenPath), "old owner release must not remove successor lock"); testing.releaseStateLock(successor); assert(!existsSync(testing.lockPath), "current owner release must remove its lock");
   if (typeof disposer === "function") disposer();
-  assert(cleanup.join(",") === "tool:mh_update_execution_run,tool:mh_create_execution_run,tool:mh_get_execution_run,command:mh-run", "Execution Run cleanup must reverse registrations");
+  assert(cleanup.join(",") === "tool:mh_execution_run,command:mh-run", "Execution Run cleanup must reverse its unified tool and command registrations");
 }
 
-function checkStatuslineRegistration(activate) {
+async function checkStatuslineRegistration(activate) {
   const eventNames = [];
   const eventHandlers = new Map();
   let panelOptions = null;
   let panelClosed = 0;
   let abortedCleanupCount = 0;
   let abortedPanelClosed = 0;
-  const abortedDisposer = activate({
-    signal: { aborted: true },
+  const abortedSignal = { aborted: false };
+  const abortedDisposer = await activate({
+    signal: abortedSignal,
     capabilities: {
       ui: { panels: true },
       events: { compact: true, lifecycle: true, llm: true, tools: true, turns: true },
@@ -1861,11 +2112,12 @@ function checkStatuslineRegistration(activate) {
     },
   });
   assert(typeof abortedDisposer === "function", "statusline must return cleanup during engine-aborted reload");
+  abortedSignal.aborted = true;
   abortedDisposer();
   assert(abortedCleanupCount === 0, "engine-aborted statusline cleanup must skip redundant registration removals");
   assert(abortedPanelClosed === 0, "engine-aborted statusline cleanup must leave registry panel teardown to the engine");
 
-  const disposer = activate({
+  const disposer = await activate({
     capabilities: {
       ui: { panels: true },
       events: {
@@ -1965,25 +2217,45 @@ const previousGoalTesting = process.env.MAHIRO_GOAL_TESTING;
 const previousTimestampTesting = process.env.MAHIRO_TIMESTAMPS_TESTING;
 const previousHerdrTesting = process.env.MAHIRO_HERDR_TESTING;
 const previousHerdrForceEnable = process.env.MAHIRO_HERDR_FORCE_ENABLE;
+const previousHerdrDisablePath = process.env.MAHIRO_HERDR_DISABLE_PATH;
+const previousTimestampDisablePath = process.env.MAHIRO_USER_TIMESTAMPS_DISABLE_PATH;
+const previousGoalDisablePath = process.env.MAHIRO_GOAL_DISABLE_PATH;
 const previousCodeEvidenceStatePath = process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH;
 const previousCodeEvidenceTesting = process.env.MAHIRO_CODE_EVIDENCE_TESTING;
+const previousCodeEvidenceDisablePath = process.env.MAHIRO_CODE_EVIDENCE_DISABLE_PATH;
 const previousUxWorkflowStatePath = process.env.MAHIRO_UX_WORKFLOW_STATE_PATH;
 const previousUxWorkflowTesting = process.env.MAHIRO_UX_WORKFLOW_TESTING;
+const previousUxWorkflowDisablePath = process.env.MAHIRO_UX_WORKFLOW_DISABLE_PATH;
 const previousCodeMapTesting = process.env.MAHIRO_CODE_MAP_TESTING;
+const previousCodeMapDisablePath = process.env.MAHIRO_CODE_MAP_DISABLE_PATH;
 const previousExecutionRunStatePath = process.env.MAHIRO_EXECUTION_RUN_STATE_PATH;
 const previousExecutionRunTesting = process.env.MAHIRO_EXECUTION_RUN_TESTING;
+const previousExecutionRunDisablePath = process.env.MAHIRO_EXECUTION_RUN_DISABLE_PATH;
+const previousRtkDisablePath = process.env.MAHIRO_RTK_CONTROL_DISABLE_PATH;
+const previousStatuslineDisablePath = process.env.MAHIRO_STATUSLINE_DISABLE_PATH;
+const previousMcpDisablePath = process.env.MAHIRO_MCP_PROXY_DISABLE_PATH;
 process.env.MAHIRO_GOAL_STATE_PATH = join(testRoot, "state.json");
 process.env.MAHIRO_GOAL_TESTING = "1";
 process.env.MAHIRO_TIMESTAMPS_TESTING = "1";
 process.env.MAHIRO_HERDR_TESTING = "1";
 process.env.MAHIRO_HERDR_FORCE_ENABLE = "1";
+process.env.MAHIRO_HERDR_DISABLE_PATH = join(testRoot, "mahiro-herdr-lifecycle.disabled");
+process.env.MAHIRO_USER_TIMESTAMPS_DISABLE_PATH = join(testRoot, "mahiro-user-timestamps.disabled");
+process.env.MAHIRO_GOAL_DISABLE_PATH = join(testRoot, "mahiro-goal.disabled");
 process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH = join(testRoot, "code-evidence-state.json");
 process.env.MAHIRO_CODE_EVIDENCE_TESTING = "1";
+process.env.MAHIRO_CODE_EVIDENCE_DISABLE_PATH = join(testRoot, "mahiro-code-evidence.disabled");
 process.env.MAHIRO_UX_WORKFLOW_STATE_PATH = join(testRoot, "ux-workflow-state.json");
 process.env.MAHIRO_UX_WORKFLOW_TESTING = "1";
+process.env.MAHIRO_UX_WORKFLOW_DISABLE_PATH = join(testRoot, "mahiro-ux-workflow.disabled");
 process.env.MAHIRO_CODE_MAP_TESTING = "1";
+process.env.MAHIRO_CODE_MAP_DISABLE_PATH = join(testRoot, "mahiro-code-map.disabled");
 process.env.MAHIRO_EXECUTION_RUN_STATE_PATH = join(testRoot, "execution-run-state.json");
 process.env.MAHIRO_EXECUTION_RUN_TESTING = "1";
+process.env.MAHIRO_EXECUTION_RUN_DISABLE_PATH = join(testRoot, "mahiro-execution-run.disabled");
+process.env.MAHIRO_RTK_CONTROL_DISABLE_PATH = join(testRoot, "mahiro-rtk-control.disabled");
+process.env.MAHIRO_STATUSLINE_DISABLE_PATH = join(testRoot, "mahiro-statusline.disabled");
+process.env.MAHIRO_MCP_PROXY_DISABLE_PATH = join(testRoot, "mahiro-mcp-proxy.disabled");
 
 try {
   const activations = new Map();
@@ -1993,8 +2265,12 @@ try {
     const activate = loaded.activate;
     activations.set(entry, activate);
     testingSurfaces.set(entry, loaded.testing);
-    smokeActivate(activate, entry);
+    await smokeActivate(activate, entry);
   }
+
+  await checkEntryDisableSwitches(activations);
+  await checkAbortDuringRegistrationYield(activations);
+  await checkRegistrationBudget(activations);
 
   const timestampHandler = checkMahiroTimestampRegistration(
     activations.get("mods/mahiro-user-timestamps.ts"),
@@ -2005,7 +2281,7 @@ try {
     testingSurfaces.get("mods/mahiro-herdr-lifecycle.ts"),
     testRoot,
   );
-  checkMahiroGoalRegistration(
+  await checkMahiroGoalRegistration(
     activations.get("mods/mahiro-goal.ts"),
     process.env.MAHIRO_GOAL_STATE_PATH,
     testingSurfaces.get("mods/mahiro-goal.ts"),
@@ -2016,7 +2292,7 @@ try {
     testingSurfaces.get("mods/mahiro-code-evidence.ts"),
     testRoot,
   );
-  checkMahiroUxWorkflowRegistration(
+  await checkMahiroUxWorkflowRegistration(
     activations.get("mods/mahiro-ux-workflow.ts"),
     testingSurfaces.get("mods/mahiro-ux-workflow.ts"),
     testRoot,
@@ -2032,7 +2308,7 @@ try {
   );
   checkMcpPermissionGuard(activations.get("mods/mahiro-mcp-proxy.js"));
   checkRtkRegistration(activations.get("mods/rtk-control.ts"));
-  checkStatuslineRegistration(activations.get("mods/statusline.tsx"));
+  await checkStatuslineRegistration(activations.get("mods/statusline.tsx"));
 
   console.log(`Mod source valid: ${entries.length} entries transpiled with command, event, panel, tool, permission, state, human-gate, and cleanup smoke checks.`);
 } finally {
@@ -2046,19 +2322,39 @@ try {
   else process.env.MAHIRO_HERDR_TESTING = previousHerdrTesting;
   if (previousHerdrForceEnable === undefined) delete process.env.MAHIRO_HERDR_FORCE_ENABLE;
   else process.env.MAHIRO_HERDR_FORCE_ENABLE = previousHerdrForceEnable;
+  if (previousHerdrDisablePath === undefined) delete process.env.MAHIRO_HERDR_DISABLE_PATH;
+  else process.env.MAHIRO_HERDR_DISABLE_PATH = previousHerdrDisablePath;
+  if (previousTimestampDisablePath === undefined) delete process.env.MAHIRO_USER_TIMESTAMPS_DISABLE_PATH;
+  else process.env.MAHIRO_USER_TIMESTAMPS_DISABLE_PATH = previousTimestampDisablePath;
+  if (previousGoalDisablePath === undefined) delete process.env.MAHIRO_GOAL_DISABLE_PATH;
+  else process.env.MAHIRO_GOAL_DISABLE_PATH = previousGoalDisablePath;
   if (previousCodeEvidenceStatePath === undefined) delete process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH;
   else process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH = previousCodeEvidenceStatePath;
   if (previousCodeEvidenceTesting === undefined) delete process.env.MAHIRO_CODE_EVIDENCE_TESTING;
   else process.env.MAHIRO_CODE_EVIDENCE_TESTING = previousCodeEvidenceTesting;
+  if (previousCodeEvidenceDisablePath === undefined) delete process.env.MAHIRO_CODE_EVIDENCE_DISABLE_PATH;
+  else process.env.MAHIRO_CODE_EVIDENCE_DISABLE_PATH = previousCodeEvidenceDisablePath;
   if (previousUxWorkflowStatePath === undefined) delete process.env.MAHIRO_UX_WORKFLOW_STATE_PATH;
   else process.env.MAHIRO_UX_WORKFLOW_STATE_PATH = previousUxWorkflowStatePath;
   if (previousUxWorkflowTesting === undefined) delete process.env.MAHIRO_UX_WORKFLOW_TESTING;
   else process.env.MAHIRO_UX_WORKFLOW_TESTING = previousUxWorkflowTesting;
+  if (previousUxWorkflowDisablePath === undefined) delete process.env.MAHIRO_UX_WORKFLOW_DISABLE_PATH;
+  else process.env.MAHIRO_UX_WORKFLOW_DISABLE_PATH = previousUxWorkflowDisablePath;
   if (previousCodeMapTesting === undefined) delete process.env.MAHIRO_CODE_MAP_TESTING;
   else process.env.MAHIRO_CODE_MAP_TESTING = previousCodeMapTesting;
+  if (previousCodeMapDisablePath === undefined) delete process.env.MAHIRO_CODE_MAP_DISABLE_PATH;
+  else process.env.MAHIRO_CODE_MAP_DISABLE_PATH = previousCodeMapDisablePath;
   if (previousExecutionRunStatePath === undefined) delete process.env.MAHIRO_EXECUTION_RUN_STATE_PATH;
   else process.env.MAHIRO_EXECUTION_RUN_STATE_PATH = previousExecutionRunStatePath;
   if (previousExecutionRunTesting === undefined) delete process.env.MAHIRO_EXECUTION_RUN_TESTING;
   else process.env.MAHIRO_EXECUTION_RUN_TESTING = previousExecutionRunTesting;
+  if (previousExecutionRunDisablePath === undefined) delete process.env.MAHIRO_EXECUTION_RUN_DISABLE_PATH;
+  else process.env.MAHIRO_EXECUTION_RUN_DISABLE_PATH = previousExecutionRunDisablePath;
+  if (previousRtkDisablePath === undefined) delete process.env.MAHIRO_RTK_CONTROL_DISABLE_PATH;
+  else process.env.MAHIRO_RTK_CONTROL_DISABLE_PATH = previousRtkDisablePath;
+  if (previousStatuslineDisablePath === undefined) delete process.env.MAHIRO_STATUSLINE_DISABLE_PATH;
+  else process.env.MAHIRO_STATUSLINE_DISABLE_PATH = previousStatuslineDisablePath;
+  if (previousMcpDisablePath === undefined) delete process.env.MAHIRO_MCP_PROXY_DISABLE_PATH;
+  else process.env.MAHIRO_MCP_PROXY_DISABLE_PATH = previousMcpDisablePath;
   await rm(testRoot, { recursive: true, force: true });
 }

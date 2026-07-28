@@ -722,3 +722,70 @@ Final evidence:
 
 This evidence is the release basis for v0.8.0. Final HEAD/origin/tag/GitHub
 release alignment must still be checked after publishing.
+
+## Registration-pressure regression — 2026-07-28
+
+Foreground isolation disabled only `npm:@mahirocoko/letta-mods@0.8.4` while
+leaving Agent Halo, MemFS Search, and Raindrop enabled. Two reloads emitted no
+new captured `Maximum update depth exceeded` warning, proving the active private
+bundle—not Agent Halo—was the threshold owner. The bundle had grown from 41
+registrations at v0.8.0 to 43 at current HEAD: one bounded Herdr `llm_end`
+interrupt observer and one approval-gated `mh_clear_goal` tool. Both features
+remain necessary.
+
+Code Evidence therefore preserves every operation while consolidating its
+three model tools into one `mh_code_evidence` action tool (`get`, `collect`,
+`record`). This first reduction returned the package to 41 registrations
+without deleting the human `/mh-evidence` command or weakening Goal/Herdr
+contracts, but foreground reloads still crossed the full-ecosystem boundary.
+Earlier Phase 2 evidence in this document keeps the three original tool names
+as historical runtime provenance; those names are superseded by the unified
+action tool for current installs.
+
+The follow-up isolation control adds a repo-local `pnpm mods:entry` manager for
+all ten entries. Each source checks its own fixed mode-`0600` sentinel before
+diagnostics or registrations; package registry metadata and durable state stay
+untouched. The manager is idempotent, rejects unknown names and symlink
+sentinels, and requires `/reload`. Source smoke now proves every disabled entry
+produces zero registrations before enforcing the current enabled
+39-registration budget. Foreground acceptance remains a separate gate.
+
+Foreground isolation then established a warning-free baseline only after
+Herdr Lifecycle, Execution Run, and Statusline were disabled together. This is
+registration-pressure evidence, not proof that any one entry contains a React
+loop: the fully enabled private bundle had 41 registrations and the active
+Agent Halo/Raindrop/MemFS set added 12, for 53 total, while the historical
+warning boundary appeared at 52. Execution Run therefore preserves `/mh-run`
+and every get/create/update operation while consolidating its three model tools
+into one `mh_execution_run` operation tool. The executable package budget is
+now 39 and the same active ecosystem totals 51. Full-entry foreground reload
+acceptance remains required before removing the temporary tracer.
+
+The first full-entry foreground check at 39 still produced two fresh warnings,
+refuting a final-cardinality-only fix. Exact runtime stacks showed a finite
+`onChange → publish → useSyncExternalStore → forceStoreRerender` burst in Ink's
+legacy React mode. Letta awaits async mod factories, so Herdr, Goal, UX
+Workflow, and Statusline now defer their registration groups across zero-delay
+macrotask boundaries and recheck the generation abort signal before registering.
+Source smoke proves those entries register nothing synchronously, cross an
+actual macrotask (not only a microtask), and register nothing when aborted
+during the wait. This cadence mitigation still requires foreground repeated
+reload acceptance before the tracer can be removed.
+
+Foreground acceptance passed on the active NVM Letta Code `0.29.8` runtime:
+
+- installed backup: `~/.letta/mods/backups/2026-07-28T06-17-59-906Z-78600`
+- all ten private-bundle entries reported enabled
+- every installed entry hash matched repository source
+- three consecutive `/reload` commands completed successfully
+- the fresh `/tmp/letta-mod-reload-depth.log` remained exactly zero bytes and
+  zero records across all three reloads
+- Mahiro confirmed the visible warning was gone
+
+The temporary `00-reload-depth-trace.mjs` diagnostic was removed only after
+that foreground confirmation. Agent Halo remained on its original source and
+installed hash; no upstream Letta or Agent Halo patch is part of this fix.
+
+This accepted state is the release basis for v0.8.5. Final local HEAD,
+`origin/main`, annotated tag, and GitHub release alignment must be checked after
+publishing.

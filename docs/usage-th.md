@@ -62,7 +62,7 @@ pnpm mods:update
 ## Slash command กับ model tool ต่างกันยังไง
 
 - **Slash command** มีไว้ให้ Mahiro สั่งหรือดูสถานะโดยตรง เช่น `/mh-goal status` หรือ `/rtk doctor`
-- **Model tool** มีไว้ให้ agent ใช้ระหว่างทำงาน เช่น `mh_collect_code_evidence` หรือ `mh_update_execution_run`
+- **Model tool** มีไว้ให้ agent ใช้ระหว่างทำงาน เช่น `mh_code_evidence` action `collect` หรือ `mh_execution_run` operation `update`
 
 ปกติไม่ต้องพิมพ์ JSON ของ model tool เอง บอกสิ่งที่ต้องการกับ agent ได้เลย แล้วให้ agent เรียก tool พร้อม revision และ scope ที่ถูกต้อง
 
@@ -83,9 +83,22 @@ pnpm mods:update
 สถานะ ให้เช็กก่อนว่า session นั้นถูกเปิดจาก Herdr และมี `HERDR_ENV=1`,
 `HERDR_SOCKET_PATH`, `HERDR_PANE_ID` ครบ
 
-ถ้าต้อง isolate ปัญหาโดยไม่ปิด mod bundle ทั้งชุด ให้สร้างไฟล์
-`~/.letta/mods/mahiro-herdr-lifecycle.disabled` แล้ว `/reload` ตัว lifecycle
-adapter จะ no-op จนกว่าจะลบไฟล์และ reload อีกครั้ง
+ถ้าต้อง isolate ปัญหาโดยไม่ปิด mod bundle ทั้งชุด ใช้ per-entry manager ได้เลย:
+
+```bash
+pnpm mods:entry status
+pnpm mods:entry disable herdr
+pnpm mods:entry enable herdr
+```
+
+ชื่อที่ใช้ได้คือ `timestamps`, `herdr`, `goal`, `evidence`, `ux`, `code-map`,
+`execution`, `rtk`, `statusline` และ `mcp` ทุกครั้งที่เปลี่ยนสถานะต้อง
+`/reload` ใน session ที่เปิดอยู่ ตัว manager จะไม่แก้ `packages.json`, ไม่ลบ
+state และไม่ปิด entry อื่นใน bundle
+
+ไฟล์ `mahiro-mcp-proxy.js.disabled` ที่มีอยู่เดิมเป็นสำเนา legacy direct source
+ไม่ใช่ switch ของ packaged MCP ตัวใหม่ `mcp` จะใช้ไฟล์
+`mahiro-mcp-proxy.disabled`
 
 ---
 
@@ -190,15 +203,15 @@ adapter จะ no-op จนกว่าจะลบไฟล์และ reload 
 
 ### Flow ที่ agent ควรใช้
 
-1. `mh_collect_code_evidence` เก็บ branch, HEAD, base และแยก staged/unstaged/untracked ให้ชัด
+1. `mh_code_evidence` action `collect` เก็บ branch, HEAD, base และแยก staged/unstaged/untracked ให้ชัด
 2. รัน test, browser check หรือ native check ด้วย tool ที่เป็นเจ้าของงานนั้น
-3. `mh_record_code_evidence` บันทึก summary ของผลที่ทำไปแล้ว
+3. `mh_code_evidence` action `record` บันทึก summary ของผลที่ทำไปแล้ว
 4. ใช้ `mh_update_goal` แนบ evidence ที่เลือกเข้า criterion
 
 ### ต้องรู้
 
 - Code Evidence ไม่ได้รัน command ตามข้อความจาก agent ใช้เฉพาะ Git command แบบ fixed/read-only
-- `mh_record_code_evidence` ไม่ได้พิสูจน์ว่าคำสั่งถูกรัน มันบันทึกผลจากงานที่เกิดขึ้นแล้ว จึงต้องให้ check owner ทำงานก่อน
+- `mh_code_evidence` action `record` ไม่ได้พิสูจน์ว่าคำสั่งถูกรัน มันบันทึกผลจากงานที่เกิดขึ้นแล้ว จึงต้องให้ check owner ทำงานก่อน
 - พอ collect ใหม่ record ชุดเก่าจะกลายเป็น stale เพื่อกันเอาหลักฐานจาก working tree คนละชุดมาใช้
 - `evidence_ready` แปลว่าหลักฐานครบพอให้ส่งต่อ ไม่ได้แปลว่า Mahiro ตรวจรับแล้ว
 - อย่าใส่ secret, raw log ยาว ๆ หรือ diff เต็มก้อนลงใน summary/reference
@@ -289,7 +302,7 @@ Intent มีสามแบบ:
 plan → ready → active → reported → handed_off
 ```
 
-Agent ใช้ `mh_create_execution_run` วาง target/lane แล้วอัปเดตด้วย `mh_update_execution_run` ทุก mutation ต้องส่ง run ID และ revision ล่าสุด
+Agent ใช้ `mh_execution_run` operation `create` วาง target/lane แล้วอัปเดตด้วย operation `update` ทุก mutation ต้องส่ง run ID และ revision ล่าสุด
 
 Mahiro ใช้คำสั่งเหล่านี้เพื่อดูหรือหยุด run:
 

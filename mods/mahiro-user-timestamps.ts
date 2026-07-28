@@ -2,6 +2,13 @@
  * Mahiro User Timestamps — local time metadata for each real user turn.
  */
 
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+const disablePath = () => process.env.MAHIRO_USER_TIMESTAMPS_DISABLE_PATH
+  || join(homedir(), ".letta", "mods", "mahiro-user-timestamps.disabled");
+
 interface TimestampMetadata {
   local: string;
   timeZone: string;
@@ -108,10 +115,11 @@ function transformUserInput(input: unknown, date = new Date()): unknown[] | null
 
 // Isolated repository smoke seam; normal packaged runtimes export null.
 export const __testing = process.env.MAHIRO_TIMESTAMPS_TESTING === "1"
-  ? Object.freeze({ timestampMetadata, timestampBlock, transformUserInput })
+  ? Object.freeze({ timestampMetadata, timestampBlock, transformUserInput, disablePath: disablePath() })
   : null;
 
 export default function activate(letta: any) {
+  if (existsSync(disablePath())) return;
   if (!letta.capabilities?.events?.turns || !letta.events?.on) {
     letta.diagnostics?.report?.({
       severity: "warning",

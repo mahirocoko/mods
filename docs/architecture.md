@@ -58,7 +58,23 @@ state stay separate and are never imported or mutated.
 - The MCP SDK dependency is installed automatically by the Git package installer in Letta Code 0.28.8.
 - The bundle matches Mahiro's current machine, where these mods are intended to be active together after each new entry passes its explicit runtime gate.
 
-Tradeoff: Letta enables, disables, and versions the bundle as a unit. Split a mod into an independently versioned package only when separate distribution or lifecycle control becomes a real requirement.
+Letta still installs and versions the bundle as a unit. Local troubleshooting
+and optional runtime use can disable one entry through a fixed sentinel before
+that entry registers anything; this leaves the managed registry and state
+untouched. Split a mod into an independently versioned package only when
+separate distribution—not merely local runtime control—becomes a real
+requirement.
+
+## Reload registration cadence
+
+Letta awaits each mod factory but synchronously publishes every command, tool,
+event, permission, provider, and panel registration to an Ink legacy-React
+external store. The higher-registration Herdr, Goal, UX Workflow, and
+Statusline entries intentionally cross a zero-delay macrotask before their
+registration group. This changes cadence only: the final registry, event
+handlers, tools, state, and cleanup contracts remain the same. Each entry
+checks its abort signal after the yield so an overlapping/stale reload cannot
+register into a dying generation.
 
 ## Ownership boundary
 

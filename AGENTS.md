@@ -14,8 +14,10 @@ Installed files under `~/.letta/mods/` are runtime copies and state, not authori
 - Keep each mod in one focused file under `mods/` until real reuse requires a larger boundary.
 - Use public Letta mod APIs only; do not import Letta Code internals.
 - Guard optional registrations with the matching `letta.capabilities` surface.
+- Every bundled entry must honor its fixed per-entry disable sentinel before diagnostics or registrations; no force flag may bypass it. Keep `scripts/manage-entries.mjs`, its tests, source paths, and user docs aligned when entries change.
 - Return cleanup disposers for commands, tools, events, permissions, timers, processes, and panels.
 - Letta aborts a mod generation before clearing its registry on reload. Cleanup must still stop timers/processes/sockets/panels, but when `letta.signal.aborted` is true, skip redundant per-registration disposer calls that only republish the dying registry and can trigger React `Maximum update depth exceeded`. Preserve normal symmetric disposal when the signal is not aborted, and cover both paths in tests.
+- Letta awaits async mod factories, while its Ink runtime uses legacy synchronous React updates for every registry publish. High-registration entries may intentionally await a zero-delay **macrotask** before registering to split reload bursts; preserve the stale-signal check after that yield and the source smoke proving no synchronous or post-abort registrations. A microtask-only yield is not equivalent.
 - Keep source separate from `~/.letta/mods/*.state.json`, logs, caches, diagnostics, backups, and credentials.
 - Never commit `.mcp.json`, `.letta/`, `.env*`, MCP bearer tokens, state, logs, or installed package copies.
 - Preserve default-safe behavior: RTK rewriting remains Off until explicitly enabled, and MCP live operations remain permission-gated. Project-local `liveApproval: "auto"` is honored only inside a root trusted by global `~/.letta/mcp.json`; a global `liveApproval: "auto"` remains an explicit user-level override.
@@ -27,5 +29,6 @@ Installed files under `~/.letta/mods/` are runtime copies and state, not authori
 - Local checkout: `pnpm mods:install`
 - Update from the local checkout: `pnpm mods:update`
 - Inspect migration/install state: `pnpm mods:status`
+- Inspect or toggle one bundled entry: `pnpm mods:entry status|disable|enable [entry]`
 - Active Letta sessions must run `/reload` after installation or updates.
 - Recovery: start Letta with `letta --no-mods` or `LETTA_DISABLE_MODS=1 letta`, then repair/remove the package.

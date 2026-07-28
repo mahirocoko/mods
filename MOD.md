@@ -5,6 +5,13 @@ description: "Mahiro's private user timestamps, Herdr lifecycle, structured work
 
 # Mahiro Letta Mods semantics
 
+Each declared entry checks one fixed local disable sentinel before reporting
+diagnostics or registering commands, tools, permissions, events, or panels.
+`pnpm mods:entry status|disable|enable [entry]` owns those mode-`0600` sentinels
+for the ten closed entry names. Toggling an entry never edits the managed
+package registry or deletes its durable state; active sessions require
+`/reload`.
+
 ## Package boundary
 
 This package activates ten independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, sockets, and persistent MCP connections.
@@ -57,8 +64,9 @@ capabilities or socket failure never alter Letta execution.
 
 ## Mahiro Code Evidence
 
-`mods/mahiro-code-evidence.ts` registers `/mh-evidence` plus three namespaced
-model tools. It runs fixed read-only Git commands through `execFile` and records
+`mods/mahiro-code-evidence.ts` registers `/mh-evidence` plus one namespaced
+`mh_code_evidence` model tool with closed `get`, `collect`, and `record` actions.
+It runs fixed read-only Git commands through `execFile` and records
 bounded repository metadata for staged, unstaged, untracked, and
 base-to-HEAD lanes. It never executes an agent-supplied command, stores a full
 diff/file body, or mutates Git/source state.
@@ -187,8 +195,9 @@ Code Evidence, or another mod.
 
 ## Mahiro Execution Run
 
-`mods/mahiro-execution-run.ts` registers `/mh-run` plus three namespaced model
-tools. It is an optional, executor-neutral coordination ledger for complex
+`mods/mahiro-execution-run.ts` registers `/mh-run` plus one
+`mh_execution_run` model tool with `get`, `create`, and `update` operations. It
+is an optional, executor-neutral coordination ledger for complex
 main-agent, Letta-subagent, Direct-CLI, human, or other external work. Simple
 single-agent edits do not need a run.
 

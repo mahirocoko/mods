@@ -39,6 +39,8 @@ const SETTINGS_PATHS = [
 ];
 
 const STATE_PATH = join(HOME, ".letta", "mods", "rtk-control.state.json");
+const DISABLE_PATH = process.env.MAHIRO_RTK_CONTROL_DISABLE_PATH
+  ?? join(HOME, ".letta", "mods", "mahiro-rtk-control.disabled");
 const RTK_HISTORY_DB = join(HOME, "Library", "Application Support", "rtk", "history.db");
 const VALID_MODES = new Set<IMode>(["off", "suggest", "rewrite-safe", "rewrite-rtk"]);
 
@@ -654,6 +656,7 @@ const guidance = [
 ].join("\n");
 
 export default function activate(letta: any) {
+  if (existsSync(DISABLE_PATH)) return;
   const disposers: Array<() => void> = [];
 
   if (letta.capabilities.commands) {

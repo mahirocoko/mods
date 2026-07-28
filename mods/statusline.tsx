@@ -1,11 +1,15 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const UPDATE_INTERVAL_MS = 10_000;
+const DISABLE_PATH = process.env.MAHIRO_STATUSLINE_DISABLE_PATH
+  ?? join(homedir(), ".letta", "mods", "mahiro-statusline.disabled");
+const waitForRegistrationTurn = () => new Promise<void>((resolveWait) => setTimeout(resolveWait, 0));
 
 const STATUS_COLORS = {
   folder: "#8C8CF9",
@@ -102,7 +106,8 @@ type LettaApi = {
   };
 };
 
-export default function activate(letta: LettaApi) {
+export default async function activate(letta: LettaApi) {
+  if (existsSync(DISABLE_PATH)) return;
   if (!letta.capabilities?.ui?.panels || !letta.ui?.openPanel) {
     letta.diagnostics?.report?.({
       message: "Custom statusline requires the panels UI capability.",
@@ -110,6 +115,8 @@ export default function activate(letta: LettaApi) {
     });
     return;
   }
+  await waitForRegistrationTurn();
+  if (letta.signal?.aborted) return;
 
   let disposed = false;
   const disposers: Array<() => void> = [];

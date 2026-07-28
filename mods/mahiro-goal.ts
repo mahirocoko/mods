@@ -38,6 +38,11 @@ const STATE_PATH = resolve(
     ?? join(homedir(), ".letta", "mods", "mahiro-goal.state.json"),
 );
 const LOCK_PATH = `${STATE_PATH}.lock`;
+const DISABLE_PATH = resolve(
+  process.env.MAHIRO_GOAL_DISABLE_PATH
+    ?? join(homedir(), ".letta", "mods", "mahiro-goal.disabled"),
+);
+const waitForRegistrationTurn = () => new Promise<void>((resolveWait) => setTimeout(resolveWait, 0));
 
 type GoalStatus = "active" | "paused" | "blocked" | "complete";
 type CriterionOwner = "agent" | "human";
@@ -438,7 +443,7 @@ function forceUnlock(): boolean {
 
 // Isolated repository smoke seam; normal packaged runtimes export null.
 export const __testing = process.env.MAHIRO_GOAL_TESTING === "1"
-  ? Object.freeze({ acquireStateLock, releaseStateLock, forceUnlock, lockPath: LOCK_PATH })
+  ? Object.freeze({ acquireStateLock, releaseStateLock, forceUnlock, lockPath: LOCK_PATH, disablePath: DISABLE_PATH })
   : null;
 
 function withLockedState<T>(mutate: (state: WorkflowState) => T): T {
@@ -1282,7 +1287,10 @@ const UPDATE_PARAMETERS = {
   additionalProperties: false,
 };
 
-export default function activate(letta: any) {
+export default async function activate(letta: any) {
+  if (existsSync(DISABLE_PATH)) return;
+  await waitForRegistrationTurn();
+  if (letta.signal?.aborted) return;
   const disposers: Array<() => void> = [];
   let busyStatusPanel: any = null;
   let busyStatusTimer: ReturnType<typeof setTimeout> | null = null;

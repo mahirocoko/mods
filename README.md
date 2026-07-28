@@ -13,10 +13,10 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/mahiro-user-timestamps.ts` | `turn_start` | Adds safe local/IANA timestamp metadata and one visible block to each real user turn without timestamping synthetic workflow reminders. |
 | `mods/mahiro-herdr-lifecycle.ts` | lifecycle/turn/tool events + bounded child-process observation | Reports one truthful Letta pane state plus bounded child-task counts/types to the owning Herdr pane over its local socket. |
 | `mods/mahiro-goal.ts` | `/mh-goal`, busy-safe `/mh-goal-status`, `mh_get_goal`, `mh_create_goal`, `mh_update_goal`, `turn_start` | Structured conversation goal with DoD criteria, evidence, blockers, revision guards, and human verification gates. |
-| `mods/mahiro-code-evidence.ts` | `/mh-evidence`, `mh_get_code_evidence`, `mh_collect_code_evidence`, `mh_record_code_evidence` | Bounded read-only Git evidence with separate staged/unstaged/untracked/base lanes, stale-proof external records, conservative verdicts, and explicit Goal handoff. |
+| `mods/mahiro-code-evidence.ts` | `/mh-evidence`, `mh_code_evidence` (`get` / `collect` / `record`) | Bounded read-only Git evidence with separate staged/unstaged/untracked/base lanes, stale-proof external records, conservative verdicts, and explicit Goal handoff. |
 | `mods/mahiro-ux-workflow.ts` | `/mh-ux`, `mh_get_ux_workflow`, `mh_create_ux_workflow`, `mh_update_ux_workflow` | Revisioned UX coordination from frame through review, with a required `frontend-design` brief, human direction/review gates, bounded handoff/review evidence, and no Goal mutation. |
 | `mods/mahiro-code-map.ts` | `mh_code_map` | Stateless bounded guidance that routes conceptual discovery to `ccc`, exact symbols/paths/strings to exact search, and outline requests to external bounded outline tooling without reading or indexing source. |
-| `mods/mahiro-execution-run.ts` | `/mh-run`, `mh_get_execution_run`, `mh_create_execution_run`, `mh_update_execution_run` | Optional executor-neutral coordination for complex main-agent, Letta-subagent, Direct-CLI, human, or other work, with declared target ownership, bounded reports, and a Code Evidence intake handoff. |
+| `mods/mahiro-execution-run.ts` | `/mh-run`, `mh_execution_run` (`get`, `create`, `update`) | Optional executor-neutral coordination for complex main-agent, Letta-subagent, Direct-CLI, human, or other work, with declared target ownership, bounded reports, and a Code Evidence intake handoff. |
 | `mods/rtk-control.ts` | `/rtk`, `tool_start` | Opt-in RTK status, savings, suggestions, and command rewriting. Default mode is Off. |
 | `mods/statusline.tsx` | order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, conversation activity, context, MemFS, RTK, model, reasoning, and backend state; left-side overflow wraps by whole segment to one bounded second row, with the right group retained across sparse renders. |
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
@@ -60,9 +60,10 @@ security overlay:
 /mh-evidence unlock --force
 ```
 
-The agent normally uses `mh_collect_code_evidence`, records already-performed
-checks with `mh_record_code_evidence`, then explicitly attaches selected proof
-to Goal criteria through `mh_update_goal`. Collection runs only fixed read-only
+The agent normally uses `mh_code_evidence` with action `collect`, records
+already-performed checks with action `record`, then explicitly attaches selected
+proof to Goal criteria through `mh_update_goal`. Action `get` reads the latest
+report. Collection runs only fixed read-only
 Git commands and stores paths/status/counts—not full diffs or file contents.
 Recollection invalidates earlier check records for verdict/handoff purposes.
 `evidence_ready` is not human verification and never completes a Goal.
@@ -156,8 +157,8 @@ edits.
 /mh-run unlock --force
 ```
 
-The model uses `mh_get_execution_run`, `mh_create_execution_run`, and
-revision/run-ID-guarded `mh_update_execution_run`. One current run is scoped to
+The model uses one `mh_execution_run` tool with `get`, `create`, and
+revision/run-ID-guarded `update` operations. One current run is scoped to
 explicit agent/conversation identity, with workspace isolation for raw
 `default` lanes. The lifecycle is `plan → ready → active → reported →
 handed_off`; blockers are orthogonal and `abandoned` is terminal.
@@ -288,6 +289,12 @@ pnpm mods:install
 
 The installer validates source/runtime conflicts, backs up the files it migrates, installs this repository as one managed Letta package, installs production dependencies into the managed copy, and removes only the superseded direct/package copies it recognizes.
 
+The highest-registration entries activate asynchronously across zero-delay
+macrotask boundaries. Letta awaits async mod factories, so the final registry
+and behavior stay the same while its legacy React host no longer receives the
+entire private-bundle publish burst in one nested update chain. A generation
+aborted during the yield registers nothing.
+
 Let the command finish before running `/reload`, and do not run another Letta package install/update/remove concurrently. The manager serializes its own mutations and preserves unrelated registry entries during rollback, but the Letta CLI itself does not share that lock.
 
 Run this in every active Letta Code session afterward:
@@ -302,6 +309,25 @@ After changing a mod in this checkout, reinstall the managed copy with:
 pnpm check
 pnpm mods:update
 ```
+
+### Enable or disable one bundled entry
+
+The managed package stays installed and enabled while individual entries can
+no-op before diagnostics or registrations:
+
+```bash
+pnpm mods:entry status
+pnpm mods:entry disable goal
+pnpm mods:entry enable goal
+```
+
+Available names are `timestamps`, `herdr`, `goal`, `evidence`, `ux`,
+`code-map`, `execution`, `rtk`, `statusline`, and `mcp`. The manager writes only
+fixed mode-`0600` sentinels under `~/.letta/mods/`, rejects symlinks and unknown
+names, and is idempotent. Run `/reload` after each change. This is local runtime
+control; it does not edit `packages.json`, package source, or durable state.
+The old `mahiro-mcp-proxy.js.disabled` file is a retained legacy direct source,
+not the packaged MCP switch; `mcp` uses `mahiro-mcp-proxy.disabled`.
 
 ## Install from Git
 

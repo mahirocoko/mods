@@ -19,7 +19,10 @@ const METADATA_TTL_MS = 30_000;
 const SOCKET_TIMEOUT_MS = 1_500;
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const PROCESS_STARTED_AT_MS = Math.round(Date.now() - process.uptime() * 1_000);
-const DISABLE_PATH = join(homedir(), ".letta", "mods", "mahiro-herdr-lifecycle.disabled");
+const DISABLE_PATH = process.env.MAHIRO_HERDR_DISABLE_PATH
+  ?? join(homedir(), ".letta", "mods", "mahiro-herdr-lifecycle.disabled");
+
+const waitForRegistrationTurn = () => new Promise<void>((resolveWait) => setTimeout(resolveWait, 0));
 
 type HerdrState = "idle" | "working" | "blocked" | "unknown";
 
@@ -279,10 +282,12 @@ export const __testing = process.env.MAHIRO_HERDR_TESTING === "1"
   ? Object.freeze({ deriveLifecycleSnapshot, normalizeText, normalizeSocketPath, isAskTool, parseSubagentProcesses, scopeFingerprint, shouldScanSubagentProcesses, processDiscoveryDeadline, userInterruptedEvent })
   : null;
 
-export default function activate(letta: any) {
+export default async function activate(letta: any) {
   if (process.env.HERDR_ENV !== "1") return;
   if (process.env.LETTA_CODE_AGENT_ROLE === "subagent") return;
-  if (process.env.MAHIRO_HERDR_FORCE_ENABLE !== "1" && existsSync(DISABLE_PATH)) return;
+  if (existsSync(DISABLE_PATH)) return;
+  await waitForRegistrationTurn();
+  if (letta.signal?.aborted) return;
 
   const socketPath = normalizeSocketPath(process.env.HERDR_SOCKET_PATH);
   const paneId = normalizeText(process.env.HERDR_PANE_ID, 80);

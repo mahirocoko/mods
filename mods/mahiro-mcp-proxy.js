@@ -7,6 +7,8 @@ import path from "node:path";
 const MOD_ID = "mahiro-mcp-proxy";
 const MOD_VERSION = "0.2.0";
 const MOD_HOME = path.join(homedir(), ".letta", "mcp-proxy");
+const DISABLE_PATH = process.env.MAHIRO_MCP_PROXY_DISABLE_PATH
+  ?? path.join(homedir(), ".letta", "mods", "mahiro-mcp-proxy.disabled");
 const CACHE_PATH = path.join(MOD_HOME, "cache.json");
 const CACHE_VERSION = 1;
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -1074,6 +1076,7 @@ async function runCommand(ctx) {
 }
 
 export default function activate(letta) {
+  if (existsSync(DISABLE_PATH)) return;
   const disposers = [];
   const hasPermissionOverlay = Boolean(letta.capabilities?.permissions && letta.permissions);
 

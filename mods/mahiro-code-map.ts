@@ -2,6 +2,13 @@
  * Mahiro Code Map — bounded navigation guidance for repository discovery.
  */
 
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+const DISABLE_PATH = process.env.MAHIRO_CODE_MAP_DISABLE_PATH
+  ?? join(homedir(), ".letta", "mods", "mahiro-code-map.disabled");
+
 const MAX_OUTPUT_CHARS = 3_000;
 const MAX_QUERY_CHARS = 500;
 const MAX_WORKSPACE_CHARS = 4_096;
@@ -281,6 +288,7 @@ export const __testing = process.env.MAHIRO_CODE_MAP_TESTING === "1"
   : null;
 
 export default function activate(letta: any) {
+  if (existsSync(DISABLE_PATH)) return;
   if (!(letta.capabilities?.tools && letta.tools?.register)) {
     letta.diagnostics?.report?.({ severity: "warning", message: "Mahiro Code Map requires tools capability." });
     return;

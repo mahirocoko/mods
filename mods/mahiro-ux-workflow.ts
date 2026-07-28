@@ -27,6 +27,9 @@ const SCHEMA_VERSION = 1;
 const STATE_PATH = resolve(process.env.MAHIRO_UX_WORKFLOW_STATE_PATH
   ?? join(homedir(), ".letta", "mods", "mahiro-ux-workflow.state.json"));
 const LOCK_PATH = `${STATE_PATH}.lock`;
+const DISABLE_PATH = resolve(process.env.MAHIRO_UX_WORKFLOW_DISABLE_PATH
+  ?? join(homedir(), ".letta", "mods", "mahiro-ux-workflow.disabled"));
+const waitForRegistrationTurn = () => new Promise<void>((resolveWait) => setTimeout(resolveWait, 0));
 const MAX_SCOPES = 256;
 const MAX_TEXT = 1_200;
 const MAX_LONG_TEXT = 4_000;
@@ -751,10 +754,13 @@ const UPDATE_PARAMETERS = {
 };
 
 export const __testing = process.env.MAHIRO_UX_WORKFLOW_TESTING === "1"
-  ? Object.freeze({ readState, acquireStateLock, releaseStateLock, forceUnlock, statePath: STATE_PATH, lockPath: LOCK_PATH, maxReviewIterations: MAX_REVIEW_ITERATIONS })
+  ? Object.freeze({ readState, acquireStateLock, releaseStateLock, forceUnlock, statePath: STATE_PATH, lockPath: LOCK_PATH, disablePath: DISABLE_PATH, maxReviewIterations: MAX_REVIEW_ITERATIONS })
   : null;
 
-export default function activate(letta: any) {
+export default async function activate(letta: any) {
+  if (existsSync(DISABLE_PATH)) return;
+  await waitForRegistrationTurn();
+  if (letta.signal?.aborted) return;
   const disposers: Array<() => void> = [];
   if (letta.capabilities?.commands && letta.commands?.register) {
     disposers.push(letta.commands.register({
