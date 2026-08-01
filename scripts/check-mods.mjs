@@ -1099,6 +1099,11 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
     baseContext,
   );
   assert(noGoalTurn === undefined && !existsSync(statePath), "turn_start without a goal must not create runtime state");
+  const noGoalStatus = goalCommand.run({ ...baseContext, args: "status" });
+  assert(
+    noGoalStatus.success !== false && noGoalStatus.output === "# Mahiro Goal\n\n_No goal is set for this conversation._",
+    "empty Mahiro Goal status must retain the theme-aware command heading",
+  );
 
   const created = parseToolOutput(create.run({
     ...baseContext,
@@ -1118,10 +1123,109 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
     Object.keys(stateAfterCreate.goals).includes(JSON.stringify(["agent-test", "conversation-test", ""])),
     "mahiro-goal state key must combine agent and conversation identity",
   );
+  const detailedStatusResult = goalCommand.run({ ...baseContext, args: "status" });
+  assert(
+    detailedStatusResult.success !== false
+      && detailedStatusResult.output.includes("# Mahiro Goal · ACTIVE\n\n## Mission\n")
+      && detailedStatusResult.output.includes("\n## Current\n")
+      && detailedStatusResult.output.includes("\n## Progress\n")
+      && detailedStatusResult.output.includes("\n## Definition of Done\n")
+      && detailedStatusResult.output.includes("\n## Plan\n  ○ No plan items yet")
+      && detailedStatusResult.output.includes("\n## Blockers\n  ✓ None open")
+      && detailedStatusResult.output.includes("\n## Details\n")
+      && !detailedStatusResult.output.includes("\u001b"),
+    "mahiro-goal detailed status must use theme-aware Markdown groups for mission, state, progress, work, blockers, and metadata",
+  );
+  const escapedState = structuredClone(stateAfterCreate);
+  const escapedText = (label) => `\u001b[31m${label}\tpart\u001b[0m\u0007\n## injected\u0085`;
+  const escapedGoal = escapedState.goals[JSON.stringify(["agent-test", "conversation-test", ""])];
+  escapedGoal.id = escapedText("goal-id");
+  escapedGoal.objective = escapedText("objective");
+  escapedGoal.phase = escapedText("phase");
+  escapedGoal.nextAction = escapedText("next");
+  escapedGoal.workspace = escapedText("workspace");
+  escapedGoal.criteria[0].id = escapedText("criterion-id");
+  escapedGoal.criteria[0].text = escapedText("criterion-text");
+  escapedGoal.criteria[0].note = escapedText("criterion-note");
+  escapedGoal.plan.push({
+    id: escapedText("plan-id"),
+    text: escapedText("plan-text"),
+    status: "pending",
+    note: escapedText("plan-note"),
+    updatedAt: created.updatedAt,
+  });
+  escapedGoal.blockers.push({
+    id: escapedText("blocker-id"),
+    summary: escapedText("blocker-summary"),
+    status: "open",
+    createdAt: created.createdAt,
+    resolvedAt: null,
+  });
+  writeFileSync(statePath, `${JSON.stringify(escapedState, null, 2)}\n`, { mode: 0o600 });
+  const escapedStatusResult = goalCommand.run({ ...baseContext, args: "status" });
+  assert(
+    escapedStatusResult.success !== false
+      && [
+        "goal-id part ## injected",
+        "objective part ## injected",
+        "phase part ## injected",
+        "next part ## injected",
+        "workspace part ## injected",
+        "criterion-id part ## injected",
+        "criterion-text part ## injected",
+        "criterion-note part ## injected",
+        "plan-id part ## injected",
+        "plan-text part ## injected",
+        "plan-note part ## injected",
+        "blocker-id part ## injected",
+        "blocker-summary part ## injected",
+      ].every((text) => escapedStatusResult.output.includes(text))
+      && !escapedStatusResult.output.includes("\u001b")
+      && !escapedStatusResult.output.includes("\u0007")
+      && !escapedStatusResult.output.includes("\u0085")
+      && !escapedStatusResult.output.includes("\t")
+      && !escapedStatusResult.output.includes("\n## injected"),
+    "mahiro-goal detailed status must flatten every rendered stored free-text and identifier field before Markdown composition",
+  );
+  const escapedPanelState = structuredClone(stateAfterCreate);
+  const escapedPanelGoal = escapedPanelState.goals[JSON.stringify(["agent-test", "conversation-test", ""])];
+  escapedPanelGoal.objective = escapedText("panel-objective");
+  escapedPanelGoal.nextAction = escapedText("panel-next");
+  escapedPanelGoal.criteria[1].id = escapedText("panel-human-id");
+  writeFileSync(statePath, `${JSON.stringify(escapedPanelState, null, 2)}\n`, { mode: 0o600 });
   const busyStatusResult = busyGoalStatusCommand.run(baseContext);
   assert(busyStatusResult.type === "handled", "busy Goal status must own transient UI and return handled");
   assert(goalPanelOptions?.id === "mahiro-goal-status" && goalPanelOptions?.order === 120, "busy Goal status must use its additive transient panel slot");
-  assert(goalPanelOptions.render().join("\n").includes("Build and verify the workflow foundation"), "busy Goal panel must render current scoped objective");
+  const busyPanelText = goalPanelOptions.render().join("\n");
+  assert(
+    busyPanelText.includes("panel-objective part ## injected")
+      && busyPanelText.includes("panel-next part ## injected")
+      && busyPanelText.includes("panel-human-id part ## injected")
+      && busyPanelText.includes("\nMISSION\n")
+      && busyPanelText.includes("\nPROGRESS\n")
+      && busyPanelText.includes("\nCURRENT\n")
+      && busyPanelText.includes("\nNEXT\n")
+      && !busyPanelText.includes("\u001b")
+      && !busyPanelText.includes("\u0007")
+      && !busyPanelText.includes("\u0085")
+      && !busyPanelText.includes("\t")
+      && !busyPanelText.includes("\n## injected"),
+    "busy Goal panel must render sanitized stored fields in compact readable groups",
+  );
+  const coloredBusyPanelText = goalPanelOptions.render({
+    chalk: {
+      hex: (hex) => (text) => `<${hex}>${text}</${hex}>`,
+      dim: (text) => `<dim>${text}</dim>`,
+    },
+  }).join("\n");
+  assert(
+    coloredBusyPanelText.includes("<#20B2AA>Mahiro Goal · ACTIVE</#20B2AA>")
+      && coloredBusyPanelText.includes("<#8C8CF9>MISSION</#8C8CF9>")
+      && coloredBusyPanelText.includes("<#FEE19C>Waiting for Mahiro")
+      && coloredBusyPanelText.includes("Blockers <#64CF64>0</#64CF64>"),
+    "busy Goal panel must apply theme-safe semantic colors through the public chalk render context",
+  );
+  writeFileSync(statePath, `${JSON.stringify(stateAfterCreate, null, 2)}\n`, { mode: 0o600 });
 
   const transformed = eventHandlers.get("turn_start")(
     { conversationId: "conversation-test", input: [{ role: "user", content: "continue" }] },
@@ -1510,7 +1614,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-mcp-proxy.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.8.5", "Package version must be 0.8.5");
+  assert(packageJson.version === "0.8.6", "Package version must be 0.8.6");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
 

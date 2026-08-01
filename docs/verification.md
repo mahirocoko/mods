@@ -789,3 +789,41 @@ installed hash; no upstream Letta or Agent Halo patch is part of this fix.
 This accepted state is the release basis for v0.8.5. Final local HEAD,
 `origin/main`, annotated tag, and GitHub release alignment must be checked after
 publishing.
+
+## Theme-aware grouped Mahiro Goal status — 2026-08-01
+
+Mahiro Goal keeps its existing state, lifecycle, revision, evidence, blocker,
+human-gate, and command/tool contracts while making both human status surfaces
+easier to scan. `/mh-goal status` now groups Mission, Current, Progress,
+Definition of Done, Plan, Blockers, and Details. It uses Letta's host-rendered
+Markdown headings and emphasis rather than embedding ANSI escape sequences in
+command output. The busy-safe `/mh-goal-status` panel uses only the public
+`render(ctx).chalk` surface for semantic color: purple sections, teal active,
+amber waiting/paused, pink-red blocked, and green complete/no-open-blocker states.
+Rendering still falls back to readable uncolored text when `chalk` is absent.
+Every free-text and identifier state value rendered by the status surfaces is
+flattened before Markdown composition through Node's VT-control stripping plus
+a complete C0/C1 filter, including stored tabs and line breaks. Schema-bound
+enums and numeric values are rendered through the same display boundary.
+Formatter-owned Markdown newlines remain intact, while old or supplied text
+cannot inject terminal controls or new Markdown blocks into either status
+surface.
+
+Focused smoke coverage proves grouped detailed output, the empty-goal themed
+heading, compact panel groups, semantic color selection, stripping of stored
+ANSI/control payloads, panel gating, cleanup, and the prior Goal
+state/human-gate contracts.
+Final release evidence:
+
+- Letta Code 0.30.0 public Markdown and panel render contracts were inspected
+- `pnpm check` passed for all ten entries
+- `pnpm pack --dry-run` passed with the expected package allowlist
+- repository and installed `mahiro-goal.ts` SHA-256 matched
+- `pnpm mods:status` reported every installed entry matching and
+  `Migration needed: no`
+- Mahiro explicitly approved publishing this presentation update
+
+This is the release basis for v0.8.6. A `/reload` remains required in every
+already-running Letta Code session after installation. Final local HEAD,
+`origin/main`, annotated tag, GitHub release, and installed version alignment
+must be checked after publishing.

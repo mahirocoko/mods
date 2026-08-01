@@ -21,6 +21,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 const SCHEMA_VERSION = 1;
 const MAX_OBJECTIVE_CHARS = 4000;
@@ -32,6 +33,14 @@ const MAX_EVIDENCE_PER_CRITERION = 30;
 const MAX_BLOCKERS = 30;
 const MAX_PLAN_ITEMS = 30;
 const MAX_HISTORY = 80;
+
+const GOAL_COLORS = {
+  section: "#8C8CF9",
+  active: "#20B2AA",
+  complete: "#64CF64",
+  attention: "#FEE19C",
+  blocked: "#F1689F",
+} as const;
 
 const STATE_PATH = resolve(
   process.env.MAHIRO_GOAL_STATE_PATH
@@ -155,6 +164,13 @@ function nowIso(): string {
 function compactText(value: unknown, max = MAX_TEXT_CHARS): string {
   const text = String(value ?? "").trim();
   return text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
+}
+
+function displayFieldText(value: unknown): string {
+  return stripVTControlCharacters(String(value ?? ""))
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
+    .replace(/ +/g, " ")
+    .trim();
 }
 
 function scopeFrom(ctx: any = {}, event: any = {}): Scope {
@@ -837,44 +853,113 @@ function criterionMark(status: CriterionStatus): string {
   if (status === "verified") return "✓";
   if (status === "claimed") return "◉";
   if (status === "blocked") return "!";
-  return "–";
+  return "○";
+}
+
+function planMark(status: PlanItemStatus): string {
+  if (status === "done") return "✓";
+  if (status === "in_progress") return "◉";
+  if (status === "blocked") return "!";
+  return "○";
+}
+
+function evidenceLabel(count: number): string {
+  return `${count} evidence item${count === 1 ? "" : "s"}`;
+}
+
+function panelColor(chalk: any, hex: string, text: string): string {
+  const painter = chalk?.hex?.(hex);
+  return typeof painter === "function" ? painter(text) : text;
+}
+
+function panelDim(chalk: any, text: string): string {
+  return typeof chalk?.dim === "function" ? chalk.dim(text) : text;
+}
+
+function goalStatusColor(goal: WorkflowGoal): string {
+  if (goal.status === "complete") return GOAL_COLORS.complete;
+  if (goal.status === "blocked") return GOAL_COLORS.blocked;
+  if (goal.status === "paused") return GOAL_COLORS.attention;
+  return GOAL_COLORS.active;
+}
+
+function goalStateColor(goal: WorkflowGoal): string {
+  if (goal.status === "complete") return GOAL_COLORS.complete;
+  if (goal.status === "blocked" || goal.blockers.some((item) => item.status === "open")) return GOAL_COLORS.blocked;
+  if (goal.status === "paused" || goalProgress(goal).humanPending.length) return GOAL_COLORS.attention;
+  return GOAL_COLORS.active;
 }
 
 function formatGoal(goal: WorkflowGoal): string {
-  const criteria = goal.criteria.map(
-    (item) => `${criterionMark(item.status)} ${item.id} [${item.owner}${item.required ? ", required" : ""}] ${item.text}`,
-  );
+  const progress = goalProgress(goal);
+  const criteria = goal.criteria.flatMap((item) => [
+    `  ${criterionMark(item.status)} ${displayFieldText(item.id)} · ${displayFieldText(item.owner.toUpperCase())} · ${item.required ? "REQUIRED" : "OPTIONAL"} · ${displayFieldText(item.status.toUpperCase())} · ${displayFieldText(evidenceLabel(item.evidence.length))}`,
+    `    ${displayFieldText(item.text)}`,
+    ...(item.note ? [`    Note: ${displayFieldText(item.note)}`] : []),
+  ]);
   const blockers = goal.blockers.filter((item) => item.status === "open");
-  const plan = goal.plan.map((item) => `${criterionMark(item.status === "done" ? "claimed" : item.status === "blocked" ? "blocked" : "pending")} ${item.id} [${item.status}] ${item.text}`);
+  const planDone = goal.plan.filter((item) => item.status === "done").length;
+  const plan = goal.plan.flatMap((item) => [
+    `  ${planMark(item.status)} ${displayFieldText(item.id)} · ${displayFieldText(item.status.toUpperCase())}`,
+    `    ${displayFieldText(item.text)}`,
+    ...(item.note ? [`    Note: ${displayFieldText(item.note)}`] : []),
+  ]);
   return [
-    `Mahiro Goal · ${goal.status} · revision ${goal.revision}`,
-    `Objective: ${goal.objective}`,
-    `Phase: ${goal.phase}`,
-    `Next: ${goal.nextAction ?? "not set"}`,
-    `State: ${goalStateLabel(goal)}`,
-    `Workspace: ${goal.workspace}`,
-    `Active time: ${formatElapsed(liveElapsedSeconds(goal))}`,
-    "DoD:",
+    `# Mahiro Goal · ${displayFieldText(goal.status.toUpperCase())}`,
+    "",
+    "## Mission",
+    `  ${displayFieldText(goal.objective)}`,
+    "",
+    "## Current",
+    `  **State**  ${displayFieldText(goalStateLabel(goal))}`,
+    `  **Phase**  ${displayFieldText(goal.phase)}`,
+    `  **Next**   ${displayFieldText(goal.nextAction ?? "Not set")}`,
+    "",
+    "## Progress",
+    `  **DoD**       ${displayFieldText(`${progress.satisfied.length}/${progress.required.length}`)} required satisfied`,
+    `  **Plan**      ${displayFieldText(`${planDone}/${goal.plan.length}`)} items done`,
+    `  **Blockers**  ${displayFieldText(blockers.length)} open`,
+    "",
+    "## Definition of Done",
     ...criteria,
-    "Plan:",
-    ...(plan.length ? plan : ["– no plan items yet"]),
-    "Blockers:",
-    ...(blockers.length ? blockers.map((item) => `! ${item.id}: ${item.summary}`) : ["– none"]),
+    "",
+    "## Plan",
+    ...(plan.length ? plan : ["  ○ No plan items yet"]),
+    "",
+    "## Blockers",
+    ...(blockers.length ? blockers.flatMap((item) => [`  ! ${displayFieldText(item.id)}`, `    ${displayFieldText(item.summary)}`]) : ["  ✓ None open"]),
+    "",
+    "## Details",
+    `  **Active time**  ${displayFieldText(formatElapsed(liveElapsedSeconds(goal)))}`,
+    `  **Revision**     ${displayFieldText(goal.revision)}`,
+    `  **Workspace**    ${displayFieldText(goal.workspace)}`,
+    `  **Goal ID**      ${displayFieldText(goal.id)}`,
   ].join("\n");
 }
 
-function compactStatusPanel(goal: WorkflowGoal | null): string[] {
-  if (!goal) return ["Mahiro Goal · no goal for this conversation"];
+function compactStatusPanel(goal: WorkflowGoal | null, chalk?: any): string[] {
+  if (!goal) return [
+    panelColor(chalk, GOAL_COLORS.section, "Mahiro Goal"),
+    panelDim(chalk, "No goal is set for this conversation."),
+  ];
   const progress = goalProgress(goal);
   const blockers = goal.blockers.filter((item) => item.status === "open").length;
   const planDone = goal.plan.filter((item) => item.status === "done").length;
+  const section = (text: string) => panelColor(chalk, GOAL_COLORS.section, text);
+  const progressColor = progress.satisfied.length === progress.required.length
+    ? GOAL_COLORS.complete
+    : GOAL_COLORS.active;
+  const blockerColor = blockers ? GOAL_COLORS.blocked : GOAL_COLORS.complete;
   return [
-    `Mahiro Goal · ${goal.status} · revision ${goal.revision}`,
-    `Objective  ${compactText(goal.objective, 100)}`,
-    `Progress   ${progress.satisfied.length}/${progress.required.length} required · ${blockers} blocker${blockers === 1 ? "" : "s"}`,
-    `Plan       ${planDone}/${goal.plan.length} items done`,
-    `State      ${compactText(goalStateLabel(goal), 100)}`,
-    `Next       ${compactText(goal.nextAction ?? "not set", 100)}`,
+    `${panelColor(chalk, goalStatusColor(goal), displayFieldText(`Mahiro Goal · ${goal.status.toUpperCase()}`))} ${panelDim(chalk, displayFieldText(`· rev ${goal.revision}`))}`,
+    section("MISSION"),
+    `  ${compactText(displayFieldText(goal.objective), 100)}`,
+    section("PROGRESS"),
+    `  DoD ${panelColor(chalk, progressColor, displayFieldText(`${progress.satisfied.length}/${progress.required.length}`))} · Plan ${panelColor(chalk, progressColor, displayFieldText(`${planDone}/${goal.plan.length}`))} · Blockers ${panelColor(chalk, blockerColor, displayFieldText(String(blockers)))}`,
+    section("CURRENT"),
+    `  ${panelColor(chalk, goalStateColor(goal), compactText(displayFieldText(goalStateLabel(goal)), 100))}`,
+    section("NEXT"),
+    `  ${compactText(displayFieldText(goal.nextAction ?? "Not set"), 100)}`,
   ];
 }
 
@@ -1070,7 +1155,7 @@ function runCommand(ctx: any) {
     const workspace = workspaceFrom(ctx);
     if (!input || normalized === "status" || normalized === "show") {
       const goal = getGoal(scope);
-      return commandOutput(goal ? formatGoal(goal) : "No Mahiro Goal is set for this conversation.");
+      return commandOutput(goal ? formatGoal(goal) : "# Mahiro Goal\n\n_No goal is set for this conversation._");
     }
     if (["help", "-h", "--help"].includes(normalized)) return commandOutput(helpText());
     if (normalized === "unlock --force") {
@@ -1323,16 +1408,19 @@ export default async function activate(letta: any) {
       showInTranscript: false,
       run(ctx: any) {
         closeBusyStatus();
-        let lines: string[];
+        let goal: WorkflowGoal | null = null;
+        let statusError: string | null = null;
         try {
-          lines = compactStatusPanel(getGoal(scopeFrom(ctx)));
+          goal = getGoal(scopeFrom(ctx));
         } catch (error) {
-          lines = [`Mahiro Goal status unavailable · ${error instanceof Error ? error.message : String(error)}`];
+          statusError = `Mahiro Goal status unavailable · ${error instanceof Error ? error.message : String(error)}`;
         }
         busyStatusPanel = letta.ui.openPanel({
           id: "mahiro-goal-status",
           order: 120,
-          render: () => lines,
+          render: (renderContext: any) => statusError
+            ? [panelColor(renderContext?.chalk, GOAL_COLORS.blocked, displayFieldText(statusError))]
+            : compactStatusPanel(goal, renderContext?.chalk),
         });
         busyStatusTimer = setTimeout(closeBusyStatus, 10_000);
         busyStatusTimer.unref?.();

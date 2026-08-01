@@ -224,11 +224,14 @@ Herdr activity label never means a Goal is complete. Active Goals may end a
 turn at a checkpoint; the status surface names whether agent work remains or a
 human gate is waiting.
 
-`/mh-goal status` remains the detailed idle command. While the main agent is
-working, `/mh-goal-status` is a separate read-only `runWhenBusy` command that
-returns immediately, writes nothing to the transcript, and shows a compact
-10-second panel. It is registered only on hosts with panel UI, so desktop or
-headless listeners do not advertise a command they cannot render.
+`/mh-goal status` remains the detailed idle command. It groups mission, current
+state, progress, DoD, plan, blockers, and metadata with host-rendered Markdown
+color rather than embedded ANSI escapes. While the main agent is working,
+`/mh-goal-status` is a separate read-only `runWhenBusy` command that returns
+immediately, writes nothing to the transcript, and shows a compact 10-second
+panel with theme-safe semantic color through the public panel render context.
+It is registered only on hosts with panel UI, so desktop or headless listeners
+do not advertise a command they cannot render.
 
 State is stored at `~/.letta/mods/mahiro-goal.state.json` with atomic mode-0600
 writes and an ownership-checked cross-process mutation lock. The state key
