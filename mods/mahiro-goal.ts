@@ -173,6 +173,10 @@ function displayFieldText(value: unknown): string {
     .trim();
 }
 
+function markdownAccent(value: unknown): string {
+  return `\`${displayFieldText(value).replace(/`/g, "'")}\``;
+}
+
 function scopeFrom(ctx: any = {}, event: any = {}): Scope {
   const agentId = compactText(ctx?.agent?.id ?? event?.agentId ?? event?.agent_id ?? process.env.AGENT_ID, 240);
   const conversationId = compactText(
@@ -850,21 +854,29 @@ function formatElapsed(seconds: number): string {
 }
 
 function criterionMark(status: CriterionStatus): string {
-  if (status === "verified") return "✓";
-  if (status === "claimed") return "◉";
-  if (status === "blocked") return "!";
-  return "○";
+  if (status === "verified") return "🟢 ✓";
+  if (status === "claimed") return "🟢 ◉";
+  if (status === "blocked") return "🔴 !";
+  return "⚪";
 }
 
 function planMark(status: PlanItemStatus): string {
-  if (status === "done") return "✓";
-  if (status === "in_progress") return "◉";
-  if (status === "blocked") return "!";
-  return "○";
+  if (status === "done") return "🟢 ✓";
+  if (status === "in_progress") return "🔵 ◉";
+  if (status === "blocked") return "🔴 !";
+  return "⚪";
 }
 
 function evidenceLabel(count: number): string {
   return `${count} evidence item${count === 1 ? "" : "s"}`;
+}
+
+function criterionOwnerMark(owner: CriterionOwner): string {
+  return owner === "human" ? "🟣" : "🔵";
+}
+
+function criterionRequirementMark(required: boolean): string {
+  return required ? "🟠" : "⚪";
 }
 
 function panelColor(chalk: any, hex: string, text: string): string {
@@ -890,17 +902,40 @@ function goalStateColor(goal: WorkflowGoal): string {
   return GOAL_COLORS.active;
 }
 
+function goalStateMark(goal: WorkflowGoal): string {
+  if (goal.status === "complete") return "🟢";
+  if (goal.status === "blocked" || goal.blockers.some((item) => item.status === "open")) return "🔴";
+  if (goal.status === "paused" || goalProgress(goal).humanPending.length) return "🟡";
+  return "🔵";
+}
+
+function goalProgressMark(goal: WorkflowGoal): string {
+  const progress = goalProgress(goal);
+  if (progress.required.some((item) => item.status === "blocked")) return "🔴";
+  if (progress.satisfied.length === progress.required.length) return "🟢";
+  if (progress.humanPending.length) return "🟡";
+  return "🔵";
+}
+
+function planProgressMark(goal: WorkflowGoal): string {
+  if (!goal.plan.length) return "⚪";
+  if (goal.plan.some((item) => item.status === "blocked")) return "🔴";
+  if (goal.plan.every((item) => item.status === "done")) return "🟢";
+  if (goal.plan.some((item) => item.status === "in_progress")) return "🔵";
+  return "⚪";
+}
+
 function formatGoal(goal: WorkflowGoal): string {
   const progress = goalProgress(goal);
   const criteria = goal.criteria.flatMap((item) => [
-    `  ${criterionMark(item.status)} ${displayFieldText(item.id)} · ${displayFieldText(item.owner.toUpperCase())} · ${item.required ? "REQUIRED" : "OPTIONAL"} · ${displayFieldText(item.status.toUpperCase())} · ${displayFieldText(evidenceLabel(item.evidence.length))}`,
+    `  ${criterionMark(item.status)} ${markdownAccent(item.id)} · ${criterionOwnerMark(item.owner)} ${displayFieldText(item.owner.toUpperCase())} · ${criterionRequirementMark(item.required)} ${item.required ? "REQUIRED" : "OPTIONAL"} · **${displayFieldText(item.status.toUpperCase())}** · 📎 ${displayFieldText(evidenceLabel(item.evidence.length))}`,
     `    ${displayFieldText(item.text)}`,
     ...(item.note ? [`    Note: ${displayFieldText(item.note)}`] : []),
   ]);
   const blockers = goal.blockers.filter((item) => item.status === "open");
   const planDone = goal.plan.filter((item) => item.status === "done").length;
   const plan = goal.plan.flatMap((item) => [
-    `  ${planMark(item.status)} ${displayFieldText(item.id)} · ${displayFieldText(item.status.toUpperCase())}`,
+    `  ${planMark(item.status)} ${markdownAccent(item.id)} · **${displayFieldText(item.status.toUpperCase())}**`,
     `    ${displayFieldText(item.text)}`,
     ...(item.note ? [`    Note: ${displayFieldText(item.note)}`] : []),
   ]);
@@ -911,29 +946,29 @@ function formatGoal(goal: WorkflowGoal): string {
     `  ${displayFieldText(goal.objective)}`,
     "",
     "## Current",
-    `  **State**  ${displayFieldText(goalStateLabel(goal))}`,
-    `  **Phase**  ${displayFieldText(goal.phase)}`,
-    `  **Next**   ${displayFieldText(goal.nextAction ?? "Not set")}`,
+    `  ${markdownAccent("State")}  ${goalStateMark(goal)} ${displayFieldText(goalStateLabel(goal))}`,
+    `  ${markdownAccent("Phase")}  ${displayFieldText(goal.phase)}`,
+    `  ${markdownAccent("Next")}   ${displayFieldText(goal.nextAction ?? "Not set")}`,
     "",
     "## Progress",
-    `  **DoD**       ${displayFieldText(`${progress.satisfied.length}/${progress.required.length}`)} required satisfied`,
-    `  **Plan**      ${displayFieldText(`${planDone}/${goal.plan.length}`)} items done`,
-    `  **Blockers**  ${displayFieldText(blockers.length)} open`,
+    `  ${markdownAccent("DoD")}       ${goalProgressMark(goal)} ${displayFieldText(`${progress.satisfied.length}/${progress.required.length}`)} required satisfied`,
+    `  ${markdownAccent("Plan")}      ${planProgressMark(goal)} ${displayFieldText(`${planDone}/${goal.plan.length}`)} items done`,
+    `  ${markdownAccent("Blockers")}  ${blockers.length ? "🔴" : "🟢"} ${displayFieldText(blockers.length)} open`,
     "",
     "## Definition of Done",
     ...criteria,
     "",
     "## Plan",
-    ...(plan.length ? plan : ["  ○ No plan items yet"]),
+    ...(plan.length ? plan : ["  ⚪ — No plan items yet"]),
     "",
     "## Blockers",
-    ...(blockers.length ? blockers.flatMap((item) => [`  ! ${displayFieldText(item.id)}`, `    ${displayFieldText(item.summary)}`]) : ["  ✓ None open"]),
+    ...(blockers.length ? blockers.flatMap((item) => [`  🔴 ! ${markdownAccent(item.id)}`, `    ${displayFieldText(item.summary)}`]) : ["  🟢 ✓ None open"]),
     "",
     "## Details",
-    `  **Active time**  ${displayFieldText(formatElapsed(liveElapsedSeconds(goal)))}`,
-    `  **Revision**     ${displayFieldText(goal.revision)}`,
-    `  **Workspace**    ${displayFieldText(goal.workspace)}`,
-    `  **Goal ID**      ${displayFieldText(goal.id)}`,
+    `  ${markdownAccent("Active time")}  ${displayFieldText(formatElapsed(liveElapsedSeconds(goal)))}`,
+    `  ${markdownAccent("Revision")}     ${displayFieldText(goal.revision)}`,
+    `  ${markdownAccent("Workspace")}    ${displayFieldText(goal.workspace)}`,
+    `  ${markdownAccent("Goal ID")}      ${displayFieldText(goal.id)}`,
   ].join("\n");
 }
 

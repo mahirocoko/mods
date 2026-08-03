@@ -226,7 +226,11 @@ human gate is waiting.
 
 `/mh-goal status` remains the detailed idle command. It groups mission, current
 state, progress, DoD, plan, blockers, and metadata with host-rendered Markdown
-color rather than embedded ANSI escapes. While the main agent is working,
+accents plus redundant semantic color markers rather than embedded ANSI
+escapes. Stable labels and identifiers use the host accent; owner, requirement,
+status, evidence, and progress use distinct markers plus explicit text. Long
+values stay plain so terminal wrapping does not split theme color. While the
+main agent is working,
 `/mh-goal-status` is a separate read-only `runWhenBusy` command that returns
 immediately, writes nothing to the transcript, and shows a compact 10-second
 panel with theme-safe semantic color through the public panel render context.

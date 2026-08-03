@@ -1130,8 +1130,14 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
       && detailedStatusResult.output.includes("\n## Current\n")
       && detailedStatusResult.output.includes("\n## Progress\n")
       && detailedStatusResult.output.includes("\n## Definition of Done\n")
-      && detailedStatusResult.output.includes("\n## Plan\n  ○ No plan items yet")
-      && detailedStatusResult.output.includes("\n## Blockers\n  ✓ None open")
+      && detailedStatusResult.output.includes("  `State`  🟡 Waiting for Mahiro")
+      && detailedStatusResult.output.includes("  `Phase`  execution")
+      && detailedStatusResult.output.includes("  `Next`   Implement the focused mod entry")
+      && detailedStatusResult.output.includes("  `DoD`       🟡 0/2 required satisfied")
+      && detailedStatusResult.output.includes("  `Plan`      ⚪ 0/0 items done")
+      && detailedStatusResult.output.includes("  `Blockers`  🟢 0 open")
+      && detailedStatusResult.output.includes("\n## Plan\n  ⚪ — No plan items yet")
+      && detailedStatusResult.output.includes("\n## Blockers\n  🟢 ✓ None open")
       && detailedStatusResult.output.includes("\n## Details\n")
       && !detailedStatusResult.output.includes("\u001b"),
     "mahiro-goal detailed status must use theme-aware Markdown groups for mission, state, progress, work, blockers, and metadata",
@@ -1144,7 +1150,7 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
   escapedGoal.phase = escapedText("phase");
   escapedGoal.nextAction = escapedText("next");
   escapedGoal.workspace = escapedText("workspace");
-  escapedGoal.criteria[0].id = escapedText("criterion-id");
+  escapedGoal.criteria[0].id = `${escapedText("criterion-id")}\`raw`;
   escapedGoal.criteria[0].text = escapedText("criterion-text");
   escapedGoal.criteria[0].note = escapedText("criterion-note");
   escapedGoal.plan.push({
@@ -1184,7 +1190,8 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
       && !escapedStatusResult.output.includes("\u0007")
       && !escapedStatusResult.output.includes("\u0085")
       && !escapedStatusResult.output.includes("\t")
-      && !escapedStatusResult.output.includes("\n## injected"),
+      && !escapedStatusResult.output.includes("\n## injected")
+      && escapedStatusResult.output.includes("`criterion-id part ## injected 'raw`"),
     "mahiro-goal detailed status must flatten every rendered stored free-text and identifier field before Markdown composition",
   );
   const escapedPanelState = structuredClone(stateAfterCreate);
@@ -1226,6 +1233,25 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
     "busy Goal panel must apply theme-safe semantic colors through the public chalk render context",
   );
   writeFileSync(statePath, `${JSON.stringify(stateAfterCreate, null, 2)}\n`, { mode: 0o600 });
+
+  const blockedContext = { ...baseContext, agent: { id: "agent-blocked-status" }, conversation: { id: "conversation-blocked-status" } };
+  const blockedCreated = parseToolOutput(create.run({
+    ...blockedContext,
+    args: { objective: "Show blocked status consistently", criteria: [{ text: "Blocked work is visible", owner: "agent", required: true }] },
+  })).goal;
+  const blockedGoal = parseToolOutput(update.run({
+    ...blockedContext,
+    args: { action: "block_criterion", expected_revision: blockedCreated.revision, criterion_id: "criterion-01", summary: "Blocked fixture" },
+  })).goal;
+  const blockedStatus = goalCommand.run({ ...blockedContext, args: "status" });
+  assert(
+    blockedGoal.status === "blocked"
+      && blockedStatus.success !== false
+      && blockedStatus.output.includes("  `State`  🔴 Blocked")
+      && blockedStatus.output.includes("  `DoD`       🔴 0/1 required satisfied")
+      && blockedStatus.output.includes("🔴 ! `criterion-01` · 🔵 AGENT · 🟠 REQUIRED · **BLOCKED**"),
+    "blocked state, DoD progress, and criterion rows must share an explicit red semantic marker",
+  );
 
   const transformed = eventHandlers.get("turn_start")(
     { conversationId: "conversation-test", input: [{ role: "user", content: "continue" }] },
@@ -1280,6 +1306,12 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
     },
   })).goal;
   assert(claimed.criteria[0].status === "claimed" && claimed.revision === 3, "agent criterion must claim only after evidence");
+  const claimedStatus = goalCommand.run({ ...baseContext, args: "status" });
+  assert(
+    claimedStatus.success !== false
+      && claimedStatus.output.includes("🟢 ◉ `criterion-01` · 🔵 AGENT · 🟠 REQUIRED · **CLAIMED** · 📎 1 evidence item"),
+    "claimed criteria must retain explicit status copy and add a green semantic marker",
+  );
   const agentVerifyResult = goalCommand.run({
     ...baseContext,
     args: "verify criterion-01 bypass-evidence",
@@ -1301,6 +1333,10 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
   assert(verifyResult.success !== false, "human /mh-goal verify must succeed");
   const afterVerify = parseToolOutput(get.run({ ...baseContext, args: {} })).goal;
   assert(afterVerify.criteria[1].status === "verified" && afterVerify.revision === 4, "human verify must advance the criterion and revision");
+  assert(
+    verifyResult.output.includes("🟢 ✓ `criterion-02` · 🟣 HUMAN · 🟠 REQUIRED · **VERIFIED** · 📎 0 evidence items"),
+    "verified criteria must retain explicit status copy and add a green semantic marker",
+  );
 
   const completed = parseToolOutput(update.run({
     ...baseContext,
@@ -1353,6 +1389,13 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
     args: { action: "update_plan_item", expected_revision: 8, plan_id: planId, plan_status: "done", plan_note: "Mapped", summary: "Completed implementation map." },
   })).goal;
   assert(planUpdated.revision === 9 && planUpdated.plan[0].status === "done" && planUpdated.plan[0].note === "Mapped", "mahiro-goal must update a mutable plan item in place");
+  const donePlanStatus = goalCommand.run({ ...baseContext, args: "status" });
+  assert(
+    donePlanStatus.success !== false
+      && donePlanStatus.output.includes(`🟢 ✓ \`${planId}\` · **DONE**`)
+      && donePlanStatus.output.includes("  `Plan`      🟢 1/1 items done"),
+    "completed plan items and plan progress must add green semantic markers without removing text labels",
+  );
   const revisedMission = parseToolOutput(update.run({
     ...baseContext,
     args: { action: "revise_mission", expected_revision: 9, objective: "Human revision with an adjusted scope", next_action: "Implement the revised scope", summary: "Mahiro adjusted scope during execution." },
@@ -1614,7 +1657,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-mcp-proxy.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.8.6", "Package version must be 0.8.6");
+  assert(packageJson.version === "0.8.7", "Package version must be 0.8.7");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
 

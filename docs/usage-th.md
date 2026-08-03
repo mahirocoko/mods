@@ -159,7 +159,7 @@ state และไม่ปิด entry อื่นใน bundle
 /mh-goal clear <goal-id> <revision>
 ```
 
-`/mh-goal-status` เปิด panel สั้น ๆ ได้แม้ agent กำลังทำงาน ส่วน `/mh-goal status` เหมาะกับการดูรายละเอียดเต็มตอน idle โดยแยก Mission, Current, Progress, Definition of Done, Plan, Blockers และ Details เป็นกลุ่มชัดเจน สีของ output หลักมาจาก Markdown theme ของ Letta ส่วน panel ใช้สีตามสถานะผ่าน public render context จึงไม่ฝัง ANSI escape ลงใน transcript
+`/mh-goal-status` เปิด panel สั้น ๆ ได้แม้ agent กำลังทำงาน ส่วน `/mh-goal status` เหมาะกับการดูรายละเอียดเต็มตอน idle โดยแยก Mission, Current, Progress, Definition of Done, Plan, Blockers และ Details เป็นกลุ่มชัดเจน label กับ ID ที่สั้นใช้ inline accent จาก Markdown theme ส่วน owner, requirement, status, evidence และ progress แยกด้วย semantic marker พร้อมข้อความกำกับ ค่าเนื้อหาที่ยาวใช้สีปกติเพื่อไม่ให้สีขาดเมื่อ terminal wrap ส่วน panel ใช้สีตามสถานะผ่าน public render context จึงไม่ฝัง ANSI escape ลงใน transcript
 
 ตอบจบรอบหนึ่ง, checkpoint report, Execution Run ที่ `reported` หรือสถานะ Done ของ Herdr ไม่ได้แปลว่า Goal จบ Goal ที่ยัง active สามารถหยุดที่ checkpoint ได้ตามปกติ โดย status จะบอกว่าเหลืองานฝั่ง agent หรือกำลังรอ Mahiro ตรวจรับ
 

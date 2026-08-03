@@ -827,3 +827,43 @@ This is the release basis for v0.8.6. A `/reload` remains required in every
 already-running Letta Code session after installation. Final local HEAD,
 `origin/main`, annotated tag, GitHub release, and installed version alignment
 must be checked after publishing.
+
+## Semantic Mahiro Goal status tokens — 2026-08-03
+
+The detailed `/mh-goal status` output now separates scan roles without
+reintroducing raw ANSI. Stable labels and identifiers use Letta's inline
+Markdown accent; status and progress keep explicit text plus redundant semantic
+markers. Criterion rows distinguish Agent/Human ownership, Required/Optional
+gates, lifecycle status, and evidence counts with separate markers rather than
+coloring the whole metadata row as one undifferentiated accent span.
+
+Long free-text values such as Next, criterion descriptions, plan text, notes,
+and blocker summaries remain plain. This fixes the foreground-reported terminal
+artifact where a long inline-code Next value wrapped with an apparent color
+break and poor continuation hierarchy. Required blocked criteria now make the
+DoD summary red consistently with the blocked State and criterion row. Color is
+never the only signal: explicit labels, status copy, symbols, and indentation
+remain present.
+
+Focused smoke coverage proves Current and Progress token output, pending/empty
+states, claimed and human-verified criteria, completed plans, and consistent
+blocked State/DoD/criterion markers. Existing hostile-state ANSI/C0/C1
+flattening and no-raw-ANSI assertions remain active; a stored backtick fixture
+also proves accented identifiers cannot break their Markdown span. Final
+release evidence:
+
+- Mahiro inspected the foreground Letta CLI output, identified the color and
+  wrap issues, and explicitly approved publishing the corrected direction
+- a foreground Agy lane visibly confirmed Gemini 3.6 Flash (High), reviewed the
+  current diff read-only, and endorsed accenting only stable labels/IDs while
+  keeping long values plain
+- `pnpm check` passed for all ten entries
+- `pnpm pack --dry-run` passed with the expected package allowlist
+- repository and installed `mahiro-goal.ts` SHA-256 matched
+- `pnpm mods:status` reported every installed entry matching and
+  `Migration needed: no`
+
+This is the release basis for v0.8.7. A `/reload` remains required in every
+already-running Letta Code session after installation. Final local HEAD,
+`origin/main`, annotated tag, GitHub release, and installed version alignment
+must be checked after publishing.
