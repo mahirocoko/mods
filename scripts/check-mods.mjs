@@ -1093,6 +1093,8 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
   const update = tools.find(({ name }) => name === "mh_update_goal");
   const clear = tools.find(({ name }) => name === "mh_clear_goal");
   assert(clear.requiresApproval === true, "mahiro-goal clear must require an explicit runtime approval");
+  assert(create.parameters.properties.rules.maxItems === 8 && update.parameters.properties.rules.maxItems === 8, "mahiro-goal model schemas must expose one bounded Goal Rules contract");
+  assert(update.parameters.properties.action.enum.includes("move_goal") && update.parameters.properties.action.enum.includes("add_rule"), "mahiro-goal must keep movement and rule lifecycle in the existing update-tool registration");
 
   const noGoalTurn = eventHandlers.get("turn_start")(
     { conversationId: "conversation-test", input: [{ role: "user", content: "continue" }] },
@@ -1113,10 +1115,14 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
         { text: "Automated checks pass", owner: "agent", required: true },
         { text: "Mahiro accepts the runtime behavior", owner: "human", required: true },
       ],
+      rules: [
+        { text: "Keep the main agent as the only source writer", level: "must" },
+        { text: "Prefer the smallest grounded edit", level: "prefer" },
+      ],
       next_action: "Implement the focused mod entry",
     },
   })).goal;
-  assert(created.revision === 1 && created.criteria.length === 2 && Array.isArray(created.plan) && created.plan.length === 0, "mahiro-goal must create structured revision-1 mission state with an empty mutable plan");
+  assert(created.revision === 1 && created.criteria.length === 2 && created.rules.length === 2 && created.rules.every(({ source }) => source === "agent") && Array.isArray(created.plan) && created.plan.length === 0, "mahiro-goal must create structured revision-1 mission state with bounded rules and an empty mutable plan");
   assert((statSync(statePath).mode & 0o777) === 0o600, "mahiro-goal state must be mode 0600");
   const stateAfterCreate = JSON.parse(readFileSync(statePath, "utf8"));
   assert(
@@ -1129,13 +1135,17 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
       && detailedStatusResult.output.includes("# Mahiro Goal · ACTIVE\n\n## Mission\n")
       && detailedStatusResult.output.includes("\n## Current\n")
       && detailedStatusResult.output.includes("\n## Progress\n")
+      && detailedStatusResult.output.includes("\n## Goal Rules\n")
       && detailedStatusResult.output.includes("\n## Definition of Done\n")
       && detailedStatusResult.output.includes("  `State`  🟡 Waiting for Mahiro")
       && detailedStatusResult.output.includes("  `Phase`  execution")
       && detailedStatusResult.output.includes("  `Next`   Implement the focused mod entry")
       && detailedStatusResult.output.includes("  `DoD`       🟡 0/2 required satisfied")
       && detailedStatusResult.output.includes("  `Plan`      ⚪ 0/0 items done")
+      && detailedStatusResult.output.includes("  `Rules`     1 must · 1 prefer")
       && detailedStatusResult.output.includes("  `Blockers`  🟢 0 open")
+      && detailedStatusResult.output.includes(`◆ **MUST** \`${created.rules[0].id}\` · SOURCE AGENT`)
+      && detailedStatusResult.output.includes(`◇ **PREFER** \`${created.rules[1].id}\` · SOURCE AGENT`)
       && detailedStatusResult.output.includes("\n## Plan\n  ⚪ — No plan items yet")
       && detailedStatusResult.output.includes("\n## Blockers\n  🟢 ✓ None open")
       && detailedStatusResult.output.includes("\n## Details\n")
@@ -1150,6 +1160,8 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
   escapedGoal.phase = escapedText("phase");
   escapedGoal.nextAction = escapedText("next");
   escapedGoal.workspace = escapedText("workspace");
+  escapedGoal.rules[0].id = `${escapedText("rule-id")}\`raw`;
+  escapedGoal.rules[0].text = escapedText("rule-text");
   escapedGoal.criteria[0].id = `${escapedText("criterion-id")}\`raw`;
   escapedGoal.criteria[0].text = escapedText("criterion-text");
   escapedGoal.criteria[0].note = escapedText("criterion-note");
@@ -1177,6 +1189,8 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
         "phase part ## injected",
         "next part ## injected",
         "workspace part ## injected",
+        "rule-id part ## injected",
+        "rule-text part ## injected",
         "criterion-id part ## injected",
         "criterion-text part ## injected",
         "criterion-note part ## injected",
@@ -1191,6 +1205,7 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
       && !escapedStatusResult.output.includes("\u0085")
       && !escapedStatusResult.output.includes("\t")
       && !escapedStatusResult.output.includes("\n## injected")
+      && escapedStatusResult.output.includes("`rule-id part ## injected 'raw`")
       && escapedStatusResult.output.includes("`criterion-id part ## injected 'raw`"),
     "mahiro-goal detailed status must flatten every rendered stored free-text and identifier field before Markdown composition",
   );
@@ -1198,6 +1213,8 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
   const escapedPanelGoal = escapedPanelState.goals[JSON.stringify(["agent-test", "conversation-test", ""])];
   escapedPanelGoal.objective = escapedText("panel-objective");
   escapedPanelGoal.nextAction = escapedText("panel-next");
+  escapedPanelGoal.rules[0].id = escapedText("panel-rule-id");
+  escapedPanelGoal.rules[0].text = escapedText("panel-rule-text");
   escapedPanelGoal.criteria[1].id = escapedText("panel-human-id");
   writeFileSync(statePath, `${JSON.stringify(escapedPanelState, null, 2)}\n`, { mode: 0o600 });
   const busyStatusResult = busyGoalStatusCommand.run(baseContext);
@@ -1207,9 +1224,12 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
   assert(
     busyPanelText.includes("panel-objective part ## injected")
       && busyPanelText.includes("panel-next part ## injected")
+      && busyPanelText.includes("panel-rule-id part ## injected")
+      && busyPanelText.includes("panel-rule-text part ## injected")
       && busyPanelText.includes("panel-human-id part ## injected")
       && busyPanelText.includes("\nMISSION\n")
       && busyPanelText.includes("\nPROGRESS\n")
+      && busyPanelText.includes("\nRULES\n")
       && busyPanelText.includes("\nCURRENT\n")
       && busyPanelText.includes("\nNEXT\n")
       && !busyPanelText.includes("\u001b")
@@ -1231,6 +1251,18 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
       && coloredBusyPanelText.includes("<#FEE19C>Waiting for Mahiro")
       && coloredBusyPanelText.includes("Blockers <#64CF64>0</#64CF64>"),
     "busy Goal panel must apply theme-safe semantic colors through the public chalk render context",
+  );
+  const escapedReminder = eventHandlers.get("turn_start")(
+    { conversationId: "conversation-test", input: [{ role: "user", content: "continue" }] },
+    baseContext,
+  );
+  assert(
+    escapedReminder.input[0].content.includes("panel-rule-text part ## injected")
+      && !escapedReminder.input[0].content.includes("\n## injected")
+      && !escapedReminder.input[0].content.includes("\u001b")
+      && !escapedReminder.input[0].content.includes("\u0007")
+      && !escapedReminder.input[0].content.includes("\u0085"),
+    "Goal reminders must flatten hostile stored fields and rules before synthetic reminder composition",
   );
   writeFileSync(statePath, `${JSON.stringify(stateAfterCreate, null, 2)}\n`, { mode: 0o600 });
 
@@ -1266,6 +1298,13 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
     transformed.input[0].content.includes("checkpoint report") && transformed.input[0].content.includes("Turn completion"),
     "active Goal reminders must distinguish a checkpoint from Goal completion",
   );
+  assert(
+    transformed.input[0].content.includes(`MUST [${created.rules[0].id}]: Keep the main agent as the only source writer`)
+      && transformed.input[0].content.includes(`PREFER [${created.rules[1].id}]: Prefer the smallest grounded edit`)
+      && transformed.input[0].content.includes("never override system, safety, permission, repository, or Mahiro's current instructions")
+      && transformed.input[0].content.includes("never claimed, verified, or counted in progress"),
+    "active reminders must carry bounded rule levels plus explicit hierarchy and non-DoD semantics",
+  );
   const timestampedTurn = timestampHandler({ input: [{ role: "user", content: "composed turn" }] });
   const composedTurn = eventHandlers.get("turn_start")(
     { conversationId: "conversation-test", input: timestampedTurn.input },
@@ -1273,6 +1312,86 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
   );
   assert(!composedTurn.input[0].content.includes("<user_timestamp>"), "Mahiro Goal synthetic reminder must not be timestamped");
   assert(composedTurn.input[1].content.includes("<user_timestamp>"), "real user content must retain its timestamp after Goal reminder composition");
+
+  const ruleContext = { ...baseContext, agent: { id: "agent-rules" }, conversation: { id: "conversation-rules" } };
+  const ruleCreated = parseToolOutput(create.run({
+    ...ruleContext,
+    args: { objective: "Exercise bounded Goal Rules", criteria: [{ text: "Rule lifecycle passes", owner: "agent" }] },
+  })).goal;
+  const ruleAdded = parseToolOutput(update.run({
+    ...ruleContext,
+    args: { action: "add_rule", expected_revision: ruleCreated.revision, rule_text: "Use one source writer", rule_level: "must", summary: "Add source ownership rule" },
+  })).goal;
+  const stableRuleId = ruleAdded.rules[0].id;
+  assert(ruleAdded.revision === 2 && ruleAdded.rules[0].level === "must" && ruleAdded.rules[0].source === "agent", "agent rule creation must add one stable bounded rule and advance the mission revision");
+  const beforeStaleRule = readFileSync(statePath, "utf8");
+  let staleRuleBlocked = false;
+  try {
+    update.run({
+      ...ruleContext,
+      args: { action: "update_rule", expected_revision: 1, rule_id: stableRuleId, rule_text: "Stale mutation" },
+    });
+  } catch (error) {
+    staleRuleBlocked = String(error).includes("Stale Mahiro Goal revision");
+  }
+  assert(staleRuleBlocked && readFileSync(statePath, "utf8") === beforeStaleRule, "stale rule mutations must fail closed without rewriting state");
+  const ruleUpdated = parseToolOutput(update.run({
+    ...ruleContext,
+    args: { action: "update_rule", expected_revision: 2, rule_id: stableRuleId, rule_text: "Use one bounded source writer", rule_level: "prefer", summary: "Refine the source ownership rule" },
+  })).goal;
+  assert(ruleUpdated.revision === 3 && ruleUpdated.rules[0].id === stableRuleId && ruleUpdated.rules[0].level === "prefer" && ruleUpdated.rules[0].source === "agent", "rule updates must preserve stable ID and source while changing bounded text or level");
+  const ruleRevision = parseToolOutput(update.run({
+    ...ruleContext,
+    args: { action: "revise_mission", expected_revision: 3, next_action: "Continue with preserved rules", summary: "Adjust next action only" },
+  })).goal;
+  assert(ruleRevision.revision === 4 && ruleRevision.rules[0].id === stableRuleId, "revise_mission must preserve rules when the rules field is omitted");
+  const humanRuleAdd = goalCommand.run({ ...ruleContext, args: "rule add 4 must Keep this constraint local to the Goal" });
+  const afterHumanRule = parseToolOutput(get.run({ ...ruleContext, args: {} })).goal;
+  assert(humanRuleAdd.success !== false && afterHumanRule.revision === 5 && afterHumanRule.rules[1].source === "human", "revision-guarded human rule commands must record human provenance");
+  const ruleRemoved = parseToolOutput(update.run({
+    ...ruleContext,
+    args: { action: "remove_rule", expected_revision: 5, rule_id: stableRuleId, summary: "Remove superseded preference" },
+  })).goal;
+  assert(ruleRemoved.revision === 6 && ruleRemoved.rules.length === 1 && ruleRemoved.rules[0].source === "human", "rule removal must remove only the selected stable ID");
+  const ruleEvidence = parseToolOutput(update.run({
+    ...ruleContext,
+    args: { action: "add_evidence", expected_revision: 6, criterion_id: "criterion-01", kind: "test", summary: "Rule lifecycle smoke passed" },
+  })).goal;
+  const ruleClaimed = parseToolOutput(update.run({
+    ...ruleContext,
+    args: { action: "claim_criterion", expected_revision: ruleEvidence.revision, criterion_id: "criterion-01", summary: "Rule lifecycle evidence checked" },
+  })).goal;
+  const ruleCompleted = parseToolOutput(update.run({
+    ...ruleContext,
+    args: { action: "complete", expected_revision: ruleClaimed.revision },
+  })).goal;
+  assert(ruleCompleted.status === "complete" && ruleCompleted.rules.length === 1, "active rules must be reported on completion but never counted as synthetic criteria or completion gates");
+  const rulesCleared = parseToolOutput(update.run({
+    ...ruleContext,
+    args: { action: "revise_mission", expected_revision: ruleCompleted.revision, rules: [], next_action: "Continue without old rules", summary: "Explicitly clear stale goal rules" },
+  })).goal;
+  assert(rulesCleared.status === "active" && rulesCleared.rules.length === 0, "an explicit rules empty array must clear rules while reopening a completed current plan");
+
+  const invalidRuleCases = [
+    { label: "unknown-fields", rules: [{ text: "No unknown fields", level: "must", unknown: true }], expected: "unsupported fields" },
+    { label: "blank", rules: [{ text: "", level: "must" }], expected: "must not be empty" },
+    { label: "oversized", rules: [{ text: "x".repeat(501), level: "prefer" }], expected: "exceeds 500" },
+    { label: "invalid-level", rules: [{ text: "Use a valid level", level: "enforce" }], expected: "must be must or prefer" },
+    { label: "too-many", rules: Array.from({ length: 9 }, (_, index) => ({ text: `Rule ${index}`, level: "prefer" })), expected: "At most 8" },
+  ];
+  for (const invalidCase of invalidRuleCases) {
+    const invalidRuleContext = { ...baseContext, agent: { id: `agent-invalid-rules-${invalidCase.label}` }, conversation: { id: `conversation-invalid-rules-${invalidCase.label}` } };
+    let invalidRulesBlocked = false;
+    try {
+      create.run({
+        ...invalidRuleContext,
+        args: { objective: "Reject malformed rules", criteria: [{ text: "Never created" }], rules: invalidCase.rules },
+      });
+    } catch (error) {
+      invalidRulesBlocked = String(error).includes(invalidCase.expected);
+    }
+    assert(invalidRulesBlocked && parseToolOutput(get.run({ ...invalidRuleContext, args: {} })).goal === null, `rule runtime validation must reject ${invalidCase.label} without creating state`);
+  }
 
   const evidenceUpdate = parseToolOutput(update.run({
     ...baseContext,
@@ -1370,7 +1489,7 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
       expected_revision: 5,
     },
   })).goal;
-  assert(replaced.revision === 6 && replaced.id === completed.id && replaced.createdAt === completed.createdAt && replaced.objective === "Replacement" && replaced.status === "active", "explicit current-revision replacement must revise one stable living mission in place");
+  assert(replaced.revision === 6 && replaced.id === completed.id && replaced.createdAt === completed.createdAt && replaced.objective === "Replacement" && replaced.status === "active" && replaced.rules.length === 0, "explicit current-revision replacement must revise one stable living mission in place and clear omitted rules as a full replacement");
   const revisionlessHumanReplace = goalCommand.run({ ...baseContext, args: "replace Revisionless replacement" });
   assert(revisionlessHumanReplace.success === false && revisionlessHumanReplace.output.includes("<revision>"), "human mission revision must require an explicit current revision");
   const humanReplace = goalCommand.run({ ...baseContext, args: "revise 6 Human revision-guarded replacement" });
@@ -1442,12 +1561,122 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
   const sameConversationGoals = Object.values(isolatedState.goals).filter(({ conversationId }) => conversationId === "conversation-test");
   assert(sameConversationGoals.length === 2 && new Set(sameConversationGoals.map(({ agentId }) => agentId)).size === 2, "same conversation IDs from different agents must not merge goal state");
   const listedGoals = goalCommand.run({ ...baseContext, args: "list" });
-  assert(listedGoals.success !== false && listedGoals.output.includes(otherAgentGoal.id) && listedGoals.output.includes("human-only inventory"), "human Goal list must expose bounded cross-scope inventory without a model tool");
+  assert(listedGoals.success !== false && !listedGoals.output.includes(otherAgentGoal.id) && listedGoals.output.includes("human-only inventory"), "human Goal list must expose bounded same-agent cross-conversation inventory without leaking another agent's goals");
   const beforeWrongCrossClear = readFileSync(statePath, "utf8");
   const wrongCrossClear = goalCommand.run({ ...baseContext, args: `clear ${otherAgentGoal.id} 99` });
-  assert(wrongCrossClear.success === false && readFileSync(statePath, "utf8") === beforeWrongCrossClear, "cross-scope Goal clear must require the exact current revision without mutation");
+  assert(wrongCrossClear.success === false && readFileSync(statePath, "utf8") === beforeWrongCrossClear, "cross-agent Goal clear must fail closed without mutation");
   const crossClear = goalCommand.run({ ...baseContext, args: `clear ${otherAgentGoal.id} ${otherAgentGoal.revision}` });
-  assert(crossClear.success !== false && !readFileSync(statePath, "utf8").includes(otherAgentGoal.id), "human cross-scope Goal clear must remove exactly the selected goal id and revision");
+  assert(crossClear.success === false && readFileSync(statePath, "utf8") === beforeWrongCrossClear, "human cross-conversation Goal clear must remain restricted to the current agent");
+
+  const moveSourceContext = { ...baseContext, agent: { id: "agent-move" }, conversation: { id: "conversation-move-source" }, cwd: "/tmp/move-source-workspace" };
+  const moveTargetContext = { ...baseContext, agent: { id: "agent-move" }, conversation: { id: "conversation-move-target" }, cwd: "/tmp/move-target-workspace" };
+  const moveCreated = parseToolOutput(create.run({
+    ...moveSourceContext,
+    args: {
+      objective: "Move one living mission without copying it",
+      criteria: [{ text: "Transfer remains atomic", owner: "agent" }],
+      rules: [{ text: "Keep movement scoped to one owner conversation", level: "must" }],
+    },
+  })).goal;
+  const movePlanned = parseToolOutput(update.run({
+    ...moveSourceContext,
+    args: { action: "add_plan_item", expected_revision: moveCreated.revision, plan_text: "Preserve this nested plan item", plan_status: "in_progress", summary: "Add transfer fixture" },
+  })).goal;
+  const moved = parseToolOutput(update.run({
+    ...moveTargetContext,
+    args: { action: "move_goal", expected_revision: movePlanned.revision, goal_id: moveCreated.id, summary: "Mahiro requested cross-conversation continuation" },
+  })).goal;
+  assert(
+    moved.id === moveCreated.id
+      && moved.revision === movePlanned.revision + 1
+      && moved.conversationId === "conversation-move-target"
+      && moved.workspace === "/tmp/move-source-workspace"
+      && moved.rules[0].id === moveCreated.rules[0].id
+      && moved.plan[0].id === movePlanned.plan[0].id
+      && moved.history.at(-1).action === "goal_moved",
+    "move_goal must atomically preserve mission identity, nested state, rules, origin workspace, lifecycle, and bounded history while changing only conversation ownership",
+  );
+  assert(parseToolOutput(get.run({ ...moveSourceContext, args: {} })).goal === null, "the old conversation must detach immediately after a successful move");
+  assert(parseToolOutput(get.run({ ...moveTargetContext, args: {} })).goal.id === moveCreated.id, "the destination conversation must own the moved Goal immediately");
+  const oldMoveReminder = eventHandlers.get("turn_start")(
+    { conversationId: "conversation-move-source", input: [{ role: "user", content: "continue" }] },
+    moveSourceContext,
+  );
+  const newMoveReminder = eventHandlers.get("turn_start")(
+    { conversationId: "conversation-move-target", input: [{ role: "user", content: "continue" }] },
+    moveTargetContext,
+  );
+  assert(oldMoveReminder === undefined, "the old conversation must stop receiving Goal reminders after movement");
+  assert(
+    newMoveReminder.input[0].content.includes("Keep movement scoped to one owner conversation")
+      && newMoveReminder.input[0].content.includes("Workspace warning: goal was created for /tmp/move-source-workspace, current cwd is /tmp/move-target-workspace"),
+    "the destination reminder must retain rules and warn when the current cwd differs from the preserved origin workspace",
+  );
+
+  const secondMoveSourceContext = { ...moveSourceContext, conversation: { id: "conversation-move-source-2" }, cwd: "/tmp/move-source-workspace-2" };
+  const secondMoveCreated = parseToolOutput(create.run({
+    ...secondMoveSourceContext,
+    args: { objective: "Reject unsafe movement", criteria: [{ text: "Rejected moves preserve source state" }] },
+  })).goal;
+  const beforeRejectedMoves = readFileSync(statePath, "utf8");
+  let staleMoveBlocked = false;
+  try {
+    update.run({
+      ...{ ...moveTargetContext, conversation: { id: "conversation-empty-move-target" } },
+      args: { action: "move_goal", expected_revision: secondMoveCreated.revision + 1, goal_id: secondMoveCreated.id },
+    });
+  } catch (error) {
+    staleMoveBlocked = String(error).includes("Stale Mahiro Goal revision");
+  }
+  assert(staleMoveBlocked && readFileSync(statePath, "utf8") === beforeRejectedMoves, "stale movement must leave source and destination state byte-for-byte unchanged");
+  let crossAgentMoveBlocked = false;
+  try {
+    update.run({
+      ...{ ...moveTargetContext, agent: { id: "agent-move-other" }, conversation: { id: "conversation-cross-agent-target" } },
+      args: { action: "move_goal", expected_revision: secondMoveCreated.revision, goal_id: secondMoveCreated.id },
+    });
+  } catch (error) {
+    crossAgentMoveBlocked = String(error).includes("same agent");
+  }
+  assert(crossAgentMoveBlocked && readFileSync(statePath, "utf8") === beforeRejectedMoves, "cross-agent movement must fail closed without mutation");
+  let occupiedTargetBlocked = false;
+  try {
+    update.run({
+      ...moveTargetContext,
+      args: { action: "move_goal", expected_revision: secondMoveCreated.revision, goal_id: secondMoveCreated.id },
+    });
+  } catch (error) {
+    occupiedTargetBlocked = String(error).includes("already has a Mahiro Goal");
+  }
+  assert(occupiedTargetBlocked && readFileSync(statePath, "utf8") === beforeRejectedMoves, "movement into any occupied destination must fail closed without replacing either record");
+
+  const humanMoveTargetContext = { ...moveTargetContext, conversation: { id: "conversation-human-move-target" }, cwd: "/tmp/move-source-workspace-2" };
+  const humanMove = goalCommand.run({ ...humanMoveTargetContext, args: `move ${secondMoveCreated.id} ${secondMoveCreated.revision}` });
+  const humanMovedGoal = parseToolOutput(get.run({ ...humanMoveTargetContext, args: {} })).goal;
+  assert(humanMove.success !== false && humanMovedGoal.id === secondMoveCreated.id && humanMovedGoal.history.at(-1).actor === "human", "the human move command must target the invoking empty conversation and retain human movement provenance");
+  const beforeSameAgentClear = readFileSync(statePath, "utf8");
+  const staleSameAgentClear = goalCommand.run({ ...secondMoveSourceContext, args: `clear ${humanMovedGoal.id} ${humanMovedGoal.revision + 1}` });
+  assert(staleSameAgentClear.success === false && readFileSync(statePath, "utf8") === beforeSameAgentClear, "same-agent cross-conversation clear must retain exact revision protection");
+  const sameAgentClear = goalCommand.run({ ...secondMoveSourceContext, args: `clear ${humanMovedGoal.id} ${humanMovedGoal.revision}` });
+  assert(sameAgentClear.success !== false && parseToolOutput(get.run({ ...humanMoveTargetContext, args: {} })).goal === null, "human cross-conversation clear must remove only an exact same-agent Goal record");
+
+  const defaultMoveSourceContext = { ...baseContext, agent: { id: "agent-default-move" }, conversation: { id: "default" }, cwd: "/tmp/default-move-a" };
+  const defaultMoveTargetContext = { ...defaultMoveSourceContext, cwd: "/tmp/default-move-b" };
+  const defaultMoveCreated = parseToolOutput(create.run({
+    ...defaultMoveSourceContext,
+    args: { objective: "Keep raw default lanes isolated", criteria: [{ text: "Workspace lane remains exact" }] },
+  })).goal;
+  const beforeDefaultMove = readFileSync(statePath, "utf8");
+  let defaultWorkspaceMoveBlocked = false;
+  try {
+    update.run({
+      ...defaultMoveTargetContext,
+      args: { action: "move_goal", expected_revision: defaultMoveCreated.revision, goal_id: defaultMoveCreated.id },
+    });
+  } catch (error) {
+    defaultWorkspaceMoveBlocked = String(error).includes("exact workspace lane");
+  }
+  assert(defaultWorkspaceMoveBlocked && readFileSync(statePath, "utf8") === beforeDefaultMove, "raw default conversation movement must preserve exact workspace-key isolation");
 
   const completedListContext = { ...baseContext, agent: { id: "agent-completed-list" }, conversation: { id: "conversation-completed-list" } };
   const completedListGoal = parseToolOutput(create.run({
@@ -1530,6 +1759,7 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
     tokensUsed: 110,
   };
   delete legacyState.goals[legacyKey].plan;
+  delete legacyState.goals[legacyKey].rules;
   writeFileSync(statePath, `${JSON.stringify(legacyState, null, 2)}\n`, { mode: 0o600 });
   const legacyReminder = eventHandlers.get("turn_start")(
     { conversationId: "conversation-legacy-budget", input: [{ role: "user", content: "continue" }] },
@@ -1542,6 +1772,8 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
       && migratedLegacyGoal.revision === 1
       && Array.isArray(migratedLegacyGoal.plan)
       && migratedLegacyGoal.plan.length === 0
+      && Array.isArray(migratedLegacyGoal.rules)
+      && migratedLegacyGoal.rules.length === 0
       && !Object.hasOwn(migratedLegacyGoal, "tokenBudget")
       && !Object.hasOwn(migratedLegacyGoal, "tokenBaseline")
       && !Object.hasOwn(migratedLegacyGoal, "tokensUsed"),
@@ -1554,6 +1786,8 @@ async function checkMahiroGoalRegistration(activate, statePath, testing, timesta
       && persistedMigratedGoal.status === "active"
       && Array.isArray(persistedMigratedGoal.plan)
       && persistedMigratedGoal.plan.length === 0
+      && Array.isArray(persistedMigratedGoal.rules)
+      && persistedMigratedGoal.rules.length === 0
       && !Object.hasOwn(persistedMigratedGoal, "tokenBudget")
       && !Object.hasOwn(persistedMigratedGoal, "tokenBaseline")
       && !Object.hasOwn(persistedMigratedGoal, "tokensUsed"),
@@ -1657,7 +1891,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-mcp-proxy.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.8.7", "Package version must be 0.8.7");
+  assert(packageJson.version === "0.8.8", "Package version must be 0.8.8");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
 

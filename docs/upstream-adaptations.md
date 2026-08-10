@@ -38,7 +38,9 @@ Upstream:
   lanes.
 - A plain objective becomes a structured workflow goal with Definition of Done
   criteria, agent/human ownership, evidence, blockers, phase, next action,
-  revision guards, non-goals, workspace attribution, and bounded history.
+  revision guards, non-goals, workspace attribution, bounded stable-ID
+  `must | prefer` operating Rules, and bounded history. Rules remain scoped
+  mission context below higher-priority instructions and outside DoD progress.
 - Agent criteria require evidence before `claimed`; human criteria require the
   `/mh-goal verify` command before completion.
 - Completion fails closed while required criteria or blockers remain. Only the
@@ -48,6 +50,13 @@ Upstream:
 - Phase 1's immutable-goal/replacement model evolves into a living mission with
   a mutable bounded plan. Revisions preserve mission ID/history, while current
   plan completion requires an explicit later revision to reopen.
+- One Goal may move atomically into the invoking empty conversation of the same
+  agent. The locked transfer preserves mission state, Rules, lifecycle, origin
+  workspace, and bounded history while deleting the source scope in the same
+  write; it is never a shared or copied Goal.
+- `/mh-goal list`, cross-conversation clear, and movement remain same-agent
+  surfaces. Model Rule CRUD and movement reuse `mh_update_goal` so the accepted
+  bundle registration budget does not grow.
 
 ### Reject for Phase 1
 

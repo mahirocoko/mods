@@ -12,7 +12,7 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | --- | --- | --- |
 | `mods/mahiro-user-timestamps.ts` | `turn_start` | Adds safe local/IANA timestamp metadata and one visible block to each real user turn without timestamping synthetic workflow reminders. |
 | `mods/mahiro-herdr-lifecycle.ts` | lifecycle/turn/tool events + bounded child-process observation | Reports one truthful Letta pane state plus bounded child-task counts/types to the owning Herdr pane over its local socket. |
-| `mods/mahiro-goal.ts` | `/mh-goal`, busy-safe `/mh-goal-status`, `mh_get_goal`, `mh_create_goal`, `mh_update_goal`, `turn_start` | Structured conversation goal with DoD criteria, evidence, blockers, revision guards, and human verification gates. |
+| `mods/mahiro-goal.ts` | `/mh-goal`, busy-safe `/mh-goal-status`, `mh_get_goal`, `mh_create_goal`, `mh_update_goal`, `turn_start` | Structured movable conversation goal with bounded operating rules, DoD criteria, evidence, blockers, revision guards, and human verification gates. |
 | `mods/mahiro-code-evidence.ts` | `/mh-evidence`, `mh_code_evidence` (`get` / `collect` / `record`) | Bounded read-only Git evidence with separate staged/unstaged/untracked/base lanes, stale-proof external records, conservative verdicts, and explicit Goal handoff. |
 | `mods/mahiro-ux-workflow.ts` | `/mh-ux`, `mh_get_ux_workflow`, `mh_create_ux_workflow`, `mh_update_ux_workflow` | Revisioned UX coordination from frame through review, with a required `frontend-design` brief, human direction/review gates, bounded handoff/review evidence, and no Goal mutation. |
 | `mods/mahiro-code-map.ts` | `mh_code_map` | Stateless bounded guidance that routes conceptual discovery to `ccc`, exact symbols/paths/strings to exact search, and outline requests to external bounded outline tooling without reading or indexing source. |
@@ -199,15 +199,23 @@ run-ID plus revision stale-caller protection.
 ## Mahiro Goal ownership
 
 `/mh-goal`, `/mh-goal-status`, and the `mh_*` Goal tools are the Goal surfaces
-for this bundle. Goal state remains isolated by agent, conversation, and
-workspace scope and is never shared with another workflow mod.
+for this bundle. Goal state remains isolated by agent and one owning
+conversation at a time. A Goal can move atomically into another empty
+conversation of the same agent, but it is never copied/shared across
+conversations or shared with another workflow mod. The originating workspace
+remains attribution and produces a warning when the destination runs elsewhere;
+raw `default` lanes retain exact workspace-key isolation.
 
 ```text
 /mh-goal status
 /mh-goal-status  # transient TUI panel; works while the agent is busy
-/mh-goal list  # human-only remaining-work inventory across stored scopes
+/mh-goal list  # human-only remaining-work inventory across this agent
+/mh-goal move <goal-id> <revision>  # move into this empty same-agent conversation
 /mh-goal pause
 /mh-goal resume
+/mh-goal rule add <revision> must Keep one source writer
+/mh-goal rule update <revision> <rule-id> prefer Prefer the smallest grounded edit
+/mh-goal rule remove <revision> <rule-id>
 /mh-goal verify criterion-02 Foreground behavior accepted
 /mh-goal complete
 /mh-goal revise 7 A revised objective
@@ -224,8 +232,20 @@ Herdr activity label never means a Goal is complete. Active Goals may end a
 turn at a checkpoint; the status surface names whether agent work remains or a
 human gate is waiting.
 
+Each Goal may contain up to eight stable-ID operating Rules of at most 500
+characters. `must` is an active mission constraint; `prefer` is a non-blocking
+default. Rules stay scoped to the Goal, move with it, and appear in the active
+turn reminder plus both status surfaces. They never override system, safety,
+permission, repository, or Mahiro's current instructions; they are never
+claimed, verified, or counted in DoD progress. A known `must` violation that
+actually prevents work should use the existing blocker mechanism, while a
+`prefer` departure never blocks completion by itself. `mh_update_goal` owns
+revision-guarded `add_rule`, `update_rule`, and `remove_rule`; omitted `rules`
+during `revise_mission` preserve the collection, while explicit `rules: []`
+clears it. A full `replace` without rules starts the replacement with none.
+
 `/mh-goal status` remains the detailed idle command. It groups mission, current
-state, progress, DoD, plan, blockers, and metadata with host-rendered Markdown
+state, progress, Goal Rules, DoD, plan, blockers, and metadata with host-rendered Markdown
 accents plus redundant semantic color markers rather than embedded ANSI
 escapes. Stable labels and identifiers use the host accent; owner, requirement,
 status, evidence, and progress use distinct markers plus explicit text. Long
@@ -239,8 +259,14 @@ do not advertise a command they cannot render.
 
 State is stored at `~/.letta/mods/mahiro-goal.state.json` with atomic mode-0600
 writes and an ownership-checked cross-process mutation lock. The state key
-combines agent and conversation identity, plus workspace for raw `default`
-lanes, so unrelated agents/projects do not merge.
+combines agent and the currently owning conversation identity, plus workspace
+for raw `default` lanes, so unrelated agents/projects do not merge.
+`move_goal` and `/mh-goal move` perform one locked source-delete/target-insert,
+preserve the Goal ID, lifecycle, workspace, criteria/evidence, plan, Rules, and
+bounded history, then advance the revision once. The source conversation loses
+status/mutation/reminder ownership immediately. Stale revisions, cross-agent
+moves, ambiguous IDs, occupied destinations, and default-lane workspace
+mismatches fail without mutation.
 
 The owner-token lock directory is never reclaimed merely because it is old:
 another process may still own it. If a crashed process leaves a lock behind,
@@ -249,19 +275,20 @@ quarantines it. A completed current plan requires an explicit revision before
 normal mutation. Every mission revision requires the latest revision shown by
 `/mh-goal status`.
 
-Mahiro Goal is a **living mission with a mutable plan**. A revision keeps the
-same mission ID and history while it can update the objective, DoD, non-goals,
-phase, or next action. `mh_update_goal` also owns bounded plan items
+Mahiro Goal is a **living mission with bounded operating rules and a mutable
+plan**. A revision keeps the same mission ID and bounded history while it can
+update the objective, DoD, non-goals, Rules, phase, or next action.
+`mh_update_goal` also owns bounded plan items
 (`pending`, `in_progress`, `done`, `blocked`) so normal reprioritisation does
 not require creating a replacement goal. Revising a completed current plan is
 explicit and reopens it; completion is never mission destruction. Plan items are
 mutable coordination, not hidden completion gates: the explicit DoD and open
 blockers remain the completion audit.
 
-`/mh-goal list` shows only missions that still need attention; completed current
+`/mh-goal list` shows only same-agent missions that still need attention; completed current
 plans stay available through their own conversation status/history but are
-intentionally hidden from the inventory. Cross-scope cleanup requires the exact
-known goal ID and current revision. The model may use the
+intentionally hidden from the inventory. Cross-conversation cleanup requires the exact
+known Goal ID and current revision and cannot clear another agent's Goal. The model may use the
 revision-guarded `mh_clear_goal` only after Mahiro explicitly asked to clear the
 current mission; the destructive call requires runtime approval and removes the
 record rather than creating a synthetic completed goal. Record any disposition

@@ -124,16 +124,28 @@ Evidence to Goal separately with `mh_update_goal`.
 - `mh_get_goal` for model-readable current state and completion issues
 - `mh_create_goal` for explicitly approved structured mission creation and
   compatibility revisions
-- `mh_update_goal` for revision-guarded mission, plan, phase, next action,
-  evidence, claim, blocker, and current-plan completion mutations
+- `mh_update_goal` for revision-guarded mission, Goal Rule, plan, phase, next
+  action, evidence, claim, blocker, atomic same-agent movement, and current-plan
+  completion mutations
 - `mh_clear_goal` for an explicitly requested, runtime-approval-gated,
   revision-guarded clear of the current conversation mission
 - one compact `turn_start` reminder while the goal is active
 
-A mission contains one objective, workflow phase, next action, a bounded mutable
-plan, non-goals, required or optional DoD criteria, agent/human ownership,
-structured evidence, blockers, workspace attribution, active-time tracking,
-revision, and bounded history.
+A mission contains one objective, workflow phase, next action, up to eight
+bounded stable-ID `must | prefer` operating Rules, a bounded mutable plan,
+non-goals, required or optional DoD criteria, agent/human ownership, structured
+evidence, blockers, workspace attribution, active-time tracking, revision, and
+bounded history. Rules are mission context, not DoD: they are never claimed,
+verified, or counted in progress, and `prefer` never blocks completion. Neither
+level can override system, safety, permission, repository, or current-human
+instructions.
+
+Rules are created through the approved `mh_create_goal` packet or changed one at
+a time through revision-guarded `add_rule`, `update_rule`, and `remove_rule`
+actions (with equivalent human `/mh-goal rule ...` commands). Rule source is
+derived from the mutation actor and cannot be caller-spoofed. Omitting `rules`
+from `revise_mission` preserves existing IDs and order; explicit `rules: []`
+clears them. Full mission replacement treats omitted Rules as none.
 
 Agent-owned criteria require evidence before the agent may mark them `claimed`.
 Human-owned criteria can only become `verified` through `/mh-goal verify`.
@@ -146,9 +158,15 @@ checkpoint; Goal status names whether the next owner is the agent or Mahiro.
 
 State is isolated at `~/.letta/mods/mahiro-goal.state.json`, written atomically
 with mode `0600`, and guarded by an ownership-checked cross-process mutation
-lock. Scope keys combine agent and conversation identity, plus workspace for
-raw `default` lanes. Corrupt or unsupported state fails closed rather than
-being silently reset.
+lock. Scope keys combine agent and the one currently owning conversation
+identity, plus workspace for raw `default` lanes. `move_goal` and `/mh-goal move`
+atomically re-key one Goal into the invoking empty conversation of the same
+agent, preserve all mission state and origin workspace, append bounded movement
+history, and detach the old conversation. Stale revisions, cross-agent
+movement, occupied targets, and default-lane workspace mismatches fail closed.
+A non-default destination in another cwd receives the existing workspace warning
+instead of silently changing attribution. Corrupt or unsupported state fails
+closed rather than being silently reset.
 
 The lock is an owner-token directory removed only by its owner. It is never
 auto-reclaimed by age. `/mh-goal unlock --force` atomically quarantines the
@@ -158,15 +176,17 @@ Completed current plans require an explicit revision before normal mutation, but
 the mission itself remains stable and editable in place. Every mission revision
 requires the current revision and records history; legacy `replace` remains a
 compatibility alias. Legacy token-budget fields are ignored on read; legacy
-`budget_limited` goals resume as active goals without quota enforcement.
+`budget_limited` goals resume as active goals without quota enforcement, and
+pre-Rules Goal records normalize to `rules: []` without an eager state rewrite.
 
 `/mh-goal list` and `/mh-run list` are bounded human-only **remaining-work**
 inventories for cross-conversation hygiene. Completed current Goal plans and
 terminal handed-off/abandoned Runs are intentionally hidden; their scoped status
 and history remain readable. Run list rows show declared Goal refs as
-coordination metadata, never live mission validation. Cross-scope Goal clear,
-Run abandon, and terminal Run clear require an exact known ID plus current
-revision and are intentionally not model tools. No stale record is cleared
+coordination metadata, never live mission validation. Cross-conversation Goal
+clear, Run abandon, and terminal Run clear require an exact known ID plus
+current revision; Goal inventory and cross-conversation clear remain same-agent
+only. These cleanup operations are intentionally not model tools. No stale record is cleared
 automatically.
 
 Evidence/history are bounded but may contain private paths, commands, URLs, and

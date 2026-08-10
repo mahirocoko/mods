@@ -28,6 +28,8 @@ const MAX_OBJECTIVE_CHARS = 4000;
 const MAX_CRITERIA = 20;
 const MAX_CRITERION_CHARS = 800;
 const MAX_NON_GOALS = 20;
+const MAX_RULES = 8;
+const MAX_RULE_CHARS = 500;
 const MAX_TEXT_CHARS = 1200;
 const MAX_EVIDENCE_PER_CRITERION = 30;
 const MAX_BLOCKERS = 30;
@@ -58,6 +60,8 @@ type CriterionOwner = "agent" | "human";
 type CriterionStatus = "pending" | "claimed" | "verified" | "blocked";
 type Actor = "agent" | "human" | "system";
 type EvidenceKind = "file" | "command" | "test" | "browser" | "native" | "manual" | "user" | "other";
+type RuleLevel = "must" | "prefer";
+type RuleSource = "agent" | "human";
 
 interface Scope {
   agentId: string;
@@ -88,6 +92,13 @@ interface Criterion {
   evidence: EvidenceItem[];
   note: string | null;
   updatedAt: string;
+}
+
+interface GoalRule {
+  id: string;
+  text: string;
+  level: RuleLevel;
+  source: RuleSource;
 }
 
 interface Blocker {
@@ -125,6 +136,7 @@ interface WorkflowGoal {
   nextAction: string | null;
   criteria: Criterion[];
   nonGoals: string[];
+  rules: GoalRule[];
   blockers: Blocker[];
   plan: PlanItem[];
   workspace: string;
@@ -148,10 +160,16 @@ interface CriterionInput {
   required?: boolean;
 }
 
+interface GoalRuleInput {
+  text: string;
+  level?: RuleLevel;
+}
+
 interface GoalCreateInput {
   objective: string;
   criteria: CriterionInput[];
   nonGoals?: string[];
+  rules?: GoalRuleInput[];
   nextAction?: string | null;
   replace?: boolean;
   expectedRevision?: number | null;
@@ -228,6 +246,7 @@ function normalizeStoredGoal(value: unknown): unknown {
   // Phase 1 missions predate the mutable plan. Keeping schemaVersion 1 and
   // normalizing the absent field preserves existing conversation state.
   if (normalized.plan === undefined) normalized.plan = [];
+  if (normalized.rules === undefined) normalized.rules = [];
   delete normalized.tokenBudget;
   delete normalized.tokenBaseline;
   delete normalized.tokensUsed;
@@ -275,12 +294,13 @@ function validateStoredGoal(key: string, value: unknown): asserts value is Workf
   if ((value.status === "active") !== (value.activeStartedAt !== null)) {
     throw new Error(`Mahiro Goal state entry ${key} has inconsistent active clock state.`);
   }
-  if (!Array.isArray(value.criteria) || !Array.isArray(value.nonGoals) || !Array.isArray(value.blockers) || !Array.isArray(value.plan) || !Array.isArray(value.history)) {
+  if (!Array.isArray(value.criteria) || !Array.isArray(value.nonGoals) || !Array.isArray(value.rules) || !Array.isArray(value.blockers) || !Array.isArray(value.plan) || !Array.isArray(value.history)) {
     throw new Error(`Mahiro Goal state entry ${key} has invalid collection fields.`);
   }
   if (value.criteria.length === 0
     || value.criteria.length > MAX_CRITERIA
     || value.nonGoals.length > MAX_NON_GOALS
+    || value.rules.length > MAX_RULES
     || value.blockers.length > MAX_BLOCKERS
     || value.plan.length > MAX_PLAN_ITEMS
     || value.history.length === 0
@@ -288,8 +308,8 @@ function validateStoredGoal(key: string, value: unknown): asserts value is Workf
     || value.nonGoals.some((item: unknown) => !isBoundedString(item, MAX_CRITERION_CHARS))) {
     throw new Error(`Mahiro Goal state entry ${key} exceeds collection limits or contains invalid non-goals.`);
   }
-  if (!hasUniqueIds(value.criteria) || !hasUniqueIds(value.blockers)) {
-    throw new Error(`Mahiro Goal state entry ${key} contains duplicate criterion or blocker IDs.`);
+  if (!hasUniqueIds(value.criteria) || !hasUniqueIds(value.rules) || !hasUniqueIds(value.blockers)) {
+    throw new Error(`Mahiro Goal state entry ${key} contains duplicate criterion, rule, or blocker IDs.`);
   }
   for (const criterion of value.criteria) {
     if (!isRecord(criterion)
@@ -319,6 +339,16 @@ function validateStoredGoal(key: string, value: unknown): asserts value is Workf
         || !isIsoTimestamp(evidence.createdAt)) {
         throw new Error(`Mahiro Goal state entry ${key} has invalid criterion evidence.`);
       }
+    }
+  }
+  for (const rule of value.rules) {
+    if (!isRecord(rule)
+      || Object.keys(rule).some((field) => !["id", "text", "level", "source"].includes(field))
+      || !isBoundedString(rule.id, 120)
+      || !isBoundedString(rule.text, MAX_RULE_CHARS)
+      || !["must", "prefer"].includes(rule.level)
+      || !["agent", "human"].includes(rule.source)) {
+      throw new Error(`Mahiro Goal state entry ${key} has an invalid rule.`);
     }
   }
   for (const blocker of value.blockers) {
@@ -582,14 +612,16 @@ function formatGoalList(goals: WorkflowGoal[]): string {
   ].join("\n");
 }
 
-function listGoals(): WorkflowGoal[] {
-  return Object.values(readState().goals).map((goal) => structuredClone(goal));
+function listGoals(agentId: string): WorkflowGoal[] {
+  return Object.values(readState().goals)
+    .filter((goal) => goal.agentId === agentId)
+    .map((goal) => structuredClone(goal));
 }
 
-function clearGoalById(goalId: string, revision: number): WorkflowGoal {
+function clearGoalById(goalId: string, revision: number, agentId: string): WorkflowGoal {
   return withLockedState((state) => {
-    const matches = Object.entries(state.goals).filter(([, goal]) => goal.id === goalId);
-    if (!matches.length) throw new Error(`No Mahiro Goal exists with id ${goalId}.`);
+    const matches = Object.entries(state.goals).filter(([, goal]) => goal.id === goalId && goal.agentId === agentId);
+    if (!matches.length) throw new Error(`No Mahiro Goal exists with id ${goalId} for this agent.`);
     if (matches.length > 1) throw new Error(`Mahiro Goal id ${goalId} is ambiguous; refusing to clear.`);
     const [key, current] = matches[0];
     if (!Number.isSafeInteger(revision) || revision !== current.revision) {
@@ -600,6 +632,46 @@ function clearGoalById(goalId: string, revision: number): WorkflowGoal {
   });
 }
 
+function moveGoalToScope(scope: Scope, currentWorkspace: string, goalId: string, expectedRevision: number, actor: Actor): WorkflowGoal {
+  if (!goalId) throw new Error("goal_id is required when moving a Mahiro Goal.");
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+    throw new Error("expected_revision must be the current positive mission revision.");
+  }
+  return withLockedState((state) => {
+    const matches = Object.entries(state.goals).filter(([, goal]) => goal.id === goalId);
+    if (!matches.length) throw new Error(`No Mahiro Goal exists with id ${goalId}.`);
+    if (matches.length > 1) throw new Error(`Mahiro Goal id ${goalId} is ambiguous; refusing to move.`);
+    const [sourceKey, current] = matches[0];
+    if (sourceKey === scope.key) throw new Error(`${goalId} is already attached to this conversation.`);
+    if (current.agentId !== scope.agentId) {
+      throw new Error("Mahiro Goals may move only between conversations owned by the same agent.");
+    }
+    if (current.revision !== expectedRevision) {
+      throw new Error(`Stale Mahiro Goal revision: expected ${expectedRevision}, current ${current.revision}. Read the mission again before moving it.`);
+    }
+    if (state.goals[scope.key]) {
+      throw new Error("The destination conversation already has a Mahiro Goal. Clear or finish that record before moving another goal here.");
+    }
+    if (scope.conversationId === "default" && resolve(current.workspace) !== resolve(currentWorkspace)) {
+      throw new Error("A raw default conversation may move a Mahiro Goal only within its exact workspace lane.");
+    }
+    const revision = current.revision + 1;
+    const moved = structuredClone(current);
+    const sourceConversationId = moved.conversationId;
+    moved.conversationId = scope.conversationId;
+    moved.revision = revision;
+    moved.updatedAt = nowIso();
+    moved.history = [
+      ...moved.history,
+      historyEntry(revision, actor, "goal_moved", `Moved from conversation ${sourceConversationId} to ${scope.conversationId}.`),
+    ].slice(-MAX_HISTORY);
+    validateStoredGoal(scope.key, moved);
+    delete state.goals[sourceKey];
+    state.goals[scope.key] = moved;
+    return structuredClone(moved);
+  });
+}
+
 function validateObjective(value: unknown): string {
   const objective = String(value ?? "").trim();
   if (!objective) throw new Error("Goal objective must not be empty.");
@@ -607,6 +679,13 @@ function validateObjective(value: unknown): string {
     throw new Error(`Goal objective exceeds ${MAX_OBJECTIVE_CHARS} characters.`);
   }
   return objective;
+}
+
+function validateGoalIdInput(value: unknown): string {
+  const goalId = String(value ?? "").trim();
+  if (!goalId) throw new Error("goal_id is required when moving a Mahiro Goal.");
+  if (goalId.length > 160) throw new Error("goal_id exceeds 160 characters.");
+  return goalId;
 }
 
 function normalizeCriteria(input: CriterionInput[]): Criterion[] {
@@ -649,10 +728,40 @@ function normalizeNonGoals(input: unknown): string[] {
   });
 }
 
+function normalizeRules(input: unknown, source: RuleSource, reservedIds: Iterable<string> = []): GoalRule[] {
+  if (input == null) return [];
+  if (!Array.isArray(input)) throw new Error("rules must be an array.");
+  if (input.length > MAX_RULES) throw new Error(`At most ${MAX_RULES} goal rules are allowed.`);
+  const usedIds = new Set(reservedIds);
+  return input.map((item, index) => {
+    if (!isRecord(item) || Object.keys(item).some((field) => !["text", "level"].includes(field))) {
+      throw new Error(`Rule ${index + 1} contains unsupported fields.`);
+    }
+    const text = String(item.text ?? "").trim();
+    if (!text) throw new Error(`Rule ${index + 1} must not be empty.`);
+    if (text.length > MAX_RULE_CHARS) throw new Error(`Rule ${index + 1} exceeds ${MAX_RULE_CHARS} characters.`);
+    const level = item.level ?? "prefer";
+    if (level !== "must" && level !== "prefer") {
+      throw new Error(`Rule ${index + 1} level must be must or prefer.`);
+    }
+    let id = "";
+    do id = `rule-${randomUUID().slice(0, 8)}`;
+    while (usedIds.has(id));
+    usedIds.add(id);
+    return {
+      id,
+      text,
+      level,
+      source,
+    };
+  });
+}
+
 function createGoal(scope: Scope, workspace: string, input: GoalCreateInput, actor: Actor): WorkflowGoal {
   const objective = validateObjective(input.objective);
   const criteria = normalizeCriteria(input.criteria);
   const nonGoals = normalizeNonGoals(input.nonGoals);
+  const rules = normalizeRules(input.rules, actor === "human" ? "human" : "agent");
   const nextAction = input.nextAction == null ? null : compactText(input.nextAction);
   if (input.nextAction != null && !nextAction) throw new Error("next_action must not be empty when provided.");
   const timestamp = nowIso();
@@ -673,6 +782,7 @@ function createGoal(scope: Scope, workspace: string, input: GoalCreateInput, act
       revised.objective = objective;
       revised.criteria = criteria;
       revised.nonGoals = nonGoals;
+      revised.rules = rules;
       revised.nextAction = nextAction;
       revised.phase = "planning";
       revised.blockers = [];
@@ -697,6 +807,7 @@ function createGoal(scope: Scope, workspace: string, input: GoalCreateInput, act
       nextAction,
       criteria,
       nonGoals,
+      rules,
       blockers: [],
       plan: [],
       workspace,
@@ -752,14 +863,48 @@ function planItemById(goal: WorkflowGoal, id: unknown): PlanItem {
   return item;
 }
 
-function reviseMission(goal: WorkflowGoal, args: any): WorkflowGoal {
-  const editable = ["objective", "criteria", "non_goals", "phase", "next_action"];
+function ruleById(goal: WorkflowGoal, id: unknown): GoalRule {
+  const rule = goal.rules.find((item) => item.id === String(id ?? ""));
+  if (!rule) throw new Error(`Unknown goal rule: ${String(id ?? "<missing>")}`);
+  return rule;
+}
+
+function addRule(goal: WorkflowGoal, args: any, source: RuleSource): WorkflowGoal {
+  if (goal.rules.length >= MAX_RULES) throw new Error(`A mission may contain at most ${MAX_RULES} goal rules.`);
+  const [rule] = normalizeRules([{ text: args.rule_text, level: args.rule_level }], source, goal.rules.map((item) => item.id));
+  goal.rules.push(rule);
+  return goal;
+}
+
+function updateRule(goal: WorkflowGoal, args: any): WorkflowGoal {
+  const rule = ruleById(goal, args.rule_id);
+  if (!Object.hasOwn(args, "rule_text") && !Object.hasOwn(args, "rule_level")) {
+    throw new Error("update_rule needs rule_text, rule_level, or both.");
+  }
+  if (Object.hasOwn(args, "rule_text")) {
+    const text = String(args.rule_text ?? "").trim();
+    if (!text) throw new Error("rule_text must not be empty.");
+    if (text.length > MAX_RULE_CHARS) throw new Error(`rule_text exceeds ${MAX_RULE_CHARS} characters.`);
+    rule.text = text;
+  }
+  if (Object.hasOwn(args, "rule_level")) {
+    if (args.rule_level !== "must" && args.rule_level !== "prefer") {
+      throw new Error("rule_level must be must or prefer.");
+    }
+    rule.level = args.rule_level;
+  }
+  return goal;
+}
+
+function reviseMission(goal: WorkflowGoal, args: any, actor: Actor): WorkflowGoal {
+  const editable = ["objective", "criteria", "non_goals", "rules", "phase", "next_action"];
   if (!editable.some((field) => Object.hasOwn(args, field))) {
-    throw new Error("revise_mission needs at least one of objective, criteria, non_goals, phase, or next_action.");
+    throw new Error("revise_mission needs at least one of objective, criteria, non_goals, rules, phase, or next_action.");
   }
   if (Object.hasOwn(args, "objective")) goal.objective = validateObjective(args.objective);
   if (Object.hasOwn(args, "criteria")) goal.criteria = normalizeCriteria(args.criteria);
   if (Object.hasOwn(args, "non_goals")) goal.nonGoals = normalizeNonGoals(args.non_goals);
+  if (Object.hasOwn(args, "rules")) goal.rules = normalizeRules(args.rules, actor === "human" ? "human" : "agent");
   if (Object.hasOwn(args, "phase")) {
     const phase = compactText(args.phase, 120);
     if (!phase) throw new Error("phase must not be empty when revising a mission.");
@@ -867,6 +1012,10 @@ function planMark(status: PlanItemStatus): string {
   return "⚪";
 }
 
+function ruleMark(level: RuleLevel): string {
+  return level === "must" ? "◆" : "◇";
+}
+
 function evidenceLabel(count: number): string {
   return `${count} evidence item${count === 1 ? "" : "s"}`;
 }
@@ -927,6 +1076,8 @@ function planProgressMark(goal: WorkflowGoal): string {
 
 function formatGoal(goal: WorkflowGoal): string {
   const progress = goalProgress(goal);
+  const mustRules = goal.rules.filter((item) => item.level === "must").length;
+  const preferRules = goal.rules.length - mustRules;
   const criteria = goal.criteria.flatMap((item) => [
     `  ${criterionMark(item.status)} ${markdownAccent(item.id)} · ${criterionOwnerMark(item.owner)} ${displayFieldText(item.owner.toUpperCase())} · ${criterionRequirementMark(item.required)} ${item.required ? "REQUIRED" : "OPTIONAL"} · **${displayFieldText(item.status.toUpperCase())}** · 📎 ${displayFieldText(evidenceLabel(item.evidence.length))}`,
     `    ${displayFieldText(item.text)}`,
@@ -938,6 +1089,10 @@ function formatGoal(goal: WorkflowGoal): string {
     `  ${planMark(item.status)} ${markdownAccent(item.id)} · **${displayFieldText(item.status.toUpperCase())}**`,
     `    ${displayFieldText(item.text)}`,
     ...(item.note ? [`    Note: ${displayFieldText(item.note)}`] : []),
+  ]);
+  const rules = goal.rules.flatMap((item) => [
+    `  ${ruleMark(item.level)} **${displayFieldText(item.level.toUpperCase())}** ${markdownAccent(item.id)} · SOURCE ${displayFieldText(item.source.toUpperCase())}`,
+    `    ${displayFieldText(item.text)}`,
   ]);
   return [
     `# Mahiro Goal · ${displayFieldText(goal.status.toUpperCase())}`,
@@ -953,7 +1108,11 @@ function formatGoal(goal: WorkflowGoal): string {
     "## Progress",
     `  ${markdownAccent("DoD")}       ${goalProgressMark(goal)} ${displayFieldText(`${progress.satisfied.length}/${progress.required.length}`)} required satisfied`,
     `  ${markdownAccent("Plan")}      ${planProgressMark(goal)} ${displayFieldText(`${planDone}/${goal.plan.length}`)} items done`,
+    `  ${markdownAccent("Rules")}     ${displayFieldText(`${mustRules} must · ${preferRules} prefer`)}`,
     `  ${markdownAccent("Blockers")}  ${blockers.length ? "🔴" : "🟢"} ${displayFieldText(blockers.length)} open`,
+    "",
+    "## Goal Rules",
+    ...(rules.length ? rules : ["  — None"]),
     "",
     "## Definition of Done",
     ...criteria,
@@ -968,6 +1127,7 @@ function formatGoal(goal: WorkflowGoal): string {
     `  ${markdownAccent("Active time")}  ${displayFieldText(formatElapsed(liveElapsedSeconds(goal)))}`,
     `  ${markdownAccent("Revision")}     ${displayFieldText(goal.revision)}`,
     `  ${markdownAccent("Workspace")}    ${displayFieldText(goal.workspace)}`,
+    `  ${markdownAccent("Conversation")} ${displayFieldText(goal.conversationId)}`,
     `  ${markdownAccent("Goal ID")}      ${displayFieldText(goal.id)}`,
   ].join("\n");
 }
@@ -980,6 +1140,7 @@ function compactStatusPanel(goal: WorkflowGoal | null, chalk?: any): string[] {
   const progress = goalProgress(goal);
   const blockers = goal.blockers.filter((item) => item.status === "open").length;
   const planDone = goal.plan.filter((item) => item.status === "done").length;
+  const visibleRules = goal.rules.slice(0, 3);
   const section = (text: string) => panelColor(chalk, GOAL_COLORS.section, text);
   const progressColor = progress.satisfied.length === progress.required.length
     ? GOAL_COLORS.complete
@@ -991,6 +1152,13 @@ function compactStatusPanel(goal: WorkflowGoal | null, chalk?: any): string[] {
     `  ${compactText(displayFieldText(goal.objective), 100)}`,
     section("PROGRESS"),
     `  DoD ${panelColor(chalk, progressColor, displayFieldText(`${progress.satisfied.length}/${progress.required.length}`))} · Plan ${panelColor(chalk, progressColor, displayFieldText(`${planDone}/${goal.plan.length}`))} · Blockers ${panelColor(chalk, blockerColor, displayFieldText(String(blockers)))}`,
+    section("RULES"),
+    ...(visibleRules.length
+      ? [
+        ...visibleRules.map((item) => `  ${displayFieldText(item.level.toUpperCase())} ${displayFieldText(item.id)} · ${compactText(displayFieldText(item.text), 90)}`),
+        ...(goal.rules.length > visibleRules.length ? [`  +${goal.rules.length - visibleRules.length} more`] : []),
+      ]
+      : ["  None"]),
     section("CURRENT"),
     `  ${panelColor(chalk, goalStateColor(goal), compactText(displayFieldText(goalStateLabel(goal)), 100))}`,
     section("NEXT"),
@@ -1000,22 +1168,30 @@ function compactStatusPanel(goal: WorkflowGoal | null, chalk?: any): string[] {
 
 function buildReminder(goal: WorkflowGoal, currentWorkspace: string): string {
   const progress = goalProgress(goal);
+  const rules = goal.rules.length
+    ? goal.rules.map((item) => `- ${displayFieldText(item.level.toUpperCase())} [${displayFieldText(item.id)}]: ${displayFieldText(item.text)}`).join("\n")
+    : "- none";
   const workspaceWarning = currentWorkspace === goal.workspace
     ? ""
-    : `\nWorkspace warning: goal was created for ${goal.workspace}, current cwd is ${currentWorkspace}. Do not silently move goal ownership.`;
+    : `\nWorkspace warning: goal was created for ${displayFieldText(goal.workspace)}, current cwd is ${displayFieldText(currentWorkspace)}. Do not silently change workspace ownership.`;
   return `<system-reminder>
 Mahiro Workflow Goal is ${goal.status} for this conversation.
 
-Objective: ${goal.objective}
-Phase: ${goal.phase}
-Next action: ${goal.nextAction ?? "choose the smallest grounded next action"}
+Objective: ${displayFieldText(goal.objective)}
+Phase: ${displayFieldText(goal.phase)}
+Next action: ${displayFieldText(goal.nextAction ?? "choose the smallest grounded next action")}
 DoD progress: ${progress.satisfied.length}/${progress.required.length} required criteria satisfied
 Plan: ${goal.plan.filter((item) => item.status === "done").length}/${goal.plan.length} items done
-Human gates pending: ${progress.humanPending.length ? progress.humanPending.map((item) => item.id).join(", ") : "none"}
+Human gates pending: ${progress.humanPending.length ? progress.humanPending.map((item) => displayFieldText(item.id)).join(", ") : "none"}
 Open blockers: ${goal.blockers.filter((item) => item.status === "open").length}
 Revision: ${goal.revision}${workspaceWarning}
 
-This is a living mission: revise its objective, DoD, boundaries, or plan when Mahiro changes direction, then record one short reason in the mutation summary. Turn completion, a checkpoint report, an Execution Run report, and Herdr Done never mean the current plan is complete.
+Goal-scoped operating rules:
+${rules}
+
+MUST rules are active mission constraints; PREFER rules are defaults and never become blockers by themselves. These rules never override system, safety, permission, repository, or Mahiro's current instructions. When direction changes, revise or remove stale rules instead of following them blindly. Rules are not Definition of Done criteria and are never claimed, verified, or counted in progress.
+
+This is a living mission: revise its objective, DoD, boundaries, rules, or plan when Mahiro changes direction, then record one short reason in the mutation summary. Turn completion, a checkpoint report, an Execution Run report, and Herdr Done never mean the current plan is complete.
 
 ${progress.humanPending.length
   ? "A human gate is pending: report the checkpoint and wait for Mahiro's verification or direction."
@@ -1051,14 +1227,17 @@ function addEvidence(goal: WorkflowGoal, args: any, actor: Actor): WorkflowGoal 
   return goal;
 }
 
-function updateGoalFromTool(scope: Scope, args: any): WorkflowGoal {
+function updateGoalFromTool(scope: Scope, currentWorkspace: string, args: any): WorkflowGoal {
   const action = String(args.action ?? "");
   const expectedRevision = Number(args.expected_revision);
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
     throw new Error("expected_revision must be the current positive goal revision.");
   }
+  if (action === "move_goal") {
+    return moveGoalToScope(scope, currentWorkspace, validateGoalIdInput(args.goal_id), expectedRevision, "agent");
+  }
   return mutateGoal(scope, "agent", action, args.summary ?? action, expectedRevision, (goal) => {
-    if (action === "revise_mission") return reviseMission(goal, args);
+    if (action === "revise_mission") return reviseMission(goal, args, "agent");
     if (action === "set_phase") {
       const phase = compactText(args.phase, 120);
       if (!phase) throw new Error("phase is required for set_phase.");
@@ -1076,6 +1255,13 @@ function updateGoalFromTool(scope: Scope, args: any): WorkflowGoal {
     if (action === "remove_plan_item") {
       const item = planItemById(goal, args.plan_id);
       goal.plan = goal.plan.filter((candidate) => candidate.id !== item.id);
+      return goal;
+    }
+    if (action === "add_rule") return addRule(goal, args, "agent");
+    if (action === "update_rule") return updateRule(goal, args);
+    if (action === "remove_rule") {
+      const rule = ruleById(goal, args.rule_id);
+      goal.rules = goal.rules.filter((candidate) => candidate.id !== rule.id);
       return goal;
     }
     if (action === "add_evidence") return addEvidence(goal, args, "agent");
@@ -1158,7 +1344,7 @@ function simpleCriterion(objective: string): CriterionInput {
 
 function helpText(): string {
   return [
-    "Mahiro Goal — living mission and mutable plan",
+    "Mahiro Goal — living mission, bounded rules, and mutable plan",
     "",
     "Commands:",
     "  /mh-goal <objective>                     Create a simple goal",
@@ -1166,12 +1352,16 @@ function helpText(): string {
     "  /mh-goal replace <revision> <objective>  Legacy alias for revise",
     "  /mh-goal status                          Show objective, DoD, evidence state, and blockers",
     "  /mh-goal list                            List bounded Goal records across this agent (human-only)",
+    "  /mh-goal move <goal-id> <revision>       Move one same-agent Goal into this empty conversation",
     "  /mh-goal pause | resume                  Control active reminders/time",
     "  /mh-goal next <action>                   Set the immediate next action",
     "  /mh-goal phase <name>                    Set the current workflow phase",
     "  /mh-goal evidence <criterion-id> <text>  Add human-provided evidence",
     "  /mh-goal verify <criterion-id> [note]    Verify a criterion as the human owner",
     "  /mh-goal resolve <blocker-id>            Resolve a blocker",
+    "  /mh-goal rule add <revision> <must|prefer> <text>",
+    "  /mh-goal rule update <revision> <rule-id> <must|prefer> <text>",
+    "  /mh-goal rule remove <revision> <rule-id>",
     "  /mh-goal complete [--force]              Complete the current plan after DoD audit; --force is explicit human override",
     "  /mh-goal clear                           Remove this conversation's Mahiro Goal",
     "  /mh-goal clear <goal-id> <revision>      Revision-guarded cross-scope clear (human-only)",
@@ -1197,10 +1387,18 @@ function runCommand(ctx: any) {
       return commandOutput(forceUnlock() ? "Mahiro Goal mutation lock quarantined and removed by explicit human override." : "No Mahiro Goal mutation lock exists.");
     }
     if (normalized === "unlock") return commandOutput("Use /mh-goal unlock --force only after confirming no live mutation owns the lock.", false);
-    if (normalized === "list") return commandOutput(formatGoalList(listGoals()));
+    if (normalized === "list") return commandOutput(formatGoalList(listGoals(scope.agentId)));
+    const moveMatch = input.match(/^move\s+(\S+)\s+(\d+)$/i);
+    if (normalized.startsWith("move ") && !moveMatch) {
+      return commandOutput("Usage: /mh-goal move <goal-id> <revision>", false);
+    }
+    if (moveMatch) {
+      const moved = moveGoalToScope(scope, workspace, validateGoalIdInput(moveMatch[1]), Number(moveMatch[2]), "human");
+      return commandOutput(formatGoal(moved));
+    }
     const crossScopeClear = input.match(/^clear\s+(\S+)\s+(\d+)$/i);
     if (crossScopeClear) {
-      const cleared = clearGoalById(compactText(crossScopeClear[1], 160), Number(crossScopeClear[2]));
+      const cleared = clearGoalById(compactText(crossScopeClear[1], 160), Number(crossScopeClear[2]), scope.agentId);
       return commandOutput(`Mahiro Goal cleared: ${cleared.id} · ${cleared.conversationId} · revision ${cleared.revision}.`);
     }
     if (normalized === "clear") {
@@ -1277,6 +1475,30 @@ function runCommand(ctx: any) {
       });
       return commandOutput(formatGoal(goal));
     }
+    const ruleAddMatch = input.match(/^rule\s+add\s+(\d+)\s+(must|prefer)\s+([\s\S]+)$/i);
+    if (ruleAddMatch) {
+      const goal = mutateGoal(scope, "human", "rule_added", ruleAddMatch[2], Number(ruleAddMatch[1]), (current) =>
+        addRule(current, { rule_level: ruleAddMatch[2].toLowerCase(), rule_text: ruleAddMatch[3] }, "human"));
+      return commandOutput(formatGoal(goal));
+    }
+    const ruleUpdateMatch = input.match(/^rule\s+update\s+(\d+)\s+(\S+)\s+(must|prefer)\s+([\s\S]+)$/i);
+    if (ruleUpdateMatch) {
+      const goal = mutateGoal(scope, "human", "rule_updated", ruleUpdateMatch[3], Number(ruleUpdateMatch[1]), (current) =>
+        updateRule(current, { rule_id: ruleUpdateMatch[2], rule_level: ruleUpdateMatch[3].toLowerCase(), rule_text: ruleUpdateMatch[4] }));
+      return commandOutput(formatGoal(goal));
+    }
+    const ruleRemoveMatch = input.match(/^rule\s+remove\s+(\d+)\s+(\S+)$/i);
+    if (ruleRemoveMatch) {
+      const goal = mutateGoal(scope, "human", "rule_removed", ruleRemoveMatch[2], Number(ruleRemoveMatch[1]), (current) => {
+        const rule = ruleById(current, ruleRemoveMatch[2]);
+        current.rules = current.rules.filter((candidate) => candidate.id !== rule.id);
+        return current;
+      });
+      return commandOutput(formatGoal(goal));
+    }
+    if (normalized.startsWith("rule ")) {
+      return commandOutput("Usage: /mh-goal rule add <revision> <must|prefer> <text> | update <revision> <rule-id> <must|prefer> <text> | remove <revision> <rule-id>", false);
+    }
     if (normalized === "complete" || normalized === "complete --force") {
       const force = normalized.endsWith("--force");
       const goal = mutateGoal(scope, "human", force ? "goal_force_completed" : "goal_completed", force ? "Forced complete by Mahiro." : "Completed after DoD audit.", null, (current) => {
@@ -1307,7 +1529,7 @@ function runCommand(ctx: any) {
     return {
       type: "prompt" as const,
       systemReminder: true,
-      content: `${buildReminder(goal, workspace)}\n\nBegin with the smallest grounded next action. Revise the living mission and mutable plan through mh_update_goal only when Mahiro changes direction.`,
+      content: `${buildReminder(goal, workspace)}\n\nBegin with the smallest grounded next action. Revise the living mission, bounded rules, and mutable plan through mh_update_goal only when Mahiro changes direction.`,
     };
   } catch (error) {
     return commandOutput(error instanceof Error ? error.message : String(error), false);
@@ -1344,6 +1566,20 @@ const CREATE_PARAMETERS = {
       },
     },
     non_goals: { type: "array", items: { type: "string" }, maxItems: MAX_NON_GOALS },
+    rules: {
+      type: "array",
+      maxItems: MAX_RULES,
+      description: "Temporary goal-scoped operating rules. MUST is a mission constraint; PREFER is a non-blocking default. Rules never override higher-priority instructions or count as DoD.",
+      items: {
+        type: "object",
+        properties: {
+          text: { type: "string", maxLength: MAX_RULE_CHARS },
+          level: { type: "string", enum: ["must", "prefer"] },
+        },
+        required: ["text"],
+        additionalProperties: false,
+      },
+    },
     next_action: { type: "string", description: "Immediate next action." },
     replace: { type: "boolean", description: "Compatibility alias: explicitly revise the current mission only after Mahiro approved the revision." },
     expected_revision: { type: "integer", minimum: 1, description: "Required with replace=true to guard against stale mission revision." },
@@ -1360,9 +1596,13 @@ const UPDATE_PARAMETERS = {
         "set_phase",
         "set_next",
         "revise_mission",
+        "move_goal",
         "add_plan_item",
         "update_plan_item",
         "remove_plan_item",
+        "add_rule",
+        "update_rule",
+        "remove_rule",
         "add_evidence",
         "claim_criterion",
         "block_criterion",
@@ -1392,6 +1632,23 @@ const UPDATE_PARAMETERS = {
       },
     },
     non_goals: { type: "array", items: { type: "string" }, maxItems: MAX_NON_GOALS },
+    rules: {
+      type: "array",
+      maxItems: MAX_RULES,
+      items: {
+        type: "object",
+        properties: {
+          text: { type: "string", maxLength: MAX_RULE_CHARS },
+          level: { type: "string", enum: ["must", "prefer"] },
+        },
+        required: ["text"],
+        additionalProperties: false,
+      },
+    },
+    goal_id: { type: "string", description: "Stable Goal ID required by move_goal. The destination is always the current conversation." },
+    rule_id: { type: "string" },
+    rule_text: { type: "string", maxLength: MAX_RULE_CHARS },
+    rule_level: { type: "string", enum: ["must", "prefer"] },
     plan_id: { type: "string" },
     plan_text: { type: "string" },
     plan_status: { type: "string", enum: ["pending", "in_progress", "done", "blocked"] },
@@ -1425,8 +1682,8 @@ export default async function activate(letta: any) {
   if (letta.capabilities?.commands && letta.commands?.register) {
     disposers.push(letta.commands.register({
       id: "mh-goal",
-      description: "Manage Mahiro's living conversation mission, mutable plan, DoD, evidence, blockers, and human gates",
-      args: "[status|list|pause|resume|next|phase|evidence|verify|resolve|complete|clear|revise|<objective>]",
+      description: "Manage Mahiro's living conversation mission, goal rules, mutable plan, DoD, evidence, blockers, movement, and human gates",
+      args: "[status|list|move|pause|resume|next|phase|rule|evidence|verify|resolve|complete|clear|revise|<objective>]",
       run: runCommand,
     }));
   }
@@ -1478,7 +1735,7 @@ export default async function activate(letta: any) {
     }));
     disposers.push(letta.tools.register({
       name: "mh_create_goal",
-      description: "Create a structured Mahiro mission only after Mahiro directly requested or approved it. The replace compatibility field revises the existing mission in place; include concrete DoD criteria and mark visual/product acceptance criteria as human-owned.",
+      description: "Create a structured Mahiro mission only after Mahiro directly requested or approved it. The replace compatibility field revises the existing mission in place; include concrete DoD criteria, mark visual/product acceptance criteria as human-owned, and keep optional rules goal-scoped and lower priority than system/repository/current-user instructions.",
       parameters: CREATE_PARAMETERS,
       requiresApproval: false,
       parallelSafe: false,
@@ -1487,6 +1744,7 @@ export default async function activate(letta: any) {
           objective: ctx.args.objective,
           criteria: ctx.args.criteria,
           nonGoals: ctx.args.non_goals,
+          rules: ctx.args.rules,
           nextAction: ctx.args.next_action,
           replace: ctx.args.replace,
           expectedRevision: ctx.args.expected_revision,
@@ -1496,12 +1754,12 @@ export default async function activate(letta: any) {
     }));
     disposers.push(letta.tools.register({
       name: "mh_update_goal",
-      description: "Update the current Mahiro living mission and mutable plan using its latest revision. Use revise_mission only after Mahiro changes direction. Add evidence before claiming agent criteria. Never verify human-owned criteria; Mahiro must use /mh-goal verify. Complete only the current plan when all required criteria and blockers satisfy the runtime audit.",
+      description: "Update the current Mahiro living mission, bounded goal rules, and mutable plan using its latest revision. move_goal atomically moves one same-agent Goal into the current empty conversation only after Mahiro directly requests it. Omitted rules are preserved; rules: [] explicitly clears them. Rules never override higher-priority instructions or count as DoD. Add evidence before claiming agent criteria, never verify human-owned criteria, and complete only after the audit passes.",
       parameters: UPDATE_PARAMETERS,
       requiresApproval: false,
       parallelSafe: false,
       run(ctx: any) {
-        const goal = updateGoalFromTool(scopeFrom(ctx), ctx.args);
+        const goal = updateGoalFromTool(scopeFrom(ctx), workspaceFrom(ctx), ctx.args);
         return jsonResult({ goal, completion_issues: completionIssues(goal) });
       },
     }));

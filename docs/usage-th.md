@@ -150,8 +150,12 @@ state และไม่ปิด entry อื่นใน bundle
 /mh-goal status
 /mh-goal-status
 /mh-goal list
+/mh-goal move <goal-id> <revision>
 /mh-goal pause
 /mh-goal resume
+/mh-goal rule add <revision> must ให้ Agy เป็นคนลงมือแก้ไฟล์ชุดนี้
+/mh-goal rule update <revision> <rule-id> prefer เริ่มจากการแก้ที่เล็กที่สุดก่อน
+/mh-goal rule remove <revision> <rule-id>
 /mh-goal verify criterion-02 UI ผ่านแล้ว
 /mh-goal complete
 /mh-goal revise <revision> ปรับ objective ตาม direction ใหม่
@@ -159,9 +163,33 @@ state และไม่ปิด entry อื่นใน bundle
 /mh-goal clear <goal-id> <revision>
 ```
 
-`/mh-goal-status` เปิด panel สั้น ๆ ได้แม้ agent กำลังทำงาน ส่วน `/mh-goal status` เหมาะกับการดูรายละเอียดเต็มตอน idle โดยแยก Mission, Current, Progress, Definition of Done, Plan, Blockers และ Details เป็นกลุ่มชัดเจน label กับ ID ที่สั้นใช้ inline accent จาก Markdown theme ส่วน owner, requirement, status, evidence และ progress แยกด้วย semantic marker พร้อมข้อความกำกับ ค่าเนื้อหาที่ยาวใช้สีปกติเพื่อไม่ให้สีขาดเมื่อ terminal wrap ส่วน panel ใช้สีตามสถานะผ่าน public render context จึงไม่ฝัง ANSI escape ลงใน transcript
+`/mh-goal-status` เปิด panel สั้น ๆ ได้แม้ agent กำลังทำงาน ส่วน `/mh-goal status` เหมาะกับการดูรายละเอียดเต็มตอน idle โดยแยก Mission, Current, Progress, Goal Rules, Definition of Done, Plan, Blockers และ Details เป็นกลุ่มชัดเจน label กับ ID ที่สั้นใช้ inline accent จาก Markdown theme ส่วน owner, requirement, status, evidence และ progress แยกด้วย semantic marker พร้อมข้อความกำกับ ค่าเนื้อหาที่ยาวใช้สีปกติเพื่อไม่ให้สีขาดเมื่อ terminal wrap ส่วน panel ใช้สีตามสถานะผ่าน public render context จึงไม่ฝัง ANSI escape ลงใน transcript
 
 ตอบจบรอบหนึ่ง, checkpoint report, Execution Run ที่ `reported` หรือสถานะ Done ของ Herdr ไม่ได้แปลว่า Goal จบ Goal ที่ยัง active สามารถหยุดที่ checkpoint ได้ตามปกติ โดย status จะบอกว่าเหลืองานฝั่ง agent หรือกำลังรอ Mahiro ตรวจรับ
+
+### Goal Rules
+
+Rules ใช้เก็บข้อตกลงการทำงานชั่วคราวของ Goal นั้น เช่น “ให้ Agy เป็นคนลงมือ ส่วน main agent ตรวจ correctness” แต่ละ Goal มีได้ไม่เกิน 8 ข้อ ข้อละไม่เกิน 500 ตัวอักษร และมี 2 ระดับ:
+
+- `must` — ข้อจำกัดของภารกิจที่ควรทำตาม ถ้าพบว่าฝ่าฝืนจนงานไปต่อไม่ได้ ให้เปิด blocker ตามปกติ
+- `prefer` — ค่าเริ่มต้นหรือแนวทางที่อยากให้ใช้ การออกนอกแนวทางนี้ไม่ block completion เอง
+
+Rules ไม่ใช่ DoD จึงไม่มีสถานะ claimed/verified และไม่นับใน progress ทั้งสองระดับแพ้ system, safety, permission, repo rules และคำสั่งล่าสุดจาก Mahiro เสมอ ถ้า direction เปลี่ยนให้แก้หรือลบ Rule เก่าแทนการฝืนทำตาม
+
+Agent จัดการ Rules ผ่าน `mh_create_goal` และ action `add_rule`, `update_rule`, `remove_rule` ของ `mh_update_goal` หลัง Mahiro อนุมัติ scope แล้ว ทุก mutation ใช้ revision ล่าสุด ถ้า `revise_mission` ไม่ส่ง `rules` เข้ามา ชุดเดิมจะอยู่ต่อ แต่ถ้าส่ง `rules: []` จะล้างทั้งหมด ส่วน full replacement ที่ไม่ส่ง Rules จะเริ่มชุดใหม่แบบว่าง
+
+### ย้าย Goal ไป conversation ใหม่
+
+ถ้าเปิด conversation ใหม่แล้วอยากทำ Goal เดิมต่อ ให้ move Goal เข้ามาที่ conversation ใหม่แทนการ copy:
+
+```text
+/mh-goal list
+/mh-goal move <goal-id> <revision>
+```
+
+ฝั่ง agent ใช้ `mh_update_goal` action `move_goal` หลัง Mahiro สั่งโดยตรง ปลายทางคือ conversation ที่เรียก action เสมอและต้องยังไม่มี Goal ระบบจะย้าย state ทั้งก้อนใน atomic write เดียว ทั้ง Goal ID, lifecycle, DoD/evidence, plan, Rules, workspace และ history จากนั้น conv เก่าจะอ่าน แก้ หรือรับ reminder ของ Goal นี้ไม่ได้อีก
+
+ย้ายได้เฉพาะ conversation ของ agent เดิม ถ้า revision เก่า, ID ซ้ำ, ปลายทางมี Goal อยู่แล้ว หรือเป็น raw `default` lane คนละ workspace ระบบจะไม่แก้อะไรเลย สำหรับ conversation ปกติที่ cwd ต่างกัน ระบบจะเก็บ workspace ต้นทางไว้และขึ้น warning ใน reminder แทนการเปลี่ยน ownership เงียบ ๆ
 
 ### สถานะสำคัญ
 
@@ -176,13 +204,13 @@ state และไม่ปิด entry อื่นใน bundle
 - Agent ห้าม verify criterion ที่เป็นของ human
 - ก่อน `claimed` ต้องมี evidence จริง
 - `complete --force` เป็นทางลัดของมนุษย์ ใช้เฉพาะตอนตั้งใจข้าม audit
-- Goal คือ **living mission + mutable plan**: ระหว่างทาง agent ใช้ `revise_mission` เพื่อปรับ objective, DoD, non-goals, phase หรือ next action ได้เมื่อ Mahiro เปลี่ยน direction; ทุกครั้งต้องมี revision ล่าสุดและสรุปสั้น ๆ ว่าเปลี่ยนเพราะอะไร
+- Goal คือ **living mission + bounded Rules + mutable plan**: ระหว่างทาง agent ใช้ `revise_mission` เพื่อปรับ objective, DoD, non-goals, Rules, phase หรือ next action ได้เมื่อ Mahiro เปลี่ยน direction; ทุกครั้งต้องมี revision ล่าสุดและสรุปสั้น ๆ ว่าเปลี่ยนเพราะอะไร
 - Plan item ใช้ `pending`, `in_progress`, `done`, `blocked` จึงเพิ่ม ตัด หรือสลับงานระหว่างทางได้โดยไม่ต้องสร้าง Goal ใหม่
 - Plan item เป็น coordination ที่แก้ได้ตลอด ไม่ใช่ gate ซ่อนของ completion; การปิดแผนยังยึด DoD และ blocker ที่ประกาศไว้
 - `complete` ปิดเฉพาะแผนรอบนั้น ไม่ทำลาย mission; ถ้าจะทำต่อให้ `revise_mission` อย่างชัดเจนเพื่อ reopen แผน
 - Agent ใช้ `mh_clear_goal` ได้เมื่อ Mahiro สั่ง clear โดยตรง พร้อม `expected_revision` และ runtime approval; มันลบ state จริง ไม่สร้าง Goal ปลอมเพื่อแทนคำสั่ง clear
-- Goal ไม่มี token quota; state เก่าที่มีข้อมูล token budget จะถูกละทิ้ง และ Goal ที่เคย `budget_limited` จะกลับเป็น `active`
-- `/mh-goal list` เป็น inventory สำหรับ Mahiro ที่แสดงเฉพาะ mission ที่ยังต้องจัดการ; current plan ที่ complete แล้วจะซ่อน แต่ยังดูจาก `/mh-goal status` ใน conversation เดิมได้ ถ้าจะล้าง Goal จาก conversation เก่า ต้องใช้ goal ID และ revision ที่ทราบอยู่ จึงไม่มี model tool ตัวไหนล้างข้าม scope ได้เอง
+- Goal ไม่มี token quota; state เก่าที่มีข้อมูล token budget จะถูกละทิ้ง Goal ที่เคย `budget_limited` จะกลับเป็น `active` และ Goal เก่าที่ยังไม่มี field `rules` จะอ่านเป็น `rules: []`
+- `/mh-goal list` เป็น inventory สำหรับ Mahiro ที่แสดงเฉพาะ mission ของ agent ปัจจุบันซึ่งยังต้องจัดการ; current plan ที่ complete แล้วจะซ่อน แต่ยังดูจาก `/mh-goal status` ใน conversation ที่เป็นเจ้าของได้ ถ้าจะล้าง Goal จาก conversation เก่าต้องใช้ Goal ID และ revision ที่ตรงกัน และล้างข้าม agent ไม่ได้
 
 ---
 

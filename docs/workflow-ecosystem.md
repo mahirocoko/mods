@@ -42,9 +42,11 @@ selects what to attach through `mh_update_goal`.
 The Goal schema reserves these ownership boundaries:
 
 - one human-owned living mission objective
-- conversation and agent scope
-- originating workspace
+- one owning conversation and agent scope, with explicit same-agent atomic move
+- originating workspace retained across movement
 - workflow phase and immediate next action
+- bounded stable-ID `must | prefer` Goal Rules for temporary operating context;
+  Rules remain below system/repository/current-user authority and outside DoD
 - a bounded mutable plan for reprioritising work during execution
 - required/optional Definition of Done criteria
 - agent-owned versus human-owned criteria
@@ -55,10 +57,12 @@ The Goal schema reserves these ownership boundaries:
 
 ## Active slices
 
-1. **Mahiro Goal** — living mission, mutable plan, DoD, evidence, blockers,
-   human gates, and turn continuity through namespaced Mahiro surfaces. Mission
-   revisions keep one ID/history; current-plan completion is explicitly reopened
-   only by a later revision.
+1. **Mahiro Goal** — living mission, bounded operating Rules, mutable plan, DoD,
+   evidence, blockers, human gates, and turn continuity through namespaced
+   Mahiro surfaces. Mission revisions keep one ID/bounded history; one same-agent
+   atomic move can transfer ownership into the invoking empty conversation while
+   detaching the source. Rules move with the mission but never become criteria;
+   current-plan completion is explicitly reopened only by a later revision.
 2. **Code Evidence** — active Phase 2. The mod collects staged, unstaged,
    untracked, and base-to-HEAD Git metadata with fixed read-only commands;
    records bounded summaries of already-performed command/test/browser/native/

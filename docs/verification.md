@@ -867,3 +867,67 @@ This is the release basis for v0.8.7. A `/reload` remains required in every
 already-running Letta Code session after installation. Final local HEAD,
 `origin/main`, annotated tag, GitHub release, and installed version alignment
 must be checked after publishing.
+
+## Goal Rules and cross-conversation Move/Resume — 2026-08-09
+
+Mahiro approved one combined Goal change: bounded temporary operating Rules plus
+single-owner continuation into another conversation. Each Goal stores at most
+eight stable-ID Rules of at most 500 characters. `must` is active mission
+context and `prefer` is a non-blocking default; neither level overrides
+higher-priority instructions or participates in DoD claim/verification/progress.
+Rule source is derived from the mutation actor. `revise_mission` preserves
+omitted Rules, explicit `rules: []` clears them, and full replacement without
+Rules starts empty. Legacy records normalize a missing collection to `rules: []`
+without an eager write.
+
+`move_goal` and `/mh-goal move` reuse the existing tool/command registrations.
+Under the state lock they locate one exact Goal ID/revision, require the same
+agent and an empty destination, preserve lifecycle plus all nested mission
+state, retain origin-workspace attribution, advance the revision once, validate
+the destination key, then delete the source and insert the destination in one
+atomic state write. The old conversation loses reminder/status/mutation
+ownership immediately. Non-default cwd differences produce the existing
+workspace warning; raw `default` lanes require the exact workspace key.
+
+Current source/static evidence:
+
+- `pnpm check` passed all ten-entry transpilation, registration-budget, state,
+  migration, rule lifecycle, hostile rendering/reminder, movement, rejection,
+  human-gate, and cleanup smoke checks
+- `pnpm pack --dry-run` passed and included the changed Goal source plus shipped
+  README/MOD/Thai usage contracts
+- `git diff --check` passed
+- an independent read-only verifier returned PASS / Verified with Caveats for
+  source/static and local package evidence, finding no high or medium defects
+- the exact 39-registration bundle budget remains unchanged because Rules and
+  movement extend `mh_update_goal` and `/mh-goal` instead of adding registrations
+- `pnpm mods:update` installed the local checkout with backup
+  `~/.letta/mods/backups/2026-08-09T16-25-43-644Z-49859`
+- `pnpm mods:status` reported all ten entries matching and
+  `Migration needed: no`; repository and installed Goal SHA-256 both equal
+  `a23f60293ed174150f42adff276295ccc999a28112532637b2116ecec3551fd7`
+- Mahiro ran `/reload` successfully; the reloaded `mh_get_goal` returned the
+  legacy live Goal with normalized `rules: []`, then two revision-guarded
+  `add_rule` calls persisted one `must` and one `prefer` Rule at revisions 13
+  and 14 with stable IDs and agent source
+
+Final runtime and human evidence:
+
+- Goal `mh-goal-mslzs56h-92607c17` moved from `local-conv-312` into the empty
+  `local-conv-314` at expected revision 14; the atomic move advanced it once to
+  revision 15 while preserving the existing workspace and both stable-ID Rules
+- a fresh `mh_get_goal`, the destination turn reminder, and `/mh-goal status`
+  showed the same one `must` plus one `prefer` Rule, the original criteria and
+  evidence, the destination conversation ID, and ordinary revision progress
+- Mahiro explicitly accepted the live cross-conversation result and verified
+  human-owned `criterion-05`; all five required Goal criteria then satisfied the
+  completion audit
+- Mahiro completed the current plan through `/mh-goal complete`; the Goal
+  reached `complete` at revision 19 while retaining Rules and evidence for
+  inspection or a later explicit mission revision
+
+This is the release basis for v0.8.8. A `/reload` remains required in every
+already-running Letta Code session after installation. Final local HEAD,
+`origin/main`, annotated tag, GitHub release, package version, all-ten-entry
+managed status, and installed Goal hash alignment must be checked after
+publishing.

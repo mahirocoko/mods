@@ -38,6 +38,16 @@ Workflow owns design-stage coordination/human gates. This keeps cross-mod
 handoffs explicit through public tool output rather than internal imports. See
 `docs/workflow-ecosystem.md`.
 
+Mahiro Goal keeps one record under one agent/conversation scope key at a time.
+Its bounded `must | prefer` Rules are stored inside that record, so they share
+the Goal's revision, atomic write, lifecycle, clear, reminder, and corruption
+boundaries without becoming DoD criteria. Cross-conversation continuation is a
+locked atomic re-key: the invoking empty conversation becomes the sole owner,
+the source entry is deleted in the same write, and the origin workspace remains
+attribution. The existing `mh_update_goal` registration owns model movement and
+Rule CRUD actions so this feature does not increase the bundle's 39-registration
+reload budget.
+
 `mahiro-code-map.ts` is intentionally stateless and independent. It owns only a
 bounded routing/read-guidance contract; `ccc`, exact search, outline tools, file
 reads, and verification remain external operations. It does not share a core or
