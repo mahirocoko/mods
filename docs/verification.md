@@ -358,10 +358,11 @@ The focused checker proves:
   and explicit human `/mh-ux unlock --force`
 - stale revisions, recursively malformed nested artifacts, oversized lists/text,
   and corrupt JSON fail closed without overwriting recovery material
-- the required `frontend-design` brief bridge and explicit output instructing the
-  agent to invoke that skill and use `mh_update_goal` separately
-- the recorded skill reference is explicitly caller attestation rather than
-  proof of invocation or visual adequacy
+- the required explicit design-owner brief bridge and output instructing the
+  agent to use `mh_update_goal` separately
+- the recorded owner reference is explicitly caller attestation rather than
+  proof that its human/repository/model/procedure owner ran or that visual
+  quality is adequate
 - pre-approval handoff rejection, exact human direction approval, complete
   CruiseCode-compatible handoff fields, blocking-question implementation guard,
   and valid phase transitions
@@ -391,8 +392,10 @@ Final live Phase 3 runtime evidence:
 - `mh-ux-mrud6c0z-83e47bd0` ran frame → discovery → three concepts → human
   direction approval → implementation-ready handoff → implementation → Ready
   review → human review approval → UX-only completion at revision 16
-- the recorded `frontend-design` brief remained explicit caller attestation;
-  Mahiro's direction/review commands remained the authority gates
+- the then-current `frontend-design` brief remained explicit caller attestation;
+  Mahiro's direction/review commands remained the authority gates. This is
+  historical Phase 3 evidence; schema v2 now records a generic design owner and
+  preserves this legacy identifier only through migration.
 - Code Evidence reached fresh `evidence_ready` revision 13 and the agent
   attached selected UX/Code Evidence to Mahiro Goal separately
 - UX state exists at mode `0600`; diagnostics report `errorCount: 0`, with only
@@ -521,6 +524,9 @@ Candidate contract:
   collision checks that are coordination metadata rather than enforcement
 - bounded session/worktree references, reports, changed paths, checks, and
   cross-workflow refs remain caller attestations, never verification evidence
+- Direct-CLI same-conversation wake/session/job references remain lifecycle
+  metadata; terminal watcher status cannot advance a lane to reported or stand
+  in for a collected bounded report
 - final handoff emits a Code Evidence intake packet requiring fresh collection
 - no executor control, model selection, prompt submission, source/Git/check
   execution, repository inspection, permission overlay, raw transcript/diff/log
@@ -931,3 +937,34 @@ already-running Letta Code session after installation. Final local HEAD,
 `origin/main`, annotated tag, GitHub release, package version, all-ten-entry
 managed status, and installed Goal hash alignment must be checked after
 publishing.
+
+## v0.8.9 design-owner and skill-contract alignment
+
+Release scope:
+
+- UX Workflow schema v2 replaces the removed hard-coded `frontend-design`
+  requirement with an explicit human/repository/model/procedure design owner.
+- Schema-v1 runtime records migrate losslessly in memory and persist as v2 only
+  on the next locked mutation; read-only status calls leave the original state
+  file untouched.
+- Direct-CLI v0.1.89 same-conversation terminal wakes remain controller-owned
+  lifecycle metadata, not Execution Run reports, Code Evidence, or completion.
+- Active docs, notices, tool descriptions, schemas, tests, and historical
+  provenance agree on the current owner boundary.
+
+Release evidence:
+
+- `pnpm check` passed all ten mod entries, including schema-v1 read/persist
+  migration fixtures, human gates, Goal separation, and cleanup.
+- A disposable copy of the real 19-run UX state loaded as schema v2 with all 11
+  briefs and two handoffs preserved while the disk copy remained schema v1.
+- `pnpm pack --dry-run` and `git diff --check` passed.
+- The bounded context scanner found zero retired active invocation instructions
+  across 22 files / 684,331 bytes.
+- Fresh independent verification found no High/Medium issue.
+- Managed local installation matched every source hash; after `/reload`, live
+  `mh_get_ux_workflow` returned the schema-v2 design-owner boundary while the
+  legacy state remained unchanged by the read-only call.
+
+This is the release basis for v0.8.9. A `/reload` remains required in every
+already-running Letta Code session after installation.

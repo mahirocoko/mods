@@ -71,8 +71,10 @@ design references; they are not installed or duplicated by this bundle.
 `40c5964f616c19afa2c632433781086d40b4df1fcd8cbb0f26ca66915eebcac0`;
 the package was introduced at commit
 `5acfc823849ab7e5b401ab74f1c6158fdb4da7c6`. It is Apache-2.0. The adaptation
-keeps staged UX coordination and human gates while making `frontend-design`
-canonical and keeping Goal/Code Evidence state strictly separate.
+keeps staged UX coordination and human gates while leaving design doctrine with
+an explicitly recorded external owner and keeping Goal/Code Evidence state
+strictly separate. Historical schema-v1 `frontend-design` labels are migration
+provenance, not an active skill requirement.
 
 `mods/mahiro-code-map.ts` adapts only public registration, reverse cleanup,
 closed-schema, and bounded-output patterns from

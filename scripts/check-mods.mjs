@@ -1875,8 +1875,8 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
   const codeEvidenceStateBefore = readFileSync(process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH, "utf8");
   assert(!/from\s+["'][^"']*(?:mahiro-goal|mahiro-code-evidence)/.test(source), "UX workflow must not import Goal or Code Evidence internals");
   assert(!/node:child_process|\bexecFile\b|\bspawn\b|\breaddirSync\b|turn_start|openPanel/.test(source), "UX workflow must not execute commands, scan files, register turn events, or open panels");
-  assert(source.includes("Agent must invoke the frontend-design skill") && source.includes("mh_update_goal"), "UX workflow output must preserve the frontend-design and separate Goal attachment boundary");
-  assert(source.includes("caller-supplied coordination metadata") && source.includes("not proof that the skill ran"), "UX workflow must not overclaim a trusted frontend-design invocation receipt");
+  assert(source.includes("Record the selected human, repository contract, model, or procedure as design owner") && source.includes("mh_update_goal"), "UX workflow output must preserve explicit design ownership and the separate Goal attachment boundary");
+  assert(source.includes("caller-supplied coordination metadata") && source.includes("not proof that the owner/procedure ran"), "UX workflow must not overclaim a trusted design-owner invocation receipt");
 
   const expectedPackageEntries = [
     "./mods/mahiro-user-timestamps.ts",
@@ -1891,7 +1891,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-mcp-proxy.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.8.8", "Package version must be 0.8.8");
+  assert(packageJson.version === "0.8.9", "Package version must be 0.8.9");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
 
@@ -1954,7 +1954,33 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
   const initial = create.run({ ...context, args: { summary: "Coordinate a focused product UX change" } }).workflow;
   assert(initial.revision === 1 && initial.stage === "frame", "UX workflow creation must start revision 1 at frame");
   assert((statSync(testing.statePath).mode & 0o777) === 0o600, "UX workflow state must use mode 0600");
-  assert(get.run({ ...context, args: {} }).coordinator_boundary.join(" ").includes("frontend-design"), "UX workflow reads must require the frontend-design bridge");
+  assert(get.run({ ...context, args: {} }).coordinator_boundary.join(" ").includes("design owner"), "UX workflow reads must require an explicit design-owner bridge");
+
+  const legacyKey = JSON.stringify(["agent-legacy-ux", "conversation-legacy-ux", ""]);
+  const legacyBrief = { skill: "frontend-design", mode: "historical source", reference: "frontend-design://legacy/brief", summary: "Legacy brief retained for provenance", createdAt: "2026-07-22T00:00:00.000Z" };
+  const legacyState = {
+    schemaVersion: 1,
+    runs: {
+      [legacyKey]: {
+        id: "mh-ux-legacy", revision: 3, summary: "Legacy workflow", stage: "design", workspace: context.cwd,
+        agentId: "agent-legacy-ux", conversationId: "conversation-legacy-ux",
+        frame: { problem: "Legacy problem", audience: "Legacy audience", desiredOutcome: "Legacy outcome", constraints: [] },
+        research: [], brief: legacyBrief, concepts: [], direction: null, handoff: null, review: null,
+        reviewIterations: 0, blockers: [], createdAt: "2026-07-22T00:00:00.000Z", updatedAt: "2026-07-22T00:00:00.000Z",
+        history: [{ at: "2026-07-22T00:00:00.000Z", actor: "agent", action: "workflow_created", summary: "Legacy workflow", revision: 1 }],
+      },
+    },
+  };
+  const currentStateBeforeLegacyProbe = readFileSync(testing.statePath, "utf8");
+  writeFileSync(testing.statePath, `${JSON.stringify(legacyState, null, 2)}\n`, { mode: 0o600 });
+  const migratedLegacy = testing.readState();
+  assert(migratedLegacy.schemaVersion === 2 && migratedLegacy.runs[legacyKey].brief.owner === "frontend-design" && !Object.hasOwn(migratedLegacy.runs[legacyKey].brief, "skill"), "schema v1 frontend-design briefs must migrate in memory to schema v2 design-owner records");
+  assert(JSON.parse(readFileSync(testing.statePath, "utf8")).schemaVersion === 1, "read-only legacy migration must not rewrite runtime state before a locked mutation");
+  const legacyContext = { agent: { id: "agent-legacy-ux" }, conversation: { id: "conversation-legacy-ux" }, cwd: context.cwd };
+  const migratedMutation = update.run({ ...legacyContext, args: { action: "add_concept", expected_revision: 3, concept_id: "legacy-direction", title: "Legacy direction", summary: "Continue the migrated workflow", tradeoffs: [] } }).workflow;
+  const persistedMigratedState = JSON.parse(readFileSync(testing.statePath, "utf8"));
+  assert(migratedMutation.revision === 4 && persistedMigratedState.schemaVersion === 2 && persistedMigratedState.runs[legacyKey].brief.owner === "frontend-design" && !Object.hasOwn(persistedMigratedState.runs[legacyKey].brief, "skill"), "the first locked mutation must persist the complete migrated schema v2 state without losing the legacy brief");
+  writeFileSync(testing.statePath, currentStateBeforeLegacyProbe, { mode: 0o600 });
 
   const stateAfterCreate = readFileSync(testing.statePath, "utf8");
   let duplicateBlocked = false;
@@ -1991,13 +2017,13 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
 
   const beforeOversized = readFileSync(testing.statePath, "utf8");
   let oversizedBlocked = false;
-  try { update.run({ ...context, args: { action: "set_brief", expected_revision: 2, brief: { skill: "frontend-design", mode: "audit", reference: "brief://one", summary: "x".repeat(4001) } } }); }
+  try { update.run({ ...context, args: { action: "set_brief", expected_revision: 2, brief: { owner: "repo-design-contract", mode: "audit", reference: "brief://one", summary: "x".repeat(4001) } } }); }
   catch (error) { oversizedBlocked = String(error).includes("at most 4000"); }
   assert(oversizedBlocked && readFileSync(testing.statePath, "utf8") === beforeOversized, "oversized UX artifacts must fail without advancing state");
 
-  const briefInput = { skill: "frontend-design", mode: "repo-grounded direction", reference: "frontend-design://brief/selected", summary: "Selected brief based on the canonical frontend-design workflow" };
+  const briefInput = { owner: "repo-design-contract", mode: "repo-grounded direction", reference: "design-brief://selected", summary: "Selected brief based on the repository design contract" };
   const briefed = update.run({ ...context, args: { action: "set_brief", expected_revision: 2, brief: briefInput } }).workflow;
-  assert(briefed.brief.skill === "frontend-design" && briefed.revision === 3, "frontend-design brief must be recorded as a structured object");
+  assert(briefed.brief.owner === "repo-design-contract" && briefed.revision === 3, "design-owner brief must be recorded as a structured object");
   const design = update.run({ ...context, args: { action: "set_phase", expected_revision: 3, phase: "design" } }).workflow;
   const concept = update.run({ ...context, args: { action: "add_concept", expected_revision: 4, concept_id: "focused-flow", title: "Focused flow", summary: "One clear primary path with preserved escape hatches", tradeoffs: ["Less simultaneous density"] } }).workflow;
   assert(design.stage === "design" && concept.concepts[0].id === "focused-flow", "valid discovery/design transitions must retain concepts");
@@ -2255,6 +2281,8 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   const source = readFileSync(join(repositoryRoot, "mods/mahiro-execution-run.ts"), "utf8");
   assert(!/node:child_process|\b(?:execFile|spawn)\b|\b(?:git|repository)\s*(?:status|diff|log|show)\b|from\s+["'][^"']*mahiro-/.test(source), "Execution Run must not execute child processes, read Git/repositories, or import other mods");
   assert(source.includes("not execution, repository, check, or acceptance proof") && source.includes("Metadata is coordination only, not proof."), "Execution Run must preserve metadata-not-proof language");
+  const executionDocs = ["README.md", "MOD.md", "docs/workflow-ecosystem.md"].map((path) => readFileSync(join(repositoryRoot, path), "utf8")).join("\n");
+  assert(executionDocs.includes("same open conversation") && executionDocs.includes("not an executor report") && executionDocs.includes("records a bounded lane report"), "Execution Run docs must keep Direct-CLI v0.1.89 live return controller-owned and separate terminal wake metadata from report/proof");
   assert(!source.includes('name: "mh_get_execution_run"') && !source.includes('name: "mh_create_execution_run"') && !source.includes('name: "mh_update_execution_run"'), "Execution Run must not restore the three superseded tool registrations");
   const missingDiagnostics = [];
   assert(activate({ capabilities: {}, diagnostics: { report(item) { missingDiagnostics.push(item); } } }) === undefined, "Execution Run must fail closed without commands or tools");

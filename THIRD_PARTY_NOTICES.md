@@ -53,10 +53,11 @@ No endorsement by Letta or the upstream author is implied.
 
 The Mahiro adaptation keeps a staged UX coordination run, bounded design
 artifacts, implementation handoff, review findings/evidence references, and
-explicit human direction/review gates. It delegates design doctrine to the
-canonical `frontend-design` skill and rejects autonomous research/browser/
+explicit human direction/review gates. It leaves design doctrine with an
+explicitly recorded external owner and rejects autonomous research/browser/
 command execution, file scanning, product implementation, and any direct Goal
-or Code Evidence state mutation.
+or Code Evidence state mutation. The retired `frontend-design` identifier is
+retained only while migrating historical schema-v1 state.
 
 No endorsement by Letta or the upstream author is implied.
 

@@ -13,15 +13,16 @@ Mods                   Letta runtime state, commands, tools, events, and gates
 Memory                 durable preferences and learned corrections
 ```
 
-`frontend-design` remains the canonical portable design procedure. The Phase 3
-UX Workflow mod coordinates stages, durable artifacts, handoffs, review, and
-human gates while requiring the agent to invoke that skill; it does not
-duplicate or silently replace the skill's design doctrine.
+Design doctrine stays outside the mod and may be owned by Mahiro, a repository
+contract, an explicitly selected model, or a current portable procedure. The
+Phase 3 UX Workflow mod coordinates stages, durable artifacts, handoffs,
+review, and human gates while recording that owner; it does not select,
+duplicate, or silently replace design doctrine.
 
-Letta exposes no trusted skill-invocation receipt. The recorded
-`frontend-design` reference is explicit caller attestation, not proof of
-execution or visual quality; human direction approval remains the runtime
-authority boundary.
+Letta exposes no trusted invocation receipt for humans, repository procedures,
+models, or skills. The recorded design-owner reference is explicit caller
+attestation, not proof of execution or visual quality; human direction approval
+remains the runtime authority boundary.
 
 `control-room-goals` owns the portable Goal drafting/application procedure.
 After Mahiro explicitly approves a packet, the agent applies it itself through
@@ -70,7 +71,7 @@ The Goal schema reserves these ownership boundaries:
    criterion-ready handoff. The agent—not the evidence mod—attaches selected
    proof with `mh_update_goal`.
 3. **UX Workflow** — active Phase 3. Decision framing, recorded discovery,
-   required `frontend-design` brief, concepts, human direction approval,
+   required design-owner brief, concepts, human direction approval,
    CruiseCode-compatible implementation handoff, up to three UX review
    iterations, and human approval only for a `Ready` review. It performs none of
    the research/design/implementation/check work itself and never changes Goal.
@@ -92,6 +93,12 @@ multiple writers/executors, external CLI sessions, several worktrees/targets,
 cross-turn coordination, or a material implementation handoff justifies the
 extra state. Straightforward work remains `Goal (optional) → implement → Code
 Evidence (when acceptance needs it)`.
+
+Direct-CLI may arrange a controller-owned same-conversation wake after a
+background wait reaches terminal status. Execution Run does not observe or
+control that wait. A wake/session/job reference remains caller metadata until
+the caller collects the output and records a bounded lane report; fresh Code
+Evidence and Goal audit remain separate.
 
 Each slice stays a focused mod entry until a second owner proves shared-module
 pressure. Runtime state remains under `~/.letta/`; repository state and installed

@@ -14,7 +14,7 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/mahiro-herdr-lifecycle.ts` | lifecycle/turn/tool events + bounded child-process observation | Reports one truthful Letta pane state plus bounded child-task counts/types to the owning Herdr pane over its local socket. |
 | `mods/mahiro-goal.ts` | `/mh-goal`, busy-safe `/mh-goal-status`, `mh_get_goal`, `mh_create_goal`, `mh_update_goal`, `turn_start` | Structured movable conversation goal with bounded operating rules, DoD criteria, evidence, blockers, revision guards, and human verification gates. |
 | `mods/mahiro-code-evidence.ts` | `/mh-evidence`, `mh_code_evidence` (`get` / `collect` / `record`) | Bounded read-only Git evidence with separate staged/unstaged/untracked/base lanes, stale-proof external records, conservative verdicts, and explicit Goal handoff. |
-| `mods/mahiro-ux-workflow.ts` | `/mh-ux`, `mh_get_ux_workflow`, `mh_create_ux_workflow`, `mh_update_ux_workflow` | Revisioned UX coordination from frame through review, with a required `frontend-design` brief, human direction/review gates, bounded handoff/review evidence, and no Goal mutation. |
+| `mods/mahiro-ux-workflow.ts` | `/mh-ux`, `mh_get_ux_workflow`, `mh_create_ux_workflow`, `mh_update_ux_workflow` | Revisioned UX coordination from frame through review, with an explicit design-owner brief, human direction/review gates, bounded handoff/review evidence, and no Goal mutation. |
 | `mods/mahiro-code-map.ts` | `mh_code_map` | Stateless bounded guidance that routes conceptual discovery to `ccc`, exact symbols/paths/strings to exact search, and outline requests to external bounded outline tooling without reading or indexing source. |
 | `mods/mahiro-execution-run.ts` | `/mh-run`, `mh_execution_run` (`get`, `create`, `update`) | Optional executor-neutral coordination for complex main-agent, Letta-subagent, Direct-CLI, human, or other work, with declared target ownership, bounded reports, and a Code Evidence intake handoff. |
 | `mods/rtk-control.ts` | `/rtk`, `tool_start` | Opt-in RTK status, savings, suggestions, and command rewriting. Default mode is Off. |
@@ -81,13 +81,15 @@ Do not record secrets or private raw logs in evidence summaries/references.
 ## UX Workflow
 
 Phase 3 adds a runtime coordinator, not an autonomous design or implementation
-engine. The agent must invoke the canonical `frontend-design` skill and record a
-brief object with `skill: frontend-design`, mode, reference, and summary before
-direction approval or handoff.
+engine. The agent records the selected human, repository contract, model, or
+procedure as an explicit design owner, plus mode, reference, and summary,
+before direction approval or handoff.
 
-That recorded skill/brief reference is caller-supplied coordination metadata,
-not proof that the skill executed or that the brief is visually adequate.
-Human direction approval remains the authority boundary.
+That recorded design-owner brief is caller-supplied coordination metadata, not
+proof that the owner/procedure ran or that the brief is visually adequate.
+Human direction approval remains the authority boundary. Legacy schema-v1
+`frontend-design` briefs migrate losslessly into owner-labelled schema-v2
+records on read and persist in v2 on the next locked mutation.
 
 ```text
 /mh-ux status
@@ -175,6 +177,12 @@ Direct CLI, humans, and other executors. Session/worktree references, paths,
 checks, reports, changed paths, and cross-workflow references are caller-supplied
 coordination metadata—not process truth, filesystem enforcement, or
 verification evidence.
+
+For Direct-CLI v0.1.89 live-return jobs, a controller-owned background wait may
+wake the same open conversation and trigger later collection. Record its job or
+session reference and eventual bounded report normally. The wake event proves
+only that the watcher reached a terminal status; it is not an executor report,
+check result, Code Evidence, or Goal completion signal.
 
 The final Code Evidence intake packet tells the agent which paths/checks/Goal
 criteria were declared and explicitly requires fresh evidence collection.

@@ -259,7 +259,7 @@ frame → discovery → design → direction_approval
 → handoff → implementation → review → complete
 ```
 
-Agent ใช้ `mh_create_ux_workflow` และ `mh_update_ux_workflow` เก็บ artifact ตาม stage และต้องเรียก skill `frontend-design` จริงก่อนบันทึก brief
+Agent ใช้ `mh_create_ux_workflow` และ `mh_update_ux_workflow` เก็บ artifact ตาม stage โดยต้องระบุ design owner ให้ชัดว่า direction นี้มาจาก Mahiro, repo contract, model หรือ procedure ใดก่อนบันทึก brief ตัว mod ไม่เลือกเจ้าของแทนและ brief ที่บันทึกไว้ไม่ใช่หลักฐานว่า owner/procedure ทำงานสำเร็จ
 
 คำสั่งที่ Mahiro ใช้อนุมัติ:
 
@@ -494,7 +494,7 @@ Mahiro Goal → Execution Run → external lanes report
 ### งาน UX/UI เต็ม flow
 
 ```text
-Mahiro Goal → UX Workflow → frontend-design brief
+Mahiro Goal → UX Workflow → explicit design-owner brief
 → Mahiro approve direction → implementation
 → Code Evidence + UX review → Mahiro approve review
 → attach เข้า Goal → complete

@@ -164,12 +164,15 @@ Upstream:
 - Namespace the public surface as `/mh-ux`, `mh_get_ux_workflow`,
   `mh_create_ux_workflow`, and `mh_update_ux_workflow`; all tools use the real
   one-context `run(ctx)` / `ctx.args` host contract.
-- Make `frontend-design` the canonical doctrine. Direction approval and handoff
-  require a recorded brief object whose `skill` is exactly `frontend-design`
-  and whose mode/reference/summary remain traceable.
-- Treat that record as caller attestation—not proof of skill execution or
-  visual quality—because no trusted invocation receipt exists; retain explicit
-  human direction approval as the authority boundary.
+- Keep design doctrine outside the mod. Direction approval and handoff require
+  a recorded brief naming one human, repository contract, model, or procedure
+  as owner while mode/reference/summary remain traceable.
+- Treat that record as caller attestation—not proof that the owner/procedure ran
+  or that visual quality is adequate—because no trusted invocation receipt
+  exists; retain explicit human direction approval as the authority boundary.
+- Migrate schema-v1 `frontend-design` brief labels losslessly into schema-v2
+  owner records on read, then persist the complete v2 state on the next locked
+  mutation without rewriting read-only status calls.
 - Use one run per explicit agent/conversation identity, with workspace isolation
   for raw `default` lanes, in global mode-`0600` runtime state. Add fsynced
   atomic writes, owner-token locks, explicit human force-unlock, recursive
@@ -188,7 +191,8 @@ Upstream:
 
 ### Reject
 
-- Duplicating `frontend-design` doctrine or auto-designing from runtime state.
+- Selecting or duplicating design doctrine inside the mod, or auto-designing
+  from runtime state.
 - Executing browser/research/command/file-scan work inside the mod.
 - Implementing product code, editing repositories, or running checks.
 - Importing Mahiro Goal or Code Evidence internals, sharing their state/core, or

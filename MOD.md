@@ -90,10 +90,11 @@ tools. It is a runtime coordinator only: it never researches, browses, scans
 files, runs commands, designs, implements product code, or reads/writes Mahiro
 Goal or Code Evidence state.
 
-The agent must invoke the canonical `frontend-design` skill and record its brief
-object (`skill`, mode, reference, summary) before direction approval or handoff.
-That brief record is caller attestation, not proof of skill execution or visual
-quality; explicit human direction approval remains the authority boundary.
+The agent must record the selected human, repository contract, model, or
+procedure as the design owner, together with mode, reference, and summary,
+before direction approval or handoff. That brief record is caller attestation,
+not proof that its owner/procedure ran or that its visual quality is adequate;
+explicit human direction approval remains the authority boundary.
 Stages are frame, discovery, design, direction approval, handoff,
 implementation, review, and complete. Model updates are revision guarded and
 cannot set human approvals. Direction and `Ready` review approval exist only on
@@ -112,7 +113,9 @@ explicit agent/conversation scope and workspace for raw `default` lanes. It
 uses mode-`0600` fsynced atomic writes, owner-token locking with explicit human
 force-unlock, recursive fail-closed validation, bounded artifacts/history, and
 revision-guarded clear/mutations. The agent must attach selected UX and Code
-Evidence to Goal separately with `mh_update_goal`.
+Evidence to Goal separately with `mh_update_goal`. Schema-v1
+`frontend-design` briefs remain readable as legacy owner labels and are
+persisted as schema v2 by the next locked mutation.
 
 ## Mahiro Goal
 
@@ -243,6 +246,11 @@ UX/navigation references, and handoff state are caller attestations. `reported`
 means a bounded report was recorded; `handed_off` means the scope owner consumed
 the report and can collect fresh Code Evidence. Neither means successful,
 verified, accepted, merged, or complete.
+
+A Direct-CLI v0.1.89 controller may use a background wait to wake the same open
+conversation before collecting a finished Herdr job. That terminal wake is
+still only lifecycle metadata: the caller must collect and record a bounded
+report separately, then gather fresh Code Evidence where required.
 
 The mod never spawns/controls executors, chooses models, submits prompts, reads
 or mutates repositories or other workflow state, runs checks, stores raw logs/

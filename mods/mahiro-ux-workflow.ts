@@ -1,9 +1,10 @@
 /**
  * Mahiro UX Workflow — runtime coordination and human approval gates.
  *
- * This mod coordinates artifacts only. frontend-design remains canonical design
- * doctrine. This mod never researches, browses, runs commands, scans files,
- * implements product code, mutates Goal/Code Evidence, or verifies a Goal.
+ * This mod coordinates artifacts only. The caller records the human/repo/model/
+ * procedure that owns the selected design direction. This mod never researches,
+ * browses, runs commands, scans files, implements product code, mutates
+ * Goal/Code Evidence, or verifies a Goal.
  */
 
 import { randomUUID } from "node:crypto";
@@ -23,7 +24,8 @@ import {
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+const LEGACY_SCHEMA_VERSION = 1;
 const STATE_PATH = resolve(process.env.MAHIRO_UX_WORKFLOW_STATE_PATH
   ?? join(homedir(), ".letta", "mods", "mahiro-ux-workflow.state.json"));
 const LOCK_PATH = `${STATE_PATH}.lock`;
@@ -49,7 +51,7 @@ type ApprovalStatus = "pending" | "approved" | "rejected";
 interface Scope { agentId: string; conversationId: string; workspace: string; key: string }
 interface Frame { problem: string; audience: string; desiredOutcome: string; constraints: string[] }
 interface ResearchItem { id: string; kind: string; summary: string; reference: string | null; createdAt: string }
-interface Brief { skill: "frontend-design"; mode: string; reference: string; summary: string; createdAt: string }
+interface Brief { owner: string; mode: string; reference: string; summary: string; createdAt: string }
 interface Concept { id: string; title: string; summary: string; tradeoffs: string[]; createdAt: string }
 interface Approval { status: ApprovalStatus; note: string | null; at: string | null; actor: "human" | null }
 interface Direction { conceptId: string; summary: string; proposedAt: string; approval: Approval }
@@ -103,7 +105,7 @@ interface UXRun {
   updatedAt: string;
   history: HistoryItem[];
 }
-interface WorkflowState { schemaVersion: 1; runs: Record<string, UXRun> }
+interface WorkflowState { schemaVersion: 2; runs: Record<string, UXRun> }
 interface LockHandle { tokenPath: string }
 
 function nowIso(): string { return new Date().toISOString(); }
@@ -157,12 +159,12 @@ function validApproval(value: unknown): value is Approval {
 }
 
 function validateBrief(value: unknown): value is Brief {
-  return isRecord(value) && value.skill === "frontend-design"
+  return isRecord(value) && isBoundedString(value.owner)
     && isBoundedString(value.mode) && isBoundedString(value.reference)
     && isBoundedString(value.summary, MAX_LONG_TEXT) && isIso(value.createdAt);
 }
 function sameBrief(left: Brief, right: Brief): boolean {
-  return left.skill === right.skill && left.mode === right.mode && left.reference === right.reference
+  return left.owner === right.owner && left.mode === right.mode && left.reference === right.reference
     && left.summary === right.summary && left.createdAt === right.createdAt;
 }
 function validateStoredRun(key: string, value: unknown): asserts value is UXRun {
@@ -185,7 +187,7 @@ function validateStoredRun(key: string, value: unknown): asserts value is UXRun 
     || value.frame.constraints.some((item: unknown) => !isBoundedString(item)))) {
     throw new Error(`UX Workflow state entry ${key} has invalid frame.`);
   }
-  if (value.brief !== null && !validateBrief(value.brief)) throw new Error(`UX Workflow state entry ${key} has invalid frontend-design brief.`);
+  if (value.brief !== null && !validateBrief(value.brief)) throw new Error(`UX Workflow state entry ${key} has an invalid design brief.`);
   if (!hasUniqueIds(value.research) || value.research.some((item: unknown) => !isRecord(item)
     || !isBoundedString(item.id, 120) || !isBoundedString(item.kind, 80)
     || !isBoundedString(item.summary, MAX_LONG_TEXT) || (item.reference !== null && !isBoundedString(item.reference))
@@ -239,7 +241,7 @@ function validateStoredRun(key: string, value: unknown): asserts value is UXRun 
   }
   if (value.stage === "handoff" && value.review) throw new Error(`UX Workflow state entry ${key} has review evidence ahead of handoff.`);
   if (["design", "direction_approval", "handoff", "implementation", "review", "complete"].includes(value.stage) && !value.brief) {
-    throw new Error(`UX Workflow state entry ${key} reached design/approval/handoff without a frontend-design brief.`);
+    throw new Error(`UX Workflow state entry ${key} reached design/approval/handoff without a design brief.`);
   }
   if (value.stage === "direction_approval" && (!value.direction || value.direction.approval.status !== "pending")) {
     throw new Error(`UX Workflow state entry ${key} has invalid pending direction approval.`);
@@ -262,7 +264,7 @@ function validateStoredHandoff(key: string, value: unknown, brief: Brief | null)
   if (!isRecord(value) || !["prototype_ready", "implementation_ready"].includes(value.readiness)
     || !validateBrief(value.brief) || !isIso(value.createdAt)) throw new Error(`UX Workflow state entry ${key} has invalid handoff.`);
   if (!brief || !sameBrief(value.brief, brief)) {
-    throw new Error(`UX Workflow state entry ${key} has a handoff brief that does not match the recorded frontend-design brief.`);
+    throw new Error(`UX Workflow state entry ${key} has a handoff brief that does not match the recorded design brief.`);
   }
   for (const name of ["acceptance_criteria", "non_goals", "constraints", "protected_contracts", "goal_criterion_refs"]) {
     if (!Array.isArray(value[name]) || value[name].length > MAX_LIST
@@ -302,15 +304,33 @@ function validateStoredReview(key: string, value: unknown, iterations: number): 
   if (value.approval.status === "approved" && value.verdict !== "Ready") throw new Error(`UX Workflow state entry ${key} approves a non-Ready review.`);
 }
 
+function migrateLegacyBrief(value: unknown): unknown {
+  if (!isRecord(value) || value.skill !== "frontend-design") return value;
+  const { skill, ...rest } = value;
+  return { owner: skill, ...rest };
+}
+function migrateLegacyState(value: Record<string, any>): WorkflowState {
+  const migrated = structuredClone(value);
+  migrated.schemaVersion = SCHEMA_VERSION;
+  for (const run of Object.values(migrated.runs ?? {})) {
+    if (!isRecord(run)) continue;
+    run.brief = migrateLegacyBrief(run.brief);
+    if (isRecord(run.handoff)) run.handoff.brief = migrateLegacyBrief(run.handoff.brief);
+  }
+  return migrated as WorkflowState;
+}
 function readState(): WorkflowState {
   if (!existsSync(STATE_PATH)) return emptyState();
   let parsed: unknown;
   try { parsed = JSON.parse(readFileSync(STATE_PATH, "utf8")); }
   catch (error) { throw new Error(`Could not parse UX Workflow state: ${error instanceof Error ? error.message : String(error)}`); }
-  if (!isRecord(parsed) || parsed.schemaVersion !== SCHEMA_VERSION || !isRecord(parsed.runs)) throw new Error(`Unsupported UX Workflow state schema. Expected ${SCHEMA_VERSION}.`);
-  if (Object.keys(parsed.runs).length > MAX_SCOPES) throw new Error(`UX Workflow state exceeds ${MAX_SCOPES} scopes.`);
-  for (const [key, run] of Object.entries(parsed.runs)) validateStoredRun(key, run);
-  return parsed as WorkflowState;
+  if (!isRecord(parsed) || ![LEGACY_SCHEMA_VERSION, SCHEMA_VERSION].includes(parsed.schemaVersion) || !isRecord(parsed.runs)) {
+    throw new Error(`Unsupported UX Workflow state schema. Expected ${LEGACY_SCHEMA_VERSION} or ${SCHEMA_VERSION}.`);
+  }
+  const state = parsed.schemaVersion === LEGACY_SCHEMA_VERSION ? migrateLegacyState(parsed) : parsed as WorkflowState;
+  if (Object.keys(state.runs).length > MAX_SCOPES) throw new Error(`UX Workflow state exceeds ${MAX_SCOPES} scopes.`);
+  for (const [key, run] of Object.entries(state.runs)) validateStoredRun(key, run);
+  return state;
 }
 
 function writeState(state: WorkflowState): void {
@@ -436,9 +456,9 @@ function blockerById(run: UXRun, id: unknown): Blocker {
 function openBlockers(run: UXRun): Blocker[] { return run.blockers.filter((item) => item.status === "open"); }
 
 function normalizeBrief(value: any, existingCreatedAt?: string): Brief {
-  if (!isRecord(value) || value.skill !== "frontend-design") throw new Error("brief.skill must be exactly frontend-design.");
+  if (!isRecord(value)) throw new Error("brief must be an object.");
   return {
-    skill: "frontend-design",
+    owner: field(value.owner, "brief.owner"),
     mode: field(value.mode, "brief.mode"),
     reference: field(value.reference, "brief.reference"),
     summary: field(value.summary, "brief.summary", MAX_LONG_TEXT),
@@ -446,10 +466,10 @@ function normalizeBrief(value: any, existingCreatedAt?: string): Brief {
   };
 }
 function normalizeHandoff(value: any, brief: Brief | null): Handoff {
-  if (!brief) throw new Error("Record a frontend-design brief before handoff.");
+  if (!brief) throw new Error("Record a design brief before handoff.");
   if (!isRecord(value) || !["prototype_ready", "implementation_ready"].includes(value.readiness)) throw new Error("handoff.readiness must be prototype_ready or implementation_ready.");
   const handoffBrief = normalizeBrief(value.brief, brief.createdAt);
-  if (!sameBrief(handoffBrief, brief)) throw new Error("handoff.brief must exactly match the recorded frontend-design brief.");
+  if (!sameBrief(handoffBrief, brief)) throw new Error("handoff.brief must exactly match the recorded design brief.");
   if (!Array.isArray(value.open_questions) || value.open_questions.length > MAX_LIST) throw new Error(`handoff.open_questions must contain at most ${MAX_LIST} items.`);
   const openQuestions = value.open_questions.map((item: any, index: number) => {
     if (!isRecord(item) || typeof item.blocking !== "boolean") throw new Error(`handoff.open_questions[${index}] requires question and blocking.`);
@@ -532,7 +552,7 @@ function updateFromTool(scope: Scope, args: any): UXRun {
     }
     if (action === "propose_direction") {
       if (run.stage !== "design") throw new Error("propose_direction is allowed only in design stage.");
-      if (!run.brief) throw new Error("Record the frontend-design brief before proposing a direction.");
+      if (!run.brief) throw new Error("Record the design brief before proposing a direction.");
       const conceptId = field(args.concept_id, "concept_id", 80);
       if (!run.concepts.some((item) => item.id === conceptId)) throw new Error(`Unknown concept: ${conceptId}`);
       run.direction = { conceptId, summary: field(args.summary, "summary", MAX_LONG_TEXT), proposedAt: nowIso(), approval: approvalPending() };
@@ -547,11 +567,11 @@ function updateFromTool(scope: Scope, args: any): UXRun {
     if (action === "set_phase") {
       const phase = String(args.phase ?? "") as Stage;
       if (run.stage === "discovery" && phase === "design") {
-        if (!run.brief) throw new Error("Invoke frontend-design and record its brief before entering design.");
+        if (!run.brief) throw new Error("Record the selected design owner and brief before entering design.");
         run.stage = "design"; return;
       }
       if (run.stage === "handoff" && phase === "implementation") {
-        if (!run.brief || run.direction?.approval.status !== "approved" || !run.handoff) throw new Error("Implementation requires a recorded frontend-design brief, human direction approval, and valid handoff.");
+        if (!run.brief || run.direction?.approval.status !== "approved" || !run.handoff) throw new Error("Implementation requires a recorded design brief, human direction approval, and valid handoff.");
         if (!["prototype_ready", "implementation_ready"].includes(run.handoff.readiness)) throw new Error("Handoff is not prototype_ready or implementation_ready.");
         const blocking = run.handoff.open_questions.filter((item) => item.blocking);
         if (blocking.length) throw new Error(`Implementation is blocked by open questions: ${blocking.map((item) => item.question).join("; ")}`);
@@ -623,8 +643,8 @@ function reopen(scope: Scope, revision: number, note: string | null): UXRun {
 }
 
 const COORDINATOR_BOUNDARY = [
-  "Agent must invoke the frontend-design skill; this runtime does not perform or replace design doctrine.",
-  "The recorded frontend-design brief is caller-supplied coordination metadata, not proof that the skill ran or that the brief is visually adequate; human direction approval remains authoritative.",
+  "Record the selected human, repository contract, model, or procedure as design owner; this runtime does not choose or replace design doctrine.",
+  "The recorded design-owner brief is caller-supplied coordination metadata, not proof that the owner/procedure ran or that the brief is visually adequate; human direction approval remains authoritative.",
   "Attach selected UX and Code Evidence to Goal separately with mh_update_goal. This workflow never mutates, verifies, completes, or claims Goal state.",
 ];
 function response(run: UXRun | null) {
@@ -639,7 +659,7 @@ function formatRun(run: UXRun): string {
   return [
     `Mahiro UX Workflow · ${run.stage} · revision ${run.revision}`,
     `Summary: ${run.summary}`,
-    `Brief: ${run.brief ? `frontend-design / ${run.brief.mode} / ${run.brief.reference}` : "not recorded"}`,
+    `Brief: ${run.brief ? `${run.brief.owner} / ${run.brief.mode} / ${run.brief.reference}` : "not recorded"}`,
     `Direction: ${run.direction ? `${run.direction.conceptId} (${run.direction.approval.status})` : "not proposed"}`,
     `Handoff: ${run.handoff?.readiness ?? "not recorded"}`,
     `Review: ${run.review ? `${run.review.verdict}, iteration ${run.review.iteration}/${MAX_REVIEW_ITERATIONS}, ${run.review.approval.status}` : "not recorded"}`,
@@ -700,9 +720,9 @@ const CREATE_PARAMETERS = {
 };
 const BRIEF_SCHEMA = {
   type: "object",
-  required: ["skill", "mode", "reference", "summary"],
+  required: ["owner", "mode", "reference", "summary"],
   properties: {
-    skill: { type: "string", enum: ["frontend-design"] },
+    owner: { type: "string", maxLength: MAX_TEXT, description: "Explicit human, repository contract, model, or procedure that owns this design direction." },
     mode: { type: "string", maxLength: MAX_TEXT },
     reference: { type: "string", maxLength: MAX_TEXT },
     summary: { type: "string", maxLength: MAX_LONG_TEXT },
@@ -754,7 +774,7 @@ const UPDATE_PARAMETERS = {
 };
 
 export const __testing = process.env.MAHIRO_UX_WORKFLOW_TESTING === "1"
-  ? Object.freeze({ readState, acquireStateLock, releaseStateLock, forceUnlock, statePath: STATE_PATH, lockPath: LOCK_PATH, disablePath: DISABLE_PATH, maxReviewIterations: MAX_REVIEW_ITERATIONS })
+  ? Object.freeze({ readState, migrateLegacyState, acquireStateLock, releaseStateLock, forceUnlock, statePath: STATE_PATH, lockPath: LOCK_PATH, disablePath: DISABLE_PATH, schemaVersion: SCHEMA_VERSION, maxReviewIterations: MAX_REVIEW_ITERATIONS })
   : null;
 
 export default async function activate(letta: any) {
@@ -773,7 +793,7 @@ export default async function activate(letta: any) {
   if (letta.capabilities?.tools && letta.tools?.register) {
     disposers.push(letta.tools.register({
       name: "mh_get_ux_workflow",
-      description: "Read the scoped UX workflow. frontend-design references are caller attestations—not execution/quality proof—and selected UX/Code Evidence must be attached with mh_update_goal separately.",
+      description: "Read the scoped UX workflow. Design-owner references are caller attestations—not execution/quality proof—and selected UX/Code Evidence must be attached with mh_update_goal separately.",
       parameters: GET_PARAMETERS,
       parallelSafe: true,
       run(ctx: any) { return response(getRun(scopeFrom(ctx))); },
@@ -787,7 +807,7 @@ export default async function activate(letta: any) {
     }));
     disposers.push(letta.tools.register({
       name: "mh_update_ux_workflow",
-      description: "Revision-guarded UX artifact/stage updates. Cannot set human approvals. Recorded frontend-design metadata is an attestation, not invocation proof; use mh_update_goal separately.",
+      description: "Revision-guarded UX artifact/stage updates. Cannot set human approvals. Recorded design-owner metadata is an attestation, not invocation proof; use mh_update_goal separately.",
       parameters: UPDATE_PARAMETERS,
       parallelSafe: false,
       run(ctx: any) { return response(updateFromTool(scopeFrom(ctx), ctx.args ?? {})); },
