@@ -33,6 +33,54 @@ function loaderFor(path) {
   throw new Error(`Unsupported mod extension: ${extension}`);
 }
 
+function checkUpstreamProvenanceContracts() {
+  const activeOwners = [
+    "THIRD_PARTY_NOTICES.md",
+    "docs/upstream-adaptations.md",
+  ];
+  const provenanceSurfaces = [
+    ...activeOwners,
+    "docs/inventory.md",
+    "docs/verification.md",
+  ];
+  const hasStaleCurrentSnapshot = (source) => source
+    .split(/\n\s*\n/)
+    .some((paragraph) => {
+      if (!/\b57f7a3e[a-f0-9]*\b/i.test(paragraph)) return false;
+      const hasHistoricalMarker = /\b(?:pinned|pre-retirement|adaptation-checkpoint|historical)\b/i.test(paragraph);
+      return /\bcurrent\b/i.test(paragraph) || !hasHistoricalMarker;
+    });
+
+  for (const staleExample of [
+    "Current upstream source: 57f7a3e",
+    "57f7a3e is the current source",
+    "57f7a3e remains the current source",
+  ]) {
+    assert(hasStaleCurrentSnapshot(staleExample), "provenance regression matcher must reject stale current-source attribution");
+  }
+  assert(
+    !hasStaleCurrentSnapshot("Pinned pre-retirement source snapshot: 57f7a3e"),
+    "provenance regression matcher must retain explicitly historical snapshot attribution",
+  );
+
+  for (const relativePath of provenanceSurfaces) {
+    const source = readFileSync(resolve(repositoryRoot, relativePath), "utf8");
+    assert(
+      !hasStaleCurrentSnapshot(source),
+      `${relativePath} must not present the retired 57f7a3e snapshot as current upstream source`,
+    );
+  }
+
+  for (const relativePath of activeOwners) {
+    const source = readFileSync(resolve(repositoryRoot, relativePath), "utf8");
+    assert(
+      source.includes("c9047cf0e5655f7e44dc142f9c898cd8150224dc")
+        && source.includes("retired"),
+      `${relativePath} must name the upstream retirement boundary while retaining pinned provenance`,
+    );
+  }
+}
+
 async function loadMod(relativePath) {
   const absolutePath = resolve(repositoryRoot, relativePath);
   const source = await readFile(absolutePath, "utf8");
@@ -1891,7 +1939,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-mcp-proxy.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.8.9", "Package version must be 0.8.9");
+  assert(packageJson.version === "0.8.10", "Package version must be 0.8.10");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
 
@@ -2667,6 +2715,7 @@ process.env.MAHIRO_STATUSLINE_DISABLE_PATH = join(testRoot, "mahiro-statusline.d
 process.env.MAHIRO_MCP_PROXY_DISABLE_PATH = join(testRoot, "mahiro-mcp-proxy.disabled");
 
 try {
+  checkUpstreamProvenanceContracts();
   const activations = new Map();
   const testingSurfaces = new Map();
   for (const entry of entries) {

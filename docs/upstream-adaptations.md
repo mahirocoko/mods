@@ -5,6 +5,16 @@ installation or clean-room reinvention. Every borrowed implementation must pin
 its source, preserve its license notice, and record what was kept, adapted, and
 rejected.
 
+## Current upstream ownership status
+
+Checked on 2026-08-25 against `letta-ai/mods` commit
+`4c249a9609c4d17de74bf7ef229510915b473d55`. CruiseCode, CruiseUX, Code
+Outline Enforce, Threadkeeper, Environment Compass, and Tool Guard Inspector
+are now retired upstream and absent from the current official source after
+`c9047cf0e5655f7e44dc142f9c898cd8150224dc`. References below are pinned
+historical design/provenance evidence, not live ownership or update routes.
+Mahiro's adaptations remain independently owned by this repository.
+
 ## Mahiro Goal Phase 1
 
 Upstream:
@@ -81,10 +91,10 @@ Primary upstream:
 Design references inspected without copying implementation:
 
 - `@letta-ai/plan-mode@0.1.1`, commit
-  `27859c3771177a4e431ace91a4780b0e154abae1`, current source SHA-256
+  `27859c3771177a4e431ace91a4780b0e154abae1`, pinned source SHA-256
   `6636135abdcd3685b05830055eb2216d7884ba76e165c48ae19bdc488fe11834`
 - `@letta-ai/code-outline-enforce@0.2.0`, commit
-  `492c6c6ea5102dc29e2c8ac24ace62067891b93c`, current source SHA-256
+  `492c6c6ea5102dc29e2c8ac24ace62067891b93c`, pinned source SHA-256
   `d4b37430b86fcd2e07af28e40b55d12f48574c660997f8a220d94fd7a3d23a31`
 
 ### Keep
@@ -141,8 +151,8 @@ Design references inspected without copying implementation:
 Upstream:
 
 - package: `@letta-ai/cruise-ux@0.2.0-alpha.1`
-- current source commit: `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
-- current source SHA-256:
+- last retained pre-retirement source commit: `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
+- pinned source SHA-256:
   `40c5964f616c19afa2c632433781086d40b4df1fcd8cbb0f26ca66915eebcac0`
 - package-introducing commit: `5acfc823849ab7e5b401ab74f1c6158fdb4da7c6`
 - license: Apache-2.0
@@ -262,7 +272,8 @@ Upstream pattern references:
   - source commit: `4f580ee3297e9c311b81ff64c39f9aae7ddf8b7a`
   - source SHA-256:
     `7dd30efb6bf7830967e59ff8a896f3d9362699b0c7308f990bdb6db7e4e9c2ce`
-- current official main: `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
+- last retained pre-retirement snapshot: `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
+- upstream retirement/source-removal commit: `c9047cf0e5655f7e44dc142f9c898cd8150224dc`
 - license: Apache-2.0 for all three sources
 
 ### Keep

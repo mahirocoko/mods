@@ -66,7 +66,7 @@ Apache-2.0. Plan Mode and Code Outline Enforce were inspected only as bounded
 design references; they are not installed or duplicated by this bundle.
 
 `mods/mahiro-ux-workflow.ts` adapts runtime coordination contracts from
-`@letta-ai/cruise-ux@0.2.0-alpha.1`. The current source is pinned at commit
+`@letta-ai/cruise-ux@0.2.0-alpha.1`. The adaptation-checkpoint source is pinned at commit
 `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`, source SHA-256
 `40c5964f616c19afa2c632433781086d40b4df1fcd8cbb0f26ca66915eebcac0`;
 the package was introduced at commit
@@ -96,8 +96,9 @@ logic—from `@letta-ai/threadkeeper@0.1.0`,
 - Tool Guard Inspector `4f580ee3297e9c311b81ff64c39f9aae7ddf8b7a` /
   `7dd30efb6bf7830967e59ff8a896f3d9362699b0c7308f990bdb6db7e4e9c2ce`
 
-All are Apache-2.0 and unchanged under current official main
-`57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`. The Mahiro owner keeps only
+All are Apache-2.0 and were unchanged at the last retained pre-retirement
+snapshot `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`. Upstream retired and removed
+their package trees in `c9047cf0e5655f7e44dc142f9c898cd8150224dc`. The Mahiro owner keeps only
 scoped operational records, read-only attribution, and narrow receipt patterns;
 it rejects anchors/memory replacement, environment probing, generic permission
 policy, process execution, repository inspection, and verification claims.

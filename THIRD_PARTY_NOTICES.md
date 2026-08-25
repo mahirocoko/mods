@@ -1,5 +1,17 @@
 # Third-party notices
 
+## Upstream ownership status
+
+Status checked on 2026-08-25 against `letta-ai/mods` commit
+`4c249a9609c4d17de74bf7ef229510915b473d55`. CruiseCode, CruiseUX, Code
+Outline Enforce, Threadkeeper, Environment Compass, and Tool Guard Inspector
+are now recorded in upstream `catalog/retired.json`; their package trees were
+removed from the current official source by commit
+`c9047cf0e5655f7e44dc142f9c898cd8150224dc`. The pinned commits and hashes
+below remain historical provenance and license receipts, not claims of current
+Letta maintenance. Goal Mode and User Timestamps remain separate official
+packages.
+
 ## Letta Goal Mode
 
 `mods/mahiro-goal.ts` is adapted in part from `@letta-ai/goal-mode` version
@@ -45,8 +57,8 @@ No endorsement by Letta or the upstream author is implied.
 `@letta-ai/cruise-ux` version `0.2.0-alpha.1` in the
 [`letta-ai/mods`](https://github.com/letta-ai/mods) repository.
 
-- Current source commit: `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
-- Current source SHA-256: `40c5964f616c19afa2c632433781086d40b4df1fcd8cbb0f26ca66915eebcac0`
+- Last retained pre-retirement source commit: `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
+- Pinned source SHA-256: `40c5964f616c19afa2c632433781086d40b4df1fcd8cbb0f26ca66915eebcac0`
 - Package-introducing commit: `5acfc823849ab7e5b401ab74f1c6158fdb4da7c6`
 - Upstream license: Apache License 2.0; a complete copy is included at
   `LICENSES/Apache-2.0.txt`.
@@ -101,9 +113,10 @@ preflight, and scoped decision-receipt patterns from three packages in the
   - source SHA-256: `7dd30efb6bf7830967e59ff8a896f3d9362699b0c7308f990bdb6db7e4e9c2ce`
 
 All three sources are Apache-2.0; a complete copy is included at
-`LICENSES/Apache-2.0.txt`. Current official main at
-`57f7a3ef3b4648a1c46b0f922d6df74d11bfa628` has no later changes under these
-package directories.
+`LICENSES/Apache-2.0.txt`. The last retained pre-retirement snapshot at
+`57f7a3ef3b4648a1c46b0f922d6df74d11bfa628` had no later changes under these
+package directories. Upstream later retired and removed all three package
+trees in `c9047cf0e5655f7e44dc142f9c898cd8150224dc`.
 
 The Mahiro adaptation keeps bounded scoped records, explicit lifecycle,
 read-only attribution, and narrow audit receipts. It replaces generic anchors,

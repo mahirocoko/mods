@@ -340,8 +340,8 @@ active Mahiro Goal.
 Source provenance:
 
 - `@letta-ai/cruise-ux@0.2.0-alpha.1`
-- current source commit `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
-- current source SHA-256
+- adaptation-checkpoint source commit `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
+- pinned source SHA-256
   `40c5964f616c19afa2c632433781086d40b4df1fcd8cbb0f26ca66915eebcac0`
 - introduced at commit `5acfc823849ab7e5b401ab74f1c6158fdb4da7c6`
 - Apache-2.0 with the complete license retained in `LICENSES/Apache-2.0.txt`
@@ -508,8 +508,10 @@ Source pattern provenance:
 - `@letta-ai/tool-guard-inspector@0.1.0`, commit
   `4f580ee3297e9c311b81ff64c39f9aae7ddf8b7a`, source SHA-256
   `7dd30efb6bf7830967e59ff8a896f3d9362699b0c7308f990bdb6db7e4e9c2ce`
-- all three are Apache-2.0 and unchanged under current official main
-  `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`
+- all three are Apache-2.0 and were unchanged at the last retained
+  pre-retirement snapshot `57f7a3ef3b4648a1c46b0f922d6df74d11bfa628`;
+  upstream later retired and removed their source trees in
+  `c9047cf0e5655f7e44dc142f9c898cd8150224dc`
 
 Candidate contract:
 
@@ -968,3 +970,43 @@ Release evidence:
 
 This is the release basis for v0.8.9. A `/reload` remains required in every
 already-running Letta Code session after installation.
+
+## v0.8.10 upstream retirement provenance alignment
+
+Evidence captured on 2026-08-25 with Letta Code 0.30.31 and pnpm 10.33.0.
+
+Upstream ownership changed after the private adaptations were pinned:
+
+- official `letta-ai/mods` main is `4c249a9609c4d17de74bf7ef229510915b473d55`
+- `c9047cf0e5655f7e44dc142f9c898cd8150224dc` creates the official/retired
+  catalog boundary and removes the retired package source trees
+- CruiseCode, CruiseUX, Code Outline Enforce, Threadkeeper, Environment
+  Compass, and Tool Guard Inspector are retired historical references
+- Goal Mode and User Timestamps remain separate official packages
+- all pinned source commits, file hashes, authors, and Apache-2.0 receipts stay
+  intact; only volatile current-ownership wording changes
+
+Release verification:
+
+- frozen `pnpm install` completed with the lockfile unchanged
+- the bounded context-contract scan covered all four provenance surfaces with
+  zero stale-current findings, warnings, skipped files, or truncated output
+- `pnpm check` passed the ten-entry/9-capability manifest, entry-manager,
+  transpile, registration, state, human-gate, and cleanup checks
+- the provenance regression requires every paragraph containing the target
+  pre-retirement snapshot ID to use an explicit historical marker and contain
+  no live-ownership claim; fixtures cover owner-before-ID, ID-before-owner,
+  and `remains current` sentence shapes
+- `pnpm pack --dry-run` included only the expected private package allowlist at
+  version 0.8.10
+- `git diff --check` passed
+- fresh independent verification resolved the exact retirement commit,
+  confirmed its ancestry and all six retired package removals, recomputed all
+  eight pinned source hashes, and found no concrete defect
+- `pnpm mods:update` installed `npm:@mahirocoko/letta-mods@0.8.10`; all ten
+  installed mod hashes match repository source and migration is not needed
+- official `@letta-ai/memfs-search@0.1.1` remains enabled separately
+
+No private mod source, manifest entry/capability, state schema, or runtime
+behavior changed in this release. Every active Letta Code process still needs
+`/reload` after the managed package updates.
