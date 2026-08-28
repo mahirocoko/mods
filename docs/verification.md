@@ -1010,3 +1010,38 @@ Release verification:
 No private mod source, manifest entry/capability, state schema, or runtime
 behavior changed in this release. Every active Letta Code process still needs
 `/reload` after the managed package updates.
+
+## v0.8.11 active background-subagent statusline
+
+Evidence captured on 2026-08-28 with Letta Code 0.31.5 and pnpm 10.33.0.
+
+Release scope:
+
+- the order-0 statusline reads the public subagent lifecycle context and keeps
+  `pending`/`running` background subagents visible after the parent turn settles
+- the compact segment exposes only sanitized type, capped remaining count, and
+  capped elapsed time; task descriptions and prompts never enter the panel
+- foreground and completed subagents remain excluded
+- malformed lifecycle getters/items, control characters, Unicode line
+  separators, extreme elapsed values, and large counts fail closed or remain
+  bounded inside the existing maximum-two-row layout contract
+- Bash and Monitor background tasks remain intentionally outside this release
+  and continue to use `/bg`
+- the `letta-ai/letta-code` checkout was pulled and inspected as read-only
+  upstream evidence; no Letta Code core source was modified
+
+Release verification:
+
+- `pnpm check` passed all ten entries and nine capabilities, including the
+  statusline's normal, hostile-value, lifecycle-failure, narrow-layout, and
+  right-side model-retention assertions
+- `git diff --check` passed
+- fresh independent verification returned PASS after directly probing control
+  and Unicode separators, throwing lifecycle getters, bounded type/count/time,
+  active-background filtering, and width-64 two-row rendering
+- `pnpm mods:update` installed `npm:@mahirocoko/letta-mods@0.8.11`; all ten
+  installed mod hashes match repository source and migration is not needed
+
+Every already-running Letta Code session must run `/reload` before the new
+indicator can receive live lifecycle state. A live post-parent-turn panel check
+remains a runtime observation after reload, not a pre-release static claim.

@@ -276,7 +276,7 @@ Use `/rtk doctor`, `/rtk log`, and `/rtk rewrite <command>` before enabling broa
 
 ## Compact statusline
 
-`mods/statusline.tsx` owns an order-0 panel when `ui.panels` is available. It combines bounded workspace/Git/conversation/activity/context/MemFS/RTK/model information and refreshes local Git, memory, reflection, and RTK state every ten seconds.
+`mods/statusline.tsx` owns an order-0 panel when `ui.panels` is available. It combines bounded workspace/Git/active-background-subagent/conversation/activity/context/MemFS/RTK/model information and refreshes local Git, memory, reflection, and RTK state every ten seconds. Active background subagents are read from the public lifecycle context on each render and remain visible after the parent turn settles; the segment exposes only a sanitized bounded type, capped count, and capped elapsed time, never the task description or prompt.
 
 The statusline remains one row when the available width is sufficient. When only the left-side segments overflow, it keeps the agent/model/backend group on the first row and moves a prefix-preserving set of complete left segments to one second row. It never wraps a segment internally and never grows beyond two rows; lower-priority remainder is omitted when both rows are full. Agent/model/backend identity is cached from lifecycle contexts so a transient sparse render context cannot blank the right-side group.
 

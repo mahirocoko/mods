@@ -25,6 +25,7 @@ const STATUS_COLORS = {
   memDirty: "#FEE19C",
   reflection: "#A5A8AB",
   activity: "#20B2AA",
+  subagent: "#FEE19C",
   error: "#F1689F",
   agent: "#8C8CF9",
   model: "#A5A8AB",
@@ -374,6 +375,10 @@ function renderStatusline(context: any, status: CachedStatus): string | string[]
       color: status.git.dirtyCount > 0 ? STATUS_COLORS.dirty : STATUS_COLORS.git,
     });
   }
+  const activeSubagents = formatActiveBackgroundSubagents(context);
+  if (activeSubagents) {
+    leftCandidates.push({ text: activeSubagents, color: STATUS_COLORS.subagent });
+  }
   if (conversation) leftCandidates.push({ text: `💬 ${shortConversation(conversation)}`, color: STATUS_COLORS.conversation });
   if (status.activityStatus) {
     leftCandidates.push({ text: status.activityStatus, color: status.activityColor ?? STATUS_COLORS.activity });
@@ -423,6 +428,66 @@ function renderStatusline(context: any, status: CachedStatus): string | string[]
 
   const left = renderSegments(chalk, fitSegmentPrefix(leftCandidates, width, chalk).fitted);
   return row(left || color(chalk, STATUS_COLORS.agent, agentName ?? "Letta"), "", width);
+}
+
+function formatActiveBackgroundSubagents(context: any): string | null {
+  let items: any[];
+  try {
+    const list = context?.subagents?.list;
+    if (typeof list !== "function") return null;
+    const result = list();
+    items = Array.isArray(result) ? result : [];
+  } catch {
+    return null;
+  }
+
+  const active: Array<{ elapsedMs: number; type: unknown }> = [];
+  for (const item of items) {
+    try {
+      const state = typeof item?.status === "string" ? item.status.toLowerCase() : "";
+      if (item?.isBackground !== true || (state !== "pending" && state !== "running")) continue;
+      active.push({
+        elapsedMs: pickNumber(item?.elapsedMs) ?? 0,
+        type: item?.type,
+      });
+    } catch {
+      // A malformed lifecycle item must not break the whole statusline.
+    }
+  }
+  if (active.length === 0) return null;
+
+  const longestRunning = active.reduce((selected, item) => {
+    return item.elapsedMs > selected.elapsedMs ? item : selected;
+  }, active[0]);
+  const remainder = active.length - 1;
+  return `⏳ bg ${formatSubagentType(longestRunning.type)}${formatSubagentRemainder(remainder)} ${formatElapsed(longestRunning.elapsedMs)}`;
+}
+
+function formatSubagentType(value: unknown): string {
+  if (typeof value !== "string") return "subagent";
+  const normalized = value
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  return normalized ? shortId(normalized, 14) : "subagent";
+}
+
+function formatSubagentRemainder(remainder: number): string {
+  if (remainder <= 0) return "";
+  return remainder > 99 ? " +99+" : ` +${remainder}`;
+}
+
+function formatElapsed(elapsedMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1_000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes}m${String(totalSeconds % 60).padStart(2, "0")}s`;
+
+  const totalHours = Math.floor(totalMinutes / 60);
+  if (totalHours >= 100) return "99h+";
+  return `${totalHours}h${String(totalMinutes % 60).padStart(2, "0")}m`;
 }
 
 function emptyGitStatus(): GitStatus {

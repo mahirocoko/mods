@@ -1939,7 +1939,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-mcp-proxy.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.8.10", "Package version must be 0.8.10");
+  assert(packageJson.version === "0.8.11", "Package version must be 0.8.11");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
 
@@ -2621,6 +2621,59 @@ async function checkStatuslineRegistration(activate) {
   };
   const wideLayout = panelOptions?.render({ ...layoutContext, width: 220 });
   assert(typeof wideLayout === "string", "wide statusline must remain one row");
+  const activeSubagentLayout = panelOptions?.render({
+    ...layoutContext,
+    subagents: {
+      list: () => [
+        { type: "Verifier", status: "running", elapsedMs: 41_000, isBackground: true },
+        { type: "Recall", status: "pending", elapsedMs: 5_000, isBackground: true },
+        { type: "General-purpose", status: "running", elapsedMs: 90_000, isBackground: false },
+        { type: "Memory", status: "completed", elapsedMs: 120_000, isBackground: true },
+      ],
+    },
+    width: 220,
+  });
+  assert(
+    typeof activeSubagentLayout === "string"
+      && activeSubagentLayout.includes("⏳ bg verifier +1 41s")
+      && !activeSubagentLayout.includes("general-purpose")
+      && !activeSubagentLayout.includes("memory"),
+    `statusline must show only active background subagents with bounded type/count/elapsed detail: ${JSON.stringify(activeSubagentLayout)}`,
+  );
+  const hostileSubagents = [
+    { type: "Verifier\u2028second-row", status: "running", elapsedMs: Number.MAX_VALUE, isBackground: true },
+    ...Array.from({ length: 101 }, (_, index) => ({
+      type: `worker-${index}`,
+      status: "pending",
+      elapsedMs: 1_000,
+      isBackground: true,
+    })),
+    Object.defineProperty({ isBackground: true }, "status", {
+      get() {
+        throw new Error("malformed lifecycle item");
+      },
+    }),
+  ];
+  const hostileSubagentLayout = panelOptions?.render({
+    ...layoutContext,
+    subagents: { list: () => hostileSubagents },
+    width: 64,
+  });
+  assert(
+    Array.isArray(hostileSubagentLayout)
+      && hostileSubagentLayout.length === 2
+      && hostileSubagentLayout.join(" ").includes("⏳ bg verifier se… +99+ 99h+")
+      && hostileSubagentLayout.every((line) => !/[\n\u2028\u2029]/.test(line)),
+    `statusline must keep hostile lifecycle values bounded to its two-row contract: ${JSON.stringify(hostileSubagentLayout)}`,
+  );
+  const missingSubagentContext = { ...layoutContext, width: 220 };
+  Object.defineProperty(missingSubagentContext, "subagents", {
+    get() {
+      throw new Error("host lifecycle unavailable");
+    },
+  });
+  const missingSubagentContextLayout = panelOptions?.render(missingSubagentContext);
+  assert(typeof missingSubagentContextLayout === "string", "statusline must degrade safely when subagent lifecycle context access throws");
   const narrowLayout = panelOptions?.render({ ...layoutContext, width: 64 });
   assert(Array.isArray(narrowLayout) && narrowLayout.length === 2, "narrow statusline must wrap left overflow to exactly two rows");
   assert(narrowLayout[0].includes("[GPT-5.6 Sol r:xhigh]"), "statusline right model must stay on the first row");
