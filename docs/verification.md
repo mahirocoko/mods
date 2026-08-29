@@ -1045,3 +1045,78 @@ Release verification:
 Every already-running Letta Code session must run `/reload` before the new
 indicator can receive live lifecycle state. A live post-parent-turn panel check
 remains a runtime observation after reload, not a pre-release static claim.
+
+## Post-v0.8.11 background-subagent lifecycle fallback correction
+
+Evidence captured across 2026-08-28–29 with Letta Code 0.31.5.
+
+The first live post-release probe disproved the static lifecycle assumption:
+
+- background `task_2` remained `running` and its descendant Letta
+  `stream-json` process was present under the current CLI process
+- `/bg` correctly showed background shell process state, confirming that it is
+  a separate shell-only surface rather than a subagent inventory
+- the order-0 statusline rendered normally, but public
+  `context.subagents.list()` did not surface the live child and no background
+  segment appeared
+
+The candidate correction preserves public lifecycle data as the primary owner
+and adds a discovery-gated local fallback only when that data has no active
+background child. The fallback:
+
+- walks descendants of the current Letta process only
+- accepts direct `letta`/`letta.js` executables or `bun`/`node` executing those
+  exact script basenames with `stream-json` output
+- requires existing `--system` or `type:` tag metadata and rejects unrelated
+  process trees plus shell payloads that merely mention spoofed Letta flags
+- polls once per second only during a ten-second discovery window or while a
+  matched child remains, then stops when idle
+- retains the existing sanitized/capped type, count, elapsed, cleanup, and
+  maximum-two-row rendering contracts
+
+Verification:
+
+- `pnpm check` and `git diff --check` passed
+- the focused parser fixture covers descendant inclusion, unrelated-tree
+  exclusion, descendant-command exclusion, and a shell payload containing
+  spoofed Letta system/tag/output flags
+- fresh independent verification returned PASS after the executable-aware
+  filter correction
+- `pnpm mods:update` installed the candidate with all ten source hashes
+  matching and no migration needed
+- Mahiro ran `/reload`, background `task_5` continued after the parent turn
+  settled, and Mahiro directly confirmed the footer displayed the live
+  `agent general-purpose` fallback segment
+- no Letta Code core source was modified
+
+This live result closes the runtime observation gap left by v0.8.11 and is the
+release basis for the next patch version. Commit, tag, push, and release remain
+separate explicit operations.
+
+## v0.8.12 process-fallback release evidence
+
+Release-preparation evidence captured on 2026-08-29:
+
+- package and checker version contracts are `0.8.12`
+- `pnpm install --frozen-lockfile` completed with the lockfile unchanged
+- `pnpm check` passed all ten entries and nine capabilities
+- `git diff --check` passed
+- `pnpm pack --dry-run --json` completed through the prepack gate and produced
+  `mahirocoko-letta-mods-0.8.12.tgz` with the expected 16-file allowlist:
+  package docs/notices/licenses, ten mod entries, and `package.json`
+- the managed `npm:@mahirocoko/letta-mods` bundle was updated from the local
+  checkout with backup
+  `/Users/mahiro/.letta/mods/backups/2026-08-29T02-32-13-251Z-45925`
+- `pnpm mods:status` reports all ten installed source hashes matching, the MCP
+  runtime dependency present, no recognized legacy direct/package copies, and
+  no migration needed
+- fresh independent review returned PASS after executable-aware filtering;
+  focused regressions reject unrelated trees and shell payloads that merely
+  mention spoofed Letta flags
+- Mahiro directly confirmed the live segment after `/reload`; concurrent
+  natural-completion probes exercised multiple-child display, one remaining
+  child, and final disappearance
+
+Every already-running Letta session still requires `/reload` after the managed
+package update. Final commit, origin, annotated tag, and GitHub Release alignment
+are verified only after publication.

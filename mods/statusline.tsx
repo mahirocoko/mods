@@ -7,6 +7,8 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const UPDATE_INTERVAL_MS = 10_000;
+const SUBAGENT_PROCESS_SCAN_INTERVAL_MS = 1_000;
+const SUBAGENT_PROCESS_DISCOVERY_MS = 10_000;
 const DISABLE_PATH = process.env.MAHIRO_STATUSLINE_DISABLE_PATH
   ?? join(homedir(), ".letta", "mods", "mahiro-statusline.disabled");
 const waitForRegistrationTurn = () => new Promise<void>((resolveWait) => setTimeout(resolveWait, 0));
@@ -59,6 +61,19 @@ type CachedStatus = {
   contextUsedPercentage: number | null;
   compactStatus: string | null;
   reflectionStatus: string | null;
+  processSubagents: ProcessSubagentStatus[];
+};
+
+type ProcessSubagentStatus = {
+  id: string;
+  type: string;
+  elapsedMs: number;
+};
+
+type ProcessRow = {
+  pid: number;
+  ppid: number;
+  command: string;
 };
 
 type GitStatus = {
@@ -140,6 +155,7 @@ export default async function activate(letta: LettaApi) {
     contextUsedPercentage: null,
     compactStatus: null,
     reflectionStatus: null,
+    processSubagents: [],
   };
 
   const panel = letta.ui.openPanel({
@@ -176,6 +192,42 @@ export default async function activate(letta: LettaApi) {
 
   void update();
   const timer = setInterval(update, UPDATE_INTERVAL_MS);
+
+  const processSubagentStarts = new Map<string, number>();
+  let processScanInFlight = false;
+  let processDiscoveryUntil = Date.now() + SUBAGENT_PROCESS_DISCOVERY_MS;
+  const requestProcessDiscovery = () => {
+    processDiscoveryUntil = Date.now() + SUBAGENT_PROCESS_DISCOVERY_MS;
+  };
+  const updateProcessSubagents = async () => {
+    if (disposed || processScanInFlight) return;
+    if (status.processSubagents.length === 0 && Date.now() >= processDiscoveryUntil) return;
+    processScanInFlight = true;
+    try {
+      const discovered = await getProcessSubagents(process.pid);
+      if (disposed) return;
+      const now = Date.now();
+      const liveIds = new Set(discovered.map((item) => item.id));
+      for (const id of processSubagentStarts.keys()) {
+        if (!liveIds.has(id)) processSubagentStarts.delete(id);
+      }
+      const processSubagents = discovered.map((item) => {
+        const startedAt = processSubagentStarts.get(item.id) ?? now;
+        processSubagentStarts.set(item.id, startedAt);
+        return { ...item, elapsedMs: Math.max(0, now - startedAt) };
+      });
+      status = { ...status, processSubagents };
+      panel.update();
+    } finally {
+      processScanInFlight = false;
+    }
+  };
+
+  const shouldScanSubagentProcesses = process.env.MAHIRO_STATUSLINE_TESTING !== "1";
+  if (shouldScanSubagentProcesses) void updateProcessSubagents();
+  const processScanTimer = shouldScanSubagentProcesses
+    ? setInterval(updateProcessSubagents, SUBAGENT_PROCESS_SCAN_INTERVAL_MS)
+    : null;
 
   const rememberContext = (event: any, context: any) => {
     status = {
@@ -264,7 +316,12 @@ export default async function activate(letta: LettaApi) {
 
   addEvent(letta.capabilities.events?.tools, "tool_start", (event, context) => {
     rememberContext(event, context);
-    setActivity(`🔧 ${compactToolName(pick(event?.toolName, event?.tool_name, event?.name) ?? "tool")}`, STATUS_COLORS.activity, 30_000);
+    const toolName = compactToolName(pick(event?.toolName, event?.tool_name, event?.name) ?? "tool");
+    if (toolName.toLowerCase() === "agent" || toolName.toLowerCase() === "task") {
+      requestProcessDiscovery();
+      void updateProcessSubagents();
+    }
+    setActivity(`🔧 ${toolName}`, STATUS_COLORS.activity, 30_000);
   });
 
   addEvent(letta.capabilities.events?.tools, "tool_end", (event, context) => {
@@ -310,6 +367,7 @@ export default async function activate(letta: LettaApi) {
     const aborted = Boolean(letta.signal?.aborted);
     disposed = true;
     clearInterval(timer);
+    if (processScanTimer) clearInterval(processScanTimer);
     if (activityClearTimer) clearTimeout(activityClearTimer);
     if (compactClearTimer) clearTimeout(compactClearTimer);
     if (!aborted) {
@@ -375,7 +433,8 @@ function renderStatusline(context: any, status: CachedStatus): string | string[]
       color: status.git.dirtyCount > 0 ? STATUS_COLORS.dirty : STATUS_COLORS.git,
     });
   }
-  const activeSubagents = formatActiveBackgroundSubagents(context);
+  const activeSubagents = formatActiveBackgroundSubagents(context)
+    ?? formatProcessSubagents(status.processSubagents);
   if (activeSubagents) {
     leftCandidates.push({ text: activeSubagents, color: STATUS_COLORS.subagent });
   }
@@ -456,11 +515,22 @@ function formatActiveBackgroundSubagents(context: any): string | null {
   }
   if (active.length === 0) return null;
 
+  return formatSubagentItems(active, "bg");
+}
+
+function formatProcessSubagents(items: ProcessSubagentStatus[]): string | null {
+  return items.length > 0 ? formatSubagentItems(items, "agent") : null;
+}
+
+function formatSubagentItems(
+  active: Array<{ elapsedMs: number; type: unknown }>,
+  label: "agent" | "bg",
+): string {
   const longestRunning = active.reduce((selected, item) => {
     return item.elapsedMs > selected.elapsedMs ? item : selected;
   }, active[0]);
   const remainder = active.length - 1;
-  return `⏳ bg ${formatSubagentType(longestRunning.type)}${formatSubagentRemainder(remainder)} ${formatElapsed(longestRunning.elapsedMs)}`;
+  return `⏳ ${label} ${formatSubagentType(longestRunning.type)}${formatSubagentRemainder(remainder)} ${formatElapsed(longestRunning.elapsedMs)}`;
 }
 
 function formatSubagentType(value: unknown): string {
@@ -489,6 +559,85 @@ function formatElapsed(elapsedMs: number): string {
   if (totalHours >= 100) return "99h+";
   return `${totalHours}h${String(totalMinutes % 60).padStart(2, "0")}m`;
 }
+
+function parseProcessRows(value: string): ProcessRow[] {
+  return value
+    .split("\n")
+    .map((line) => line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/))
+    .filter((match): match is RegExpMatchArray => Boolean(match))
+    .map((match) => ({
+      pid: Number(match[1]),
+      ppid: Number(match[2]),
+      command: match[3],
+    }))
+    .filter((row) => Number.isInteger(row.pid) && Number.isInteger(row.ppid));
+}
+
+function parseSubagentProcesses(value: string, rootPid: number): Array<{ id: string; type: string }> {
+  const rows = parseProcessRows(value);
+  const children = new Map<number, ProcessRow[]>();
+  for (const row of rows) {
+    const siblings = children.get(row.ppid) ?? [];
+    siblings.push(row);
+    children.set(row.ppid, siblings);
+  }
+
+  const descendants: ProcessRow[] = [];
+  const queue = [rootPid];
+  const visited = new Set<number>(queue);
+  while (queue.length > 0) {
+    const parent = queue.shift();
+    if (parent === undefined) break;
+    for (const child of children.get(parent) ?? []) {
+      if (visited.has(child.pid)) continue;
+      visited.add(child.pid);
+      descendants.push(child);
+      queue.push(child.pid);
+    }
+  }
+
+  return descendants
+    .filter((row) =>
+      row.command.includes("--output-format stream-json")
+      && isLettaProcessCommand(row.command),
+    )
+    .flatMap((row) => {
+      const tags = row.command.match(/(?:^|\s)--tags\s+([^\s]+)/)?.[1] ?? "";
+      const taggedType = tags.match(/(?:^|,)type:([^,]+)/)?.[1];
+      const system = row.command.match(/(?:^|\s)--system\s+([^\s]+)/)?.[1];
+      if (!taggedType && !system) return [];
+      return [{
+        id: `pid:${row.pid}`,
+        type: taggedType ?? system ?? "subagent",
+      }];
+    });
+}
+
+function isLettaProcessCommand(command: string): boolean {
+  const tokens = command.trim().split(/\s+/);
+  const executable = tokens[0]?.split("/").at(-1) ?? "";
+  if (executable === "letta" || executable === "letta.js") return true;
+  if (executable !== "bun" && executable !== "node") return false;
+  const script = tokens[1]?.split("/").at(-1) ?? "";
+  return script === "letta" || script === "letta.js";
+}
+
+async function getProcessSubagents(rootPid: number): Promise<Array<{ id: string; type: string }>> {
+  try {
+    const { stdout } = await execFileAsync("ps", ["-axo", "pid=,ppid=,command="], {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      timeout: 700,
+    });
+    return parseSubagentProcesses(stdout, rootPid);
+  } catch {
+    return [];
+  }
+}
+
+export const __testing = process.env.MAHIRO_STATUSLINE_TESTING === "1"
+  ? Object.freeze({ parseSubagentProcesses })
+  : null;
 
 function emptyGitStatus(): GitStatus {
   return {

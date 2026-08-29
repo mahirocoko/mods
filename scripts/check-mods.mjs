@@ -1939,7 +1939,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-mcp-proxy.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.8.11", "Package version must be 0.8.11");
+  assert(packageJson.version === "0.8.12", "Package version must be 0.8.12");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
 
@@ -2546,7 +2546,21 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   assert(cleanup.join(",") === "tool:mh_execution_run,command:mh-run", "Execution Run cleanup must reverse its unified tool and command registrations");
 }
 
-async function checkStatuslineRegistration(activate) {
+async function checkStatuslineRegistration(activate, testing) {
+  assert(testing && typeof testing.parseSubagentProcesses === "function", "statusline must expose its isolated process-fallback parser");
+  const processSubagents = testing.parseSubagentProcesses([
+    " 100 1 bun /usr/local/bin/letta --backend local",
+    " 101 100 bun /opt/letta.js --backend local --new-agent --system general-purpose --tags type:general-purpose,parent:agent-main --output-format stream-json",
+    " 102 101 sleep 300",
+    " 103 100 /bin/zsh -lc echo letta --system fake --tags type:fake,parent:agent-main --output-format stream-json",
+    " 200 1 bun /opt/letta.js --backend local --new-agent --system unrelated --tags type:unrelated,parent:agent-other --output-format stream-json",
+  ].join("\n"), 100);
+  assert(
+    processSubagents.length === 1
+      && processSubagents[0].id === "pid:101"
+      && processSubagents[0].type === "general-purpose",
+    `statusline process fallback must include only descendant Letta stream-json subagents: ${JSON.stringify(processSubagents)}`,
+  );
   const eventNames = [];
   const eventHandlers = new Map();
   let panelOptions = null;
@@ -2743,6 +2757,7 @@ const previousExecutionRunTesting = process.env.MAHIRO_EXECUTION_RUN_TESTING;
 const previousExecutionRunDisablePath = process.env.MAHIRO_EXECUTION_RUN_DISABLE_PATH;
 const previousRtkDisablePath = process.env.MAHIRO_RTK_CONTROL_DISABLE_PATH;
 const previousStatuslineDisablePath = process.env.MAHIRO_STATUSLINE_DISABLE_PATH;
+const previousStatuslineTesting = process.env.MAHIRO_STATUSLINE_TESTING;
 const previousMcpDisablePath = process.env.MAHIRO_MCP_PROXY_DISABLE_PATH;
 process.env.MAHIRO_GOAL_STATE_PATH = join(testRoot, "state.json");
 process.env.MAHIRO_GOAL_TESTING = "1";
@@ -2765,6 +2780,7 @@ process.env.MAHIRO_EXECUTION_RUN_TESTING = "1";
 process.env.MAHIRO_EXECUTION_RUN_DISABLE_PATH = join(testRoot, "mahiro-execution-run.disabled");
 process.env.MAHIRO_RTK_CONTROL_DISABLE_PATH = join(testRoot, "mahiro-rtk-control.disabled");
 process.env.MAHIRO_STATUSLINE_DISABLE_PATH = join(testRoot, "mahiro-statusline.disabled");
+process.env.MAHIRO_STATUSLINE_TESTING = "1";
 process.env.MAHIRO_MCP_PROXY_DISABLE_PATH = join(testRoot, "mahiro-mcp-proxy.disabled");
 
 try {
@@ -2819,7 +2835,10 @@ try {
   );
   checkMcpPermissionGuard(activations.get("mods/mahiro-mcp-proxy.js"));
   checkRtkRegistration(activations.get("mods/rtk-control.ts"));
-  await checkStatuslineRegistration(activations.get("mods/statusline.tsx"));
+  await checkStatuslineRegistration(
+    activations.get("mods/statusline.tsx"),
+    testingSurfaces.get("mods/statusline.tsx"),
+  );
 
   console.log(`Mod source valid: ${entries.length} entries transpiled with command, event, panel, tool, permission, state, human-gate, and cleanup smoke checks.`);
 } finally {
@@ -2865,6 +2884,8 @@ try {
   else process.env.MAHIRO_RTK_CONTROL_DISABLE_PATH = previousRtkDisablePath;
   if (previousStatuslineDisablePath === undefined) delete process.env.MAHIRO_STATUSLINE_DISABLE_PATH;
   else process.env.MAHIRO_STATUSLINE_DISABLE_PATH = previousStatuslineDisablePath;
+  if (previousStatuslineTesting === undefined) delete process.env.MAHIRO_STATUSLINE_TESTING;
+  else process.env.MAHIRO_STATUSLINE_TESTING = previousStatuslineTesting;
   if (previousMcpDisablePath === undefined) delete process.env.MAHIRO_MCP_PROXY_DISABLE_PATH;
   else process.env.MAHIRO_MCP_PROXY_DISABLE_PATH = previousMcpDisablePath;
   await rm(testRoot, { recursive: true, force: true });

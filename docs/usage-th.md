@@ -412,7 +412,7 @@ Mahiro ใช้คำสั่งเหล่านี้เพื่อดู�
 ### ต้องรู้
 
 - ข้อมูล Git, memory, reflection และ RTK refresh ทุก 10 วินาที ไม่ใช่ทุก millisecond
-- Background subagent ที่ยัง `pending` หรือ `running` จะแสดงเป็น `⏳ bg <type> [+N] <elapsed>` ต่อให้ parent turn จบแล้ว โดยไม่แสดง task description หรือ prompt; shell/monitor task ยังตรวจด้วย `/bg`
+- Background subagent ที่ยัง `pending` หรือ `running` จะแสดงเป็น `⏳ bg <type> [+N] <elapsed>` ต่อให้ parent turn จบแล้ว โดยไม่แสดง task description หรือ prompt ถ้า lifecycle context ของ host ไม่ส่ง child ที่ยังรันอยู่ ตัว statusline จะ fallback ไปดูเฉพาะ descendant Letta process และแสดงเป็น `⏳ agent <type> [+N] <elapsed>`; shell/monitor task ยังตรวจด้วย `/bg`
 - Activity จาก turn, LLM, tool และ compaction เป็นสถานะชั่วคราว
 - ถ้าข้อมูลฝั่งซ้ายยาวเกินพื้นที่ statusline จะย้ายทั้ง segment ลงแถวที่สอง โดยฝั่ง agent/model/backend ยังอยู่แถวแรก และ panel จะสูงไม่เกิน 2 แถว
 - ถ้า host ไม่มี `ui.panels` จะไม่มี statusline และ diagnostics อาจมี warning เรื่อง panel capability ซึ่งไม่เท่ากับ mod พัง
