@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, constants, openSync, closeSync, readFileSync, writeFileSync, fstatSync, lstatSync, mkdirSync, renameSync, unlinkSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -62,6 +62,7 @@ type CachedStatus = {
   compactStatus: string | null;
   reflectionStatus: string | null;
   processSubagents: ProcessSubagentStatus[];
+  usage?: StatusSegment[];
 };
 
 type ProcessSubagentStatus = {
@@ -95,7 +96,9 @@ type LettaApi = {
   signal?: {
     aborted?: boolean;
   };
+  commands?: { register: (command: { id: string; description: string; args: string; runWhenBusy?: boolean; showInTranscript?: boolean; run: (context: { args?: string }) => any }) => () => void };
   capabilities?: {
+    commands?: boolean;
     ui?: {
       panels?: boolean;
     };
@@ -163,6 +166,55 @@ export default async function activate(letta: LettaApi) {
     order: 0,
     render: (context) => renderStatusline(context, status),
   });
+
+  const usage = createUsageController((segments) => {
+    if (disposed) return;
+    status = { ...status, usage: segments };
+    panel.update();
+  });
+  let usagePanel: { close: () => void } | null = null;
+  let usagePanelTimer: ReturnType<typeof setTimeout> | null = null;
+  const closeUsagePanel = (closePanel = true) => {
+    if (usagePanelTimer) clearTimeout(usagePanelTimer);
+    usagePanelTimer = null;
+    if (closePanel) usagePanel?.close();
+    usagePanel = null;
+  };
+  if (letta.capabilities.commands && letta.commands?.register) {
+    disposers.push(letta.commands.register({
+      id: "mh-usage",
+      description: "Show cached provider quotas in a busy-safe panel and control quota display",
+      args: "[status [page]|close|off|codex on/off|agy on/off|bar|compact]",
+      runWhenBusy: true,
+      showInTranscript: false,
+      run: (context) => {
+        if (disposed || letta.signal?.aborted) return { type: "handled" };
+        try {
+          closeUsagePanel();
+          if ((context.args ?? "").trim().toLowerCase() === "close") return { type: "handled" };
+          const raw = (context.args ?? "").trim();
+          const pageMatch = raw.match(/^status(?:\s+([1-9]\d{0,3}))?$/i);
+          const page = pageMatch?.[1] ? Number(pageMatch[1]) : 0;
+          const result = /^status\s/i.test(raw) && !pageMatch
+            ? { output: "Usage: /mh-usage status [page], with a positive page number." }
+            : usage.command(pageMatch ? "status" : raw);
+          // Snapshot only: rendering never reads state, fetches quota, or starts a turn.
+          usagePanel = letta.ui!.openPanel!({
+            id: "mahiro-usage-status",
+            order: 120,
+            render: (renderContext) => renderUsagePanel(result.output, renderContext?.chalk, page, renderContext?.width),
+          });
+          usagePanelTimer = setTimeout(closeUsagePanel, 10_000);
+          usagePanelTimer.unref?.();
+        } catch {
+          letta.diagnostics?.report?.({ message: "Usage status panel unavailable.", severity: "warning" });
+        }
+        return { type: "handled" };
+      },
+    }));
+  }
+  void usage.update();
+  const usageTimer = setInterval(() => void usage.update(), 15_000);
 
   const update = async () => {
     if (disposed) return;
@@ -367,6 +419,9 @@ export default async function activate(letta: LettaApi) {
     const aborted = Boolean(letta.signal?.aborted);
     disposed = true;
     clearInterval(timer);
+    clearInterval(usageTimer);
+    usage.dispose();
+    closeUsagePanel(!aborted);
     if (processScanTimer) clearInterval(processScanTimer);
     if (activityClearTimer) clearTimeout(activityClearTimer);
     if (compactClearTimer) clearTimeout(compactClearTimer);
@@ -453,6 +508,8 @@ function renderStatusline(context: any, status: CachedStatus): string | string[]
   if (status.rtkMode) leftCandidates.push({ text: compactRtkMode(status.rtkMode), color: getRtkColor(status.rtkMode) });
   if (mode) leftCandidates.push({ text: compactModeLabel(mode), color: getModeColor(mode) });
 
+  leftCandidates.push(...(status.usage ?? []));
+
   const rightCandidates: StatusSegment[] = [];
   if (agentName && width >= 70) rightCandidates.push({ text: shortId(agentName, 14), color: STATUS_COLORS.agent });
   if (modelName) {
@@ -474,8 +531,20 @@ function renderStatusline(context: any, status: CachedStatus): string | string[]
     const right = renderSegments(chalk, rightParts);
     if (visibleWidth(right) > width) continue;
     const availableLeftWidth = Math.max(0, width - visibleWidth(right) - (right ? 3 : 0));
-    const primary = fitSegmentPrefix(leftCandidates, availableLeftWidth, chalk);
-    const overflow = fitSegmentPrefix(primary.remaining, width, chalk);
+    if (status.usage?.length) {
+      const primaryStatus = leftCandidates.filter((part) => !status.usage?.includes(part));
+      const left = renderSegments(chalk, fitSegmentPrefix(primaryStatus, availableLeftWidth, chalk).fitted);
+      const first = row(left, right, width);
+      const providerRows = ["Codex", "Agy"].flatMap((provider) => {
+        const parts = status.usage!.filter((part) => part.text.startsWith(`${provider} `));
+        return parts.length ? [providerUsageRow(parts, provider, width, chalk)] : [];
+      });
+      // The public row helper already clips/pads to its width contract. Do not
+      // reject its padded identity row using an incompatible code-point count.
+      return [first, ...providerRows];
+    }
+    let primary = fitSegmentPrefix(leftCandidates, availableLeftWidth, chalk);
+    let overflow = fitSegmentPrefix(primary.remaining, width, chalk);
     const left = renderSegments(chalk, primary.fitted);
     const firstLine = row(left || (!right ? color(chalk, STATUS_COLORS.agent, agentName ?? "Letta") : ""), right, width);
     if (visibleWidth(firstLine) > width) continue;
@@ -636,7 +705,7 @@ async function getProcessSubagents(rootPid: number): Promise<Array<{ id: string;
 }
 
 export const __testing = process.env.MAHIRO_STATUSLINE_TESTING === "1"
-  ? Object.freeze({ parseSubagentProcesses })
+  ? Object.freeze({ parseSubagentProcesses, parseQuota, quotaSegments, parseUsageSettings, createUsageController, fetchQuota, renderStatusline, renderUsagePanel, paintQuotaText, visibleWidth, truncateAnsi, emptyGitStatus })
   : null;
 
 function emptyGitStatus(): GitStatus {
@@ -898,7 +967,7 @@ function renderSegments(chalk: any, segments: StatusSegment[]): string {
   return segments
     .map((segment, index) => {
       const prefix = index > 0 ? color(chalk, STATUS_COLORS.separator, " · ") : "";
-      return `${prefix}${color(chalk, segment.color, segment.text, segment.dim)}`;
+      return `${prefix}${paintQuotaText(chalk, segment.color, segment.text, 8, segment.dim)}`;
     })
     .join("");
 }
@@ -1005,19 +1074,25 @@ function fallbackRow(left: string, right: string, width: number): string {
   return `${left}${" ".repeat(gap)}${right}`;
 }
 
+const widthSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+function graphemeWidth(segment: string): number {
+  const point = segment.codePointAt(0) ?? 0;
+  if (point <= 31 || (point >= 127 && point <= 159) || isZeroWidthCodePoint(point)
+    || /^\p{Default_Ignorable_Code_Point}+$/u.test(segment)) return 0;
+  if (/\p{Emoji_Presentation}/u.test(segment) || (/\p{Extended_Pictographic}/u.test(segment) && segment.includes("\uFE0F"))
+    || /[#*0-9]\uFE0F?\u20E3/u.test(segment)) return 2;
+  return isWideCodePoint(point) ? 2 : 1;
+}
+
 function visibleWidth(value: string): number {
-  const plain = stripAnsi(value);
   let width = 0;
-  for (const char of plain) {
-    const codePoint = char.codePointAt(0) ?? 0;
-    if (isZeroWidthCodePoint(codePoint)) continue;
-    width += isWideCodePoint(codePoint) ? 2 : 1;
-  }
+  for (const { segment } of widthSegmenter.segment(stripAnsi(value))) width += graphemeWidth(segment);
   return width;
 }
 
 function stripAnsi(value: string): string {
-  return value.replace(/\u001b\[[0-9;]*m/g, "");
+  return value.replace(/\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|$))/g, "");
 }
 
 function isWideCodePoint(codePoint: number): boolean {
@@ -1054,12 +1129,10 @@ function truncateAnsi(value: string, maxWidth: number): string {
   const plain = stripAnsi(value);
   let width = 0;
   let output = "";
-  for (const char of plain) {
-    const codePoint = char.codePointAt(0) ?? 0;
-    const charWidth = isZeroWidthCodePoint(codePoint) ? 0 : isWideCodePoint(codePoint) ? 2 : 1;
-    const nextWidth = width + charWidth;
+  for (const { segment } of widthSegmenter.segment(plain)) {
+    const nextWidth = width + graphemeWidth(segment);
     if (nextWidth > maxWidth) break;
-    output += char;
+    output += segment;
     width = nextWidth;
   }
   return output;
@@ -1098,9 +1171,398 @@ function basename(path: string | null): string | null {
 }
 
 function shortId(value: string, max = 18): string {
-  if (value.length <= max) return value;
+  const parts = Array.from(widthSegmenter.segment(value), ({ segment }) => segment);
+  if (parts.length <= max) return value;
   const keep = Math.max(4, max - 3);
-  return `${value.slice(0, keep)}…`;
+  return `${parts.slice(0, keep).join("")}…`;
+}
+
+// Quota is provider-owned remaining capacity, never Letta token usage. Disk state
+// contains only allowlisted settings/normalized windows, never auth or responses.
+type UsageProvider = "codex" | "agy";
+type UsageSettings = { codex: boolean; agy: boolean; style: "bar" | "compact" };
+type UsageWindow = { label: string; remaining: number; reset: number | null };
+type QuotaResult = UsageWindow[] & { credits?: number | null; resetCredits?: number | null };
+type UsageSnapshot = { windows: UsageWindow[]; fetched: number; retry: number; failed: boolean; identity?: string; credits?: number | null; resetCredits?: number | null };
+function usageIdentity(provider: UsageProvider): string {
+  if (provider === "agy") return "local-ls";
+  try {
+    const stat = lstatSync(join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "auth.json"));
+    return `${stat.dev}:${stat.ino}:${stat.mtimeMs}:${stat.size}`;
+  } catch { return "missing"; }
+}
+const USAGE_DIR = process.env.MAHIRO_STATUSLINE_USAGE_DIR ?? join(homedir(), ".letta", "mods", "mahiro-usage");
+const USAGE_TTL = 120_000;
+const USAGE_STALE = 300_000;
+const usageDefaults = (): UsageSettings => ({ codex: false, agy: false, style: "bar" });
+
+function usageRead(name: string): any {
+  const path = join(USAGE_DIR, name);
+  let fd: number | undefined;
+  try {
+    if (lstatSync(USAGE_DIR).isSymbolicLink()) throw new Error("unsafe directory");
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.size > 32_768) throw new Error("unsafe state");
+    return JSON.parse(readFileSync(fd, "utf8"));
+  } catch (error: any) {
+    if (error?.code === "ENOENT") return null;
+    throw new Error("Usage state unavailable; repair local usage state before changing settings.");
+  } finally { if (fd !== undefined) closeSync(fd); }
+}
+
+function usageWrite(name: string, value: unknown) {
+  mkdirSync(USAGE_DIR, { recursive: true, mode: 0o700 });
+  if (lstatSync(USAGE_DIR).isSymbolicLink()) throw new Error("unsafe directory");
+  // Validate existing targets rather than replacing symlinks or corrupt settings.
+  usageRead(name);
+  const temporary = join(USAGE_DIR, `${name}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`);
+  try {
+    writeFileSync(temporary, JSON.stringify(value), { flag: "wx", mode: 0o600 });
+    renameSync(temporary, join(USAGE_DIR, name));
+  } finally { try { unlinkSync(temporary); } catch {} }
+}
+
+function parseUsageSettings(value: any): UsageSettings {
+  if (value === null) return usageDefaults();
+  if (!value || typeof value.codex !== "boolean" || typeof value.agy !== "boolean"
+    || !["bar", "compact"].includes(value.style)) throw new Error("Invalid usage settings.");
+  return { codex: value.codex, agy: value.agy, style: value.style };
+}
+
+function quotaNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function providerUsageRow(segments: StatusSegment[], provider: string, width: number, chalk?: any): string {
+  const representatives = provider === "Codex"
+    ? [segments.find((part) => /^Codex P:/.test(part.text)) ?? segments[0]]
+    : [segments.find((part) => part.text.startsWith("Agy Gemini:")) ?? segments[0], segments.find((part) => part.text.startsWith("Agy Claude-GPT:"))];
+  const required = [...new Set(representatives.filter((part): part is StatusSegment => Boolean(part)))];
+  const extras = segments.filter((part) => !required.includes(part));
+  const concise = (part: StatusSegment, cells: number): StatusSegment => ({ ...part,
+    text: part.text.slice(provider.length + 1).replace(/ \[([█░]{8})\] (?=(\d+)% left)/, (_bar, _blocks, percent) => cells
+      ? ` [${"█".repeat(Math.round(Number(percent) / 100 * cells))}${"░".repeat(cells - Math.round(Number(percent) / 100 * cells))}] ` : " ")
+      .replace(/% left/g, "%"),
+  });
+  const render = (parts: StatusSegment[]) => `${color(chalk, STATUS_COLORS.context, provider)} ${renderSegments(chalk, parts)}`;
+  // Providers own separate rows and shrink independently. Keep actual primary
+  // families before optional windows; details expose any remainder explicitly.
+  for (const cells of [8, 6, 4, 2, 0]) {
+    const selected = required.map((part) => concise(part, cells));
+    if (visibleWidth(render(selected)) > width) continue;
+    for (const extra of extras) {
+      const candidate = concise(extra, cells);
+      if (visibleWidth(render([...selected, candidate])) <= width) selected.push(candidate);
+    }
+    return render(selected);
+  }
+  const first = concise(required[0], 0);
+  return visibleWidth(render([first])) <= width ? render([first]) : truncateAnsi(`${provider} …`, width);
+}
+
+function quotaColor(remaining: number): string {
+  if (remaining <= 15) return STATUS_COLORS.error;
+  if (remaining <= 35) return STATUS_COLORS.dirty;
+  return STATUS_COLORS.memClean;
+}
+
+// Plain bar text is the layout/cache boundary; ANSI is applied only by public
+// render-context chalk. Only the patterned remainder is dimmed, in the same hue.
+function paintQuotaText(chalk: any, hue: string | undefined, text: string, cells = 8, dim = false): string {
+  const match = text.match(/\[([█░]{2,16})\](?= (\d+)%)/);
+  if (!match || match.index === undefined) return color(chalk, hue, text, dim);
+  const remaining = Number(match[2]);
+  const targetCells = cells === 8 ? match[1].length : cells;
+  const filled = cells === 8 ? [...match[1]].filter((cell) => cell === "█").length : Math.round(Math.min(100, remaining) / 100 * targetCells);
+  return color(chalk, hue, text.slice(0, match.index) + "[", dim)
+    + color(chalk, hue, "█".repeat(filled), dim)
+    + color(chalk, hue, "░".repeat(targetCells - filled), true)
+    + color(chalk, hue, "]" + text.slice(match.index + match[0].length), dim);
+}
+
+function renderUsagePanel(output: string, chalk?: any, page = 0, availableWidth = 80): string[] {
+  const clean = (value: string) => value
+    .replace(/\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|$))/g, "")
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, " ")
+    .slice(0, 240);
+  const width = Math.max(1, Math.min(240, Number.isFinite(availableWidth) ? Math.floor(availableWidth) : 80));
+  const lines = output.split("\n").slice(0, 300).map((line) => clean(line).trim()).filter(Boolean);
+  const states = lines.filter((line) => /^(codex|agy): (on|off)$/.test(line));
+  const windows = lines.filter((line) => /^(Codex|Agy) .*\d+% left(?: stale)?$/.test(line));
+  const codex = windows.find((line) => line.startsWith("Codex P:")) ?? windows.find((line) => line.startsWith("Codex "));
+  const gemini = windows.find((line) => line.startsWith("Agy Gemini:")) ?? windows.find((line) => line.startsWith("Agy "));
+  const claude = windows.find((line) => line.startsWith("Agy Claude-GPT:"));
+  const representatives = [...new Set([codex, gemini, claude].filter((line): line is string => Boolean(line)))];
+  const tone = (line: string) => {
+    const remaining = line.match(/ (\d+)% left(?: stale)?$/);
+    return /unavailable|stale|not changed/.test(line) ? STATUS_COLORS.dirty : remaining ? quotaColor(Number(remaining[1])) : STATUS_COLORS.model;
+  };
+  const wrap = (line: string): string[] => {
+    const chunks: string[] = [];
+    while (line) { const chunk = truncateAnsi(line, width); if (!chunk) break; chunks.push(chunk); line = line.slice(chunk.length); }
+    return chunks;
+  };
+  let provider = "";
+  const details = lines.filter((line) => !line.startsWith("Provider quota:") && !line.startsWith("Codex P/S =")).flatMap((line) => {
+    if (/^(codex|agy):/.test(line)) provider = line.split(":")[0];
+    const tagged = /^(Codex|Agy|codex|agy)[ :]/.test(line) ? line : `${provider ? `${provider}: ` : ""}${line}`;
+    return wrap(paintQuotaText(null, undefined, tagged, 16)).map((chunk) => paintQuotaText(chalk, tone(line), chunk));
+  });
+  // Installed ModPanelRow caps ALL additive + product-status rows at eight.
+  // Five local rows leave three for the provider-separated statusline; pages
+  // hold three width-bounded detail rows plus title/navigation.
+  const pages = Math.max(1, Math.ceil(details.length / 3));
+  const heading = color(chalk, STATUS_COLORS.agent, truncateAnsi(page ? `Mahiro Usage · details ${page}/${pages}` : "Mahiro Usage · remaining", width));
+  const footer = color(chalk, STATUS_COLORS.model, truncateAnsi(page
+    ? `/mh-usage status ${page < pages ? page + 1 : 1} · summary: /mh-usage · closes 10s`
+    : `/mh-usage status 1 · ${pages} detail pages · closes 10s`, width), true);
+  if (page) return [heading, ...(page <= pages ? details.slice((page - 1) * 3, page * 3) : [color(chalk, STATUS_COLORS.dirty, truncateAnsi(`Page unavailable; choose 1-${pages}.`, width))]), footer];
+  let cells = 16;
+  for (const count of [16, 8, 4, 2, 0]) {
+    cells = count;
+    if (representatives.every((line) => visibleWidth(count ? paintQuotaText(null, undefined, line, count) : line.replace(/ \[[█░]{8}\]/g, "")) <= width)) break;
+  }
+  const summary = representatives.map((line) => {
+    const text = cells ? paintQuotaText(chalk, tone(line), line, cells) : color(chalk, tone(line), line.replace(/ \[[█░]{8}\]/g, ""));
+    return visibleWidth(text) <= width ? text : color(chalk, tone(line), truncateAnsi(text, width));
+  });
+  const notices = lines.filter((line) => /unavailable|not changed|^Usage:/.test(line) && !line.startsWith("fetched") && !line.startsWith("credits:") && !line.includes(" resets "));
+  const state = summary.length < 3 ? states.map((line) => line.replace(": ", " · ").toUpperCase()).join(" · ") : "";
+  return [heading, ...summary, ...(state ? [color(chalk, STATUS_COLORS.context, truncateAnsi(state, width))] : []),
+    ...notices.slice(0, Math.max(0, 3 - summary.length - (state ? 1 : 0))).map((line) => color(chalk, STATUS_COLORS.dirty, truncateAnsi(line, width))),
+    ...(!summary.length && !state && !notices.length ? lines.slice(0, 3).map((line) => color(chalk, tone(line), truncateAnsi(line, width))) : []), footer].slice(0, 5);
+}
+
+function safeQuotaLabel(value: unknown): string {
+  return typeof value === "string" ? value.replace(/[^a-zA-Z0-9 ._:/()-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 64) : "";
+}
+
+function quotaBalance(value: unknown): number | null {
+  const number = typeof value === "string" && /^\d+(\.\d+)?$/.test(value) ? Number(value) : quotaNumber(value);
+  return number !== null && Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function parseQuota(provider: UsageProvider, data: any): QuotaResult {
+  const windows: QuotaResult = [];
+  if (provider === "codex") {
+    windows.credits = quotaBalance(data?.credits?.balance);
+    windows.resetCredits = quotaBalance(data?.rate_limit_reset_credits?.available_count);
+    const limits = [{ label: "", rate_limit: data?.rate_limit },
+      ...(Array.isArray(data?.additional_rate_limits) ? data.additional_rate_limits.map((limit: any, index: number) => ({ label: safeQuotaLabel(limit?.limit_name) || safeQuotaLabel(limit?.metered_feature) || `Additional ${index + 1}`, rate_limit: limit?.rate_limit })) : []),
+      { label: "Code review", rate_limit: data?.code_review_rate_limit }];
+    for (const limit of limits) for (const key of ["primary_window", "secondary_window"]) {
+      const window = limit.rate_limit?.[key];
+      const used = quotaNumber(window?.used_percent);
+      const seconds = quotaNumber(window?.limit_window_seconds);
+      if (used === null || used < 0 || used > 100 || seconds === null || seconds <= 0) continue;
+      const duration = seconds % 86400 === 0 ? `${seconds / 86400}d` : seconds % 3600 === 0 ? `${seconds / 3600}h` : `${seconds}s`;
+      const reset = quotaNumber(window?.reset_at);
+      windows.push({ label: `${limit.label ? `${limit.label} ` : ""}${key === "primary_window" ? "P" : "S"}:${duration}`, remaining: 100 - used, reset: reset !== null && reset > 0 && reset < 8.64e12 ? reset * 1000 : null });
+    }
+  } else {
+    const response = data?.response?.response ?? data?.response;
+    // Known family mappings follow Agent Halo's quota-summary contract. Unknown
+    // buckets retain their provider identity and explicit window metadata.
+    const labels: Record<string, string> = { "gemini-5h": "Gemini:5h", "gemini-weekly": "Gemini:7d", "3p-5h": "Claude-GPT:5h", "3p-weekly": "Claude-GPT:7d" };
+    const groups = Array.isArray(response?.groups) ? response.groups : [];
+    const seen = new Set<string>();
+    for (const group of groups) for (const bucket of Array.isArray(group?.buckets) ? group.buckets : []) {
+      const id = bucket?.bucketId;
+      const fraction = quotaNumber(bucket?.remainingFraction);
+      if (!safeQuotaLabel(id) || seen.has(id) || fraction === null || fraction < 0 || fraction > 1) continue;
+      seen.add(id);
+      const reset = typeof bucket.resetTime === "string" ? Date.parse(bucket.resetTime) : NaN;
+      const label = Object.hasOwn(labels, id) ? labels[id] : `${safeQuotaLabel(id)}:${safeQuotaLabel(bucket.window) || "window unavailable"}`;
+      windows.push({ label, remaining: fraction * 100, reset: Number.isFinite(reset) ? reset : null });
+    }
+    const rank = (label: string) => { const index = Object.values(labels).indexOf(label); return index < 0 ? 4 : index; };
+    windows.sort((a, b) => rank(a.label) - rank(b.label));
+  }
+  if (windows.length > 64) throw new Error("Quota window count exceeds safe detail bound");
+  return windows;
+}
+
+function quotaSegments(provider: UsageProvider, snapshot: UsageSnapshot | undefined, style: UsageSettings["style"], now = Date.now()): StatusSegment[] {
+  const name = provider === "codex" ? "Codex" : "Agy";
+  if (!snapshot?.windows.length) return [{ text: `${name} unavailable`, dim: true }];
+  const stale = snapshot.failed || now - snapshot.fetched > USAGE_STALE;
+  return snapshot.windows.map((window) => {
+    const expired = stale || (window.reset !== null && window.reset <= now);
+    const percent = Math.round(window.remaining);
+    const filled = Math.round(window.remaining / 100 * 8);
+    const bar = style === "bar" ? ` [${"█".repeat(filled)}${"░".repeat(8 - filled)}]` : "";
+    return { text: `${name} ${window.label}${bar} ${percent}% left${expired ? " stale" : ""}`, color: expired ? STATUS_COLORS.model : quotaColor(window.remaining) };
+  });
+}
+
+async function fetchQuota(provider: UsageProvider, signal: AbortSignal): Promise<QuotaResult> {
+  const json = async (url: string, options: RequestInit) => {
+    const response = await fetch(url, { ...options, signal: AbortSignal.any([signal, AbortSignal.timeout(provider === "agy" ? 1500 : 6000)]), redirect: "error" });
+    if (!response.ok) throw new Error("unavailable");
+    // Stream cap also bounds malformed local services and remote error payloads.
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("unavailable");
+    let body = "";
+    const decoder = new TextDecoder();
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        body += decoder.decode(chunk.value, { stream: true });
+        if (body.length > 262_144) throw new Error("oversized");
+      }
+      return JSON.parse(body + decoder.decode());
+    } finally { await reader.cancel().catch(() => {}); }
+  };
+  if (provider === "codex") {
+    const auth = await readJson(join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "auth.json"));
+    const token = auth?.tokens?.access_token;
+    if (typeof token !== "string" || !token) throw new Error("unavailable");
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: "application/json" };
+    if (typeof auth.tokens.account_id === "string") headers["ChatGPT-Account-Id"] = auth.tokens.account_id;
+    return parseQuota(provider, await json("https://chatgpt.com/backend-api/wham/usage", { headers }));
+  }
+  // Inspect existing executables only; never launch Agy or refresh authentication.
+  const ps = await execFileAsync("ps", ["-ax", "-o", "pid=,command="], { encoding: "utf8", timeout: 1500, maxBuffer: 2_000_000, signal });
+  const candidates = ps.stdout.split("\n").map((line) => line.match(/^\s*(\d+)\s+(\S+)(.*)$/)).filter((match) => {
+    if (!match) return false;
+    const executable = match[2].toLowerCase();
+    return /(?:^|\/)agy$/.test(executable) || (executable.includes("language_server") && executable.includes("antigravity"));
+  }).slice(0, 2);
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const csrf = candidate[3].match(/--csrf_token(?:=|\s+)([^\s]+)/)?.[1]?.replace(/^"|"$/g, "") ?? "";
+    let ports: string[] = [];
+    try {
+      const result = await execFileAsync("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", candidate[1]], { encoding: "utf8", timeout: 1500, maxBuffer: 64_000, signal });
+      ports = [...new Set([...result.stdout.matchAll(/:(\d+) \(LISTEN\)/g)].map((match) => match[1]))].slice(0, 4);
+    } catch { continue; }
+    for (const port of ports) {
+      try {
+        const data = await json(`http://127.0.0.1:${port}/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary`, {
+          method: "POST", headers: { "Content-Type": "application/json", "Connect-Protocol-Version": "1", "x-codeium-csrf-token": csrf },
+          body: JSON.stringify({ metadata: { ideName: "antigravity", extensionName: "antigravity", ideVersion: "unknown", locale: "en" } }),
+        });
+        const windows = parseQuota(provider, data);
+        if (windows.length) return windows;
+      } catch { if (signal.aborted) break; }
+    }
+  }
+  throw new Error("unavailable");
+}
+
+function readUsageSnapshot(provider: UsageProvider): UsageSnapshot | undefined {
+  const value = usageRead(`${provider}.json`);
+  if (!value || value.identity !== usageIdentity(provider)) return undefined;
+  if (!Array.isArray(value.windows) || value.windows.length > 64 || typeof value.failed !== "boolean"
+    || ![value.fetched, value.retry].every((n) => quotaNumber(n) !== null && n >= 0 && n <= Date.now() + 900_000)) return undefined;
+  const allowed = /^[a-zA-Z0-9 ._:/()-]+$/;
+  if (!value.windows.every((w: any) => typeof w?.label === "string" && w.label.length <= 160 && allowed.test(w.label)
+    && quotaNumber(w.remaining) !== null && w.remaining >= 0 && w.remaining <= 100
+    && (w.reset === null || (quotaNumber(w.reset) !== null && Math.abs(w.reset) < 8.64e15)))) return undefined;
+  return { windows: value.windows.map((w: UsageWindow) => ({ label: w.label, remaining: w.remaining, reset: w.reset })), fetched: value.fetched, retry: value.retry, failed: value.failed, credits: quotaBalance(value.credits), resetCredits: quotaBalance(value.resetCredits) };
+}
+
+function createUsageController(publish: (segments: StatusSegment[]) => void, load = fetchQuota) {
+  let settings = usageDefaults();
+  let disposed = false;
+  let busy = false;
+  let generation = 0;
+  const controllers = new Set<AbortController>();
+  const snapshots: Partial<Record<UsageProvider, UsageSnapshot>> = {};
+  const emit = () => { if (!disposed) publish((["codex", "agy"] as const).flatMap((p) => settings[p] ? quotaSegments(p, snapshots[p], settings.style) : [])); };
+  const update = async () => {
+    if (disposed || busy) return;
+    busy = true;
+    const current = generation;
+    try {
+      settings = parseUsageSettings(usageRead("settings.json"));
+      for (const provider of ["codex", "agy"] as const) {
+        if (disposed || current !== generation) break;
+        if (!settings[provider]) { delete snapshots[provider]; continue; }
+        snapshots[provider] = readUsageSnapshot(provider);
+        emit();
+        if ((snapshots[provider]?.retry ?? 0) > Date.now()) continue;
+        mkdirSync(USAGE_DIR, { recursive: true, mode: 0o700 });
+        if (lstatSync(USAGE_DIR).isSymbolicLink()) throw new Error("unsafe directory");
+        const lock = join(USAGE_DIR, `${provider}.lock`);
+        let fd: number;
+        try { fd = openSync(lock, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
+        catch {
+          // Crashed owners expire only beyond the complete fetch deadline. Do not
+          // retry acquisition in this tick; a live successor owns its own inode.
+          try { if (Date.now() - lstatSync(lock).mtimeMs > 30_000) unlinkSync(lock); } catch {}
+          continue;
+        }
+        const inode = fstatSync(fd).ino;
+        const controller = new AbortController();
+        controllers.add(controller);
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+          const cached = readUsageSnapshot(provider);
+          if (cached && cached.retry > Date.now()) { snapshots[provider] = cached; continue; }
+          const identity = usageIdentity(provider);
+          let next: UsageSnapshot;
+          try {
+            const windows = await load(provider, controller.signal);
+            if (!windows.length && windows.credits == null && windows.resetCredits == null) throw new Error("unavailable");
+            next = { windows, fetched: Date.now(), retry: Date.now() + USAGE_TTL, failed: false, credits: windows.credits ?? null, resetCredits: windows.resetCredits ?? null };
+          } catch {
+            next = { windows: cached?.windows ?? [], fetched: cached?.fetched ?? 0, retry: Date.now() + 300_000, failed: true, credits: cached?.credits ?? null, resetCredits: cached?.resetCredits ?? null };
+          }
+          if (disposed || current !== generation) continue;
+          if (identity !== usageIdentity(provider)) continue;
+          next.identity = identity;
+          usageWrite(`${provider}.json`, next);
+          snapshots[provider] = next;
+        } finally {
+          clearTimeout(timeout);
+          controllers.delete(controller);
+          closeSync(fd);
+          try { if (lstatSync(lock).ino === inode) unlinkSync(lock); } catch {}
+        }
+      }
+    } catch { delete snapshots.codex; delete snapshots.agy; }
+    finally { busy = false; emit(); }
+  };
+  return {
+    update,
+    command(raw: string) {
+      if (disposed) return { type: "output", output: "Usage statusline is inactive." };
+      try {
+        const args = raw.trim().toLowerCase().split(/\s+/);
+        settings = parseUsageSettings(usageRead("settings.json"));
+        if (args[0] && args[0] !== "status") {
+          if (args.length === 1 && args[0] === "off") settings = { ...settings, codex: false, agy: false };
+          else if (args.length === 1 && ["bar", "compact"].includes(args[0])) settings.style = args[0] as UsageSettings["style"];
+          else if (args.length === 2 && ["codex", "agy"].includes(args[0]) && ["on", "off"].includes(args[1])) settings[args[0] as UsageProvider] = args[1] === "on";
+          else return { type: "output", output: "Usage: /mh-usage [status|off|codex on/off|agy on/off|bar|compact]" };
+          usageWrite("settings.json", settings);
+          generation += 1;
+          for (const controller of controllers) controller.abort();
+          emit();
+          void update();
+        }
+        const lines = [`Provider quota: ${settings.style}; percentages are remaining.`, "Codex P/S = actual primary/secondary duration. Agy labels retain provider bucket identity. Windows are independent."];
+        for (const provider of ["codex", "agy"] as const) {
+          lines.push(`${provider}: ${settings[provider] ? "on" : "off"}`);
+          if (!settings[provider]) continue;
+          let snapshot = snapshots[provider];
+          try { snapshot ??= readUsageSnapshot(provider); } catch {}
+          lines.push(...quotaSegments(provider, snapshot, settings.style).map((s) => s.text));
+          if (provider === "codex") {
+            const stale = snapshot && (snapshot.failed || Date.now() - snapshot.fetched > USAGE_STALE) ? " (stale)" : "";
+            lines.push(`  credits: ${snapshot?.credits ?? "unavailable"}${stale}; reset credits: ${snapshot?.resetCredits ?? "unavailable"}${stale}`);
+          }
+          for (const window of snapshot?.windows ?? []) lines.push(`  ${window.label} resets ${window.reset === null ? "unavailable" : new Date(window.reset).toISOString()}`);
+          lines.push(`  fetched ${snapshot?.fetched ? new Date(snapshot.fetched).toISOString() : "never"}; absolute limits not supplied by these quota APIs.`);
+        }
+        return { type: "output", output: lines.join("\n") };
+      } catch { return { type: "output", output: "Usage state unavailable; settings were not changed." }; }
+    },
+    dispose() { disposed = true; generation += 1; for (const controller of controllers) controller.abort(); },
+  };
 }
 
 function formatPercentage(value: number): string {

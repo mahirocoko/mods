@@ -407,14 +407,19 @@ Mahiro ใช้คำสั่งเหล่านี้เพื่อดู�
 
 ตัวนี้ทำงานอัตโนมัติและแสดง context ที่ต้องเหลือบดูบ่อย เช่น workspace, Git branch/dirty state, background subagent ที่ยังทำงานอยู่, conversation activity, context usage, MemFS, RTK, model, reasoning และ backend
 
-ไม่ต้องมี slash command ถ้า host รองรับ panel ก็จะเห็นแถว statusline หลัง `/reload`
+ถ้า host รองรับ panel ก็จะเห็นแถว statusline หลัง `/reload` โดยไม่ต้องเปิดเอง
+
+ส่วน quota ต้องเปิดด้วย `/mh-usage codex on` หรือ `/mh-usage agy on` แยกกัน ปิดรายตัวด้วย `off` หรือปิดทั้งคู่ด้วย `/mh-usage off` เลือกแถบด้วย `/mh-usage bar` หรือดูเฉพาะตัวเลขด้วย `/mh-usage compact` ค่าที่เลือกจะจำไว้ข้าม session
+
+ตัวเลขคือเปอร์เซ็นต์ที่เหลือในแต่ละช่วง quota ไม่ใช่ context usage และไม่รวมหลายช่วงเข้าด้วยกัน ใช้ `/mh-usage status` ดูสรุป Codex, Gemini และ Claude-GPT ได้ระหว่างที่ agent ทำงาน ถ้าต้องการดูทุกช่วงพร้อมเวลา reset ให้เปิด `/mh-usage status 1` แล้วใช้คำสั่งหน้าถัดไปที่ท้าย panel ปิดเองได้ด้วย `/mh-usage close` ค่าเก่าจะแสดง `stale` ส่วนข้อมูลที่อ่านไม่ได้จะแสดง `unavailable` ไม่แทนด้วยศูนย์ ตัว mod ใช้ login เดิมของ Codex และ Agy ที่รันอยู่แล้ว ไม่เปิด Agy หรือ refresh auth ให้เอง รายละเอียด cache และข้อจำกัดอยู่ใน [MOD.md](../MOD.md#compact-statusline)
 
 ### ต้องรู้
 
 - ข้อมูล Git, memory, reflection และ RTK refresh ทุก 10 วินาที ไม่ใช่ทุก millisecond
 - Background subagent ที่ยัง `pending` หรือ `running` จะแสดงเป็น `⏳ bg <type> [+N] <elapsed>` ต่อให้ parent turn จบแล้ว โดยไม่แสดง task description หรือ prompt ถ้า lifecycle context ของ host ไม่ส่ง child ที่ยังรันอยู่ ตัว statusline จะ fallback ไปดูเฉพาะ descendant Letta process และแสดงเป็น `⏳ agent <type> [+N] <elapsed>`; shell/monitor task ยังตรวจด้วย `/bg`
 - Activity จาก turn, LLM, tool และ compaction เป็นสถานะชั่วคราว
-- ถ้าข้อมูลฝั่งซ้ายยาวเกินพื้นที่ statusline จะย้ายทั้ง segment ลงแถวที่สอง โดยฝั่ง agent/model/backend ยังอยู่แถวแรก และ panel จะสูงไม่เกิน 2 แถว
+- แบบใหม่แทนข้อจำกัดเดิมที่มีไม่เกิน 2 แถว: แถวแรกเป็น statusline ปกติ แถวถัดมาเป็น Codex และ Agy แยกกัน รวม 3 แถวเมื่อเปิดทั้งคู่ ปิดตัวไหนก็เอาเฉพาะแถวของตัวนั้นออก แต่ละ provider ย่อแถบของตัวเองโดยไม่แย่งพื้นที่กัน ถ้าปิดทั้งคู่จะกลับไปใช้แบบเดิมที่มีแถวหลักและแถวล้นได้อีกหนึ่งแถว
+- Panel สรุปและหน้ารายละเอียดใช้ไม่เกิน 5 แถว เพื่อเหลือพื้นที่ให้ statusline ทั้ง 3 แถวภายใต้เพดานรวม 8 แถวของ host ถ้ามี panel อื่นอยู่ด้วย อาจต้องปิด panel นั้นก่อน
 - ถ้า host ไม่มี `ui.panels` จะไม่มี statusline และ diagnostics อาจมี warning เรื่อง panel capability ซึ่งไม่เท่ากับ mod พัง
 - ถ้า statusline หายหลังแก้ source ให้ติดตั้ง package ใหม่แล้ว `/reload` แทนการแก้ installed copy
 

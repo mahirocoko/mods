@@ -18,10 +18,18 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/mahiro-code-map.ts` | `mh_code_map` | Stateless bounded guidance that routes conceptual discovery to `ccc`, exact symbols/paths/strings to exact search, and outline requests to external bounded outline tooling without reading or indexing source. |
 | `mods/mahiro-execution-run.ts` | `/mh-run`, `mh_execution_run` (`get`, `create`, `update`) | Optional executor-neutral coordination for complex main-agent, Letta-subagent, Direct-CLI, human, or other work, with declared target ownership, bounded reports, and a Code Evidence intake handoff. |
 | `mods/rtk-control.ts` | `/rtk`, `tool_start` | Opt-in RTK status, savings, suggestions, and command rewriting. Default mode is Off. |
-| `mods/statusline.tsx` | order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, active background subagents, conversation activity, context, MemFS, RTK, model, reasoning, and backend state; it prefers the public lifecycle context and falls back to bounded descendant-process observation when the host context misses a live child. Left-side overflow wraps by whole segment to one bounded second row, with the right group retained across sparse renders. |
+| `mods/statusline.tsx` | `/mh-usage`, order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, active background subagents, conversation activity, context, MemFS, RTK, model, reasoning, and backend state; it prefers the public lifecycle context and falls back to bounded descendant-process observation when the host context misses a live child. With quota enabled, the default status/identity row is followed by one dedicated row per enabled provider (Codex then Agy, three rows total with both). With both disabled, whole-segment default overflow remains bounded to two rows. Thai/grapheme widths preserve the right group across padded host renders. |
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
 
 Agent Halo is not duplicated here. Its canonical mod remains in the separate [`agent-halo`](https://github.com/mahirocoko/agent-halo) repository and is installed by that project.
+
+## Provider quota statusline
+
+The current quota layout replaces the former two-row maximum: default statusline first, Codex second, Agy third; each disabled provider removes its own row. Providers shorten bars independently and never crowd each other. The summary/detail panel uses at most five rows so the three-row statusline also fits the host's shared eight-row cap.
+
+Quota display is opt-in: `/mh-usage codex on`, `/mh-usage agy on`; use each provider's `off` or `/mh-usage off` to hide both. `/mh-usage bar` and `/mh-usage compact` persist the presentation. `/mh-usage status` opens a busy-safe summary prioritizing Codex, Gemini, and Claude-GPT within the host's visible panel budget. `/mh-usage status 1` opens bounded detail pages for every independent window, reset, credit field, and stale/unavailable state; follow the next-page command in the footer. `/mh-usage close` dismisses the panel.
+
+Codex uses the existing CLI login; Agy requires an already-running local language server. This mod never starts Agy or refreshes auth. There are no invented absolute limits or combined quota windows. See [the statusline contract](MOD.md#compact-statusline) for cache, timeout, privacy, and runtime boundaries.
 
 ## Herdr lifecycle
 

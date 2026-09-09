@@ -27,7 +27,7 @@ Isolation must use source-level, fixed-path sentinels while leaving the managed 
 
 ## Accepted evidence
 
-- Private bundle exact budget: 39 registrations.
+- Historical July 28 private bundle budget: 39 registrations. The September 9 quota command raises the source budget to 40; `scripts/check-mods.mjs` owns the current count. The reload acceptance below applies only to the July snapshot.
 - High-registration groups split: Herdr, Goal, UX Workflow, Statusline.
 - Active runtime: NVM Letta Code 0.29.8.
 - All ten entries enabled with matching installed/source hashes.

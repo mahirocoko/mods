@@ -1120,3 +1120,186 @@ Release-preparation evidence captured on 2026-08-29:
 Every already-running Letta session still requires `/reload` after the managed
 package update. Final commit, origin, annotated tag, and GitHub Release alignment
 are verified only after publication.
+
+## Provider quota statusline correction — 2026-09-09
+
+Owner: `mods/statusline.tsx` in this checkout; Agent Halo native provider code
+was read-only schema evidence. No Letta core changes, auth refresh, Agy spawn,
+reset-credit operation, commit, or push belongs to this change.
+
+Live safe probes established Codex WHAM primary-window duration (weekly on
+this account), Agy's four independent buckets, and Agy's string `window`
+metadata (`5h`/`weekly`) before implementation. Both implemented adapters then
+returned normalized live windows without credential or raw-response output.
+Optional Codex additional limits, code review, credits, and reset-credit counts
+follow the existing native envelope schema; their full combinations are fixture
+verified, not claimed to have appeared in this account's live response.
+
+The initial candidate omitted optional Codex surfaces and unknown Agy buckets,
+used ASCII bars, and lacked width-sensitive compact fallback. Main rejected
+that candidate. The correction retains independently named additional/review
+windows; renders credits/reset credits only from the usage envelope (otherwise
+unavailable); preserves sanitized unknown Agy identities and explicit windows;
+uses five `▰▱` segments; and tries compact quota text before dropping overflow.
+There is no inferred aggregate or invented absolute limit/currency conversion.
+
+Focused regressions cover these exact corrected shapes, cached complete status,
+source reset timestamps/unavailable resets, remaining zero/full values, unknown
+bucket sanitization, two-row layout and compact rescue, persisted-off no-fetch
+behavior across controllers, shared cache/locks, failure backoff, corrupt and
+symlink settings, and normal/engine-aborted cleanup without late publication.
+The exact static registration budget is 40, not proof of live React acceptance.
+
+Verification closeout passed: `pnpm check`, `pnpm pack --dry-run`, and
+`git diff --check`. The owning `pnpm mods:update` completed; `pnpm mods:status`
+reported all ten source entries matching and no migration needed. Historical
+window-correction checkpoint source/installed SHA-256 (superseded below):
+`ac2bf8659d40c40f9e14a7c07cdf7ae2ebd30582b56e8c767d24997f9da99ae5`.
+Remaining boundaries: providers default off; quotas can still be omitted when
+both rows are full (status keeps details); Agy requires an existing HTTP LS and
+its account identity is TTL-based; more than 64 windows fails unavailable;
+absolute token/request limits and absent envelope credit fields stay unavailable.
+The user's earlier reload does not establish that this corrected generation is
+active. Another reload and human visual acceptance remain pending.
+
+### Busy-safe Usage Status follow-up — 2026-09-09
+
+The user reported that the command was disabled while the agent worked.
+The existing `mh-goal-status` implementation supplied the public API pattern:
+commands plus panels capability gate, `runWhenBusy: true`, no transcript output,
+`handled` responses, a transient order-120 panel, public chalk, sanitized fields,
+replacement on repeat, and ten-second close. `/mh-usage` now follows that pattern
+for status, toggles, help, and errors; `/mh-usage close` also dismisses it.
+Status captures cached data only, without a provider fetch or agent turn.
+The two-row persistent statusline and registration cadence are unchanged.
+
+Direct regressions cover busy metadata, every handled branch, cached panel
+anatomy, repeat/explicit/timed close, public coloring and control-character
+sanitization, missing capabilities, state/host errors, and normal versus
+engine-aborted cleanup. Existing no-fetch-when-off and quota regressions pass.
+`pnpm check`, `pnpm pack --dry-run`, and `git diff --check` passed; the owning
+managed update completed and all ten installed source hashes matched. Historical
+busy-safe checkpoint source/installed statusline SHA-256 (paint superseded below):
+`a92b36c2082e44c0ad4fa426cba0f1a1ff881d308db39c7a03367c2893bb0da2`.
+No commit, core change, new tool, permission change, or auth expansion was made.
+The prior user reload predates this update: active-host and visual acceptance
+remain unclaimed until the user reloads and checks the busy command.
+
+### Continuous block paint — 2026-09-09
+
+User-approved rendering-only follow-up replaces the earlier segmented glyphs
+with eight-cell statusline and sixteen-cell detail bars using `█` / `░`.
+The same remaining percentage and green/yellow/red threshold hue apply; only
+the remainder is dimmed through public chalk during render, with no stored ANSI.
+The two-row geometry, compact-before-omit behavior, and busy-safe command remain.
+Direct regressions cover zero/full/intermediate values, both bar widths, same-hue
+dim calls, threshold colors, plain data, and narrow compact rescue. Full
+`pnpm check`, pack dry-run, and whitespace checks passed. Managed update and
+status reported all ten entries matching, no migration needed. Historical paint
+checkpoint source/installed SHA-256 (fair allocation supersedes it below):
+`bc289dc26f4f0ce26294532051abe95e39b20987b7ef1360cec38a53e008f3cd`.
+User reload and visual acceptance remain pending. No core/auth/permission change
+or commit/push was made.
+
+### Fair dual-provider allocation — 2026-09-09
+
+Both-enabled status now reserves row two for representative actual Codex,
+Agy Gemini, and Agy Claude-GPT windows, before alternating optional extras.
+All representatives use the same block paint and symmetric 8/6/4/2-cell fallback;
+percent-only is the final fallback. Durations remain explicit, and details retain
+all independent windows. Primary status/identity order stays on row one, but its
+lower-priority overflow may be omitted to make room for the reserved quota row.
+
+Realistic fixture regressions (primary Codex weekly plus optional limits and
+four Agy windows) prove all three families with four-cell bars at width 80 and
+eight-cell bars at widths 120/160. Width 40 retains both providers compactly;
+width 20 may show only Codex. All tested widths remain within two rows, and
+workspace/model identity survives at the normal widths. Existing busy-panel,
+privacy, remaining-percentage, and cleanup checks also pass.
+`pnpm check`, pack dry-run, and whitespace checks passed; managed update/status
+reported all ten entries matching with no migration needed. Historical two-row
+allocation checkpoint source/installed SHA-256 (superseded below):
+`663059aefe22265186bd912586b73097ace86c7b882439f06a57c6f5c3b351ca`.
+No provider/auth/core changes or commit/push. Reload and human visual acceptance
+remain pending; fixture widths do not establish the user's exact terminal view.
+
+### Superseding contract: provider rows, Thai width, visible panel pages — 2026-09-09
+
+The user screenshot disproved the earlier Usage Status completeness claim:
+returning many panel lines did not make them visible. Read-only inspection of
+the actual installed NVM Letta bundle's `ModPanelRow.tsx` section showed
+`flatMap(renderModPanelLines).slice(0, MAX_MOD_PANEL_LINES)` with a shared cap of
+8, and each row truncated to `terminalWidth - 1`. Its public `row()` measures
+with grapheme-based `string-width` and pads the first row to full width.
+The previous local code-point measurement counted Thai combining marks twice,
+then rejected that correctly padded row and fell back without provider rows.
+The independent reproducer is 17 code points but 16 terminal/grapheme cells for
+`อยากให้ pull mods`. No core source or installed core file was edited.
+
+The user explicitly superseded the old two-row limit: default statusline first,
+Codex second, Agy third. A disabled provider removes only its own row; both off
+retain the accepted default one/two-row behavior. Each provider shortens bars
+independently before compact fallback. Actual window labels/durations remain
+separate; optional windows may be omitted on a narrow provider row, not moved
+onto the other provider. Grapheme-aware measuring, truncation, and short labels
+preserve Thai marks and joined emoji. The padded public row is no longer
+rejected by a second incompatible count.
+
+Usage Status now returns at most five rows (title, three representative windows,
+navigation), leaving three rows for the statusline inside the shared cap.
+`/mh-usage status 1` and subsequent numbered pages expose all cached windows,
+resets, credits, and freshness in three width-bounded content rows plus title
+and navigation. Host-cap regressions apply the actual first-eight-rows slice,
+not an assertion on an arbitrarily long returned array. Higher-order unrelated
+additive panels can still consume this shared budget. Narrow summary widths may
+shorten bars or clip labels; numbered details wrap content across pages.
+
+Direct regressions use an independent grapheme-width/padded-row fixture with
+Thai conversation and agent names at available widths 80/120/160; they assert
+three rows, retained identity, Codex/Agy row separation, disabled-row removal,
+and independent narrowing at width 40. The previously retained two-row tests
+apply only to the disabled/default layout, not acceptance of this new contract.
+
+Exact plain fixtures (public chalk adds threshold hue and dim remainder only):
+
+Available width 80:
+```text
+📁 mods · 🌿 main ✓ · 💬 อยากให้ pull…         ผู้ช่วยมาฮิโระ · [GPT-5.6 Sol r:xhigh]
+Codex P:7d [████░░░░] 56% · Spark P:5h [██████░░] 80%
+Agy Gemini:5h [██████░░] 81% · Claude-GPT:5h [████████] 100%
+```
+
+Available width 120:
+```text
+📁 mods · 🌿 main ✓ · 💬 อยากให้ pull… · ctx 42% · ✏️ accept-edits                     ผู้ช่วยมาฮิโระ · [GPT-5.6 Sol r:xhigh]
+Codex P:7d [████░░░░] 56% · Spark P:5h [██████░░] 80% · Code review P:7d [████████] 100%
+Agy Gemini:5h [██████░░] 81% · Claude-GPT:5h [████████] 100% · Gemini:7d [███████░] 85% · Claude-GPT:7d [███████░] 90%
+```
+
+Available width 160:
+```text
+📁 mods · 🌿 main ✓ · 💬 อยากให้ pull… · ctx 42% · ✏️ accept-edits                                                             ผู้ช่วยมาฮิโระ · [GPT-5.6 Sol r:xhigh]
+Codex P:7d [████░░░░] 56% · Spark P:5h [██████░░] 80% · Code review P:7d [████████] 100%
+Agy Gemini:5h [██████░░] 81% · Claude-GPT:5h [████████] 100% · Gemini:7d [███████░] 85% · Claude-GPT:7d [███████░] 90%
+```
+
+Summary at available width 80 (five rows, before three statusline rows):
+```text
+Mahiro Usage · remaining
+Codex P:7d [█████████░░░░░░░] 56% left
+Agy Gemini:5h [█████████████░░░] 81% left
+Agy Claude-GPT:5h [████████████████] 100% left
+/mh-usage status 1 · 6 detail pages · closes 10s
+```
+
+These are deterministic live-shaped fixtures, not the user's current account
+snapshot or a human-approved screenshot. Prior edits were preserved and no
+leftover checkout install/check process was found before execution resumed.
+Main audit, user reload, and visual acceptance remain pending; no core/auth
+changes, commits, or pushes were authorized or performed.
+
+Closeout checks passed: `pnpm check`, `pnpm pack --dry-run`, and
+`git diff --check`. `pnpm mods:update` completed through the owning local manager;
+`pnpm mods:status` reported all ten source entries matching and no migration
+needed. Current three-row/paginated-panel statusline source/installed SHA-256:
+`93fa7068b68e36606ed7c676b9d43e7f08f8038ee250df7ee14caa831b7083a7`.
