@@ -1953,7 +1953,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-finish-voice.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.9.0", "Package version must be 0.9.0");
+  assert(packageJson.version === "0.9.1", "Package version must be 0.9.1");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact thirteen-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact thirteen-entry package");
 
