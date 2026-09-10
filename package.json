@@ -1,8 +1,8 @@
 {
   "name": "@mahirocoko/letta-mods",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
-  "description": "Mahiro's private workflow, Herdr lifecycle, execution coordination, Code Map, UX coordination, code evidence, timestamps, RTK, statusline, and MCP mods for Letta Code.",
+  "description": "Mahiro's private workflow, Herdr lifecycle, execution coordination, Code Map, UX coordination, code evidence, timestamps, RTK, statusline, MCP, secret-read and commit attribution guards, and bounded voice mods for Letta Code.",
   "license": "UNLICENSED",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
@@ -10,7 +10,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "node --check scripts/manage-local.mjs && node --check scripts/manage-entries.mjs && node scripts/check-entry-manager.mjs && node scripts/validate-manifest.mjs && node scripts/check-mods.mjs",
+    "check": "node --check scripts/manage-local.mjs && node --check scripts/manage-entries.mjs && node scripts/check-entry-manager.mjs && node scripts/validate-manifest.mjs && node scripts/check-secret-read-guard.mjs && node scripts/check-hook-migration.mjs && node scripts/check-mods.mjs",
+    "check:hooks": "node scripts/check-hook-migration.mjs",
+    "check:secret-reads": "node scripts/check-secret-read-guard.mjs",
     "prepack": "pnpm check",
     "mods:status": "node scripts/manage-local.mjs status",
     "mods:install": "node scripts/manage-local.mjs install",
@@ -46,7 +48,10 @@
       "./mods/mahiro-execution-run.ts",
       "./mods/rtk-control.ts",
       "./mods/statusline.tsx",
-      "./mods/mahiro-mcp-proxy.js"
+      "./mods/mahiro-mcp-proxy.js",
+      "./mods/mahiro-secret-read-guard.js",
+      "./mods/mahiro-commit-attribution-guard.js",
+      "./mods/mahiro-finish-voice.js"
     ],
     "capabilities": [
       "commands",

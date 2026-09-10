@@ -20,8 +20,78 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/rtk-control.ts` | `/rtk`, `tool_start` | Opt-in RTK status, savings, suggestions, and command rewriting. Default mode is Off. |
 | `mods/statusline.tsx` | `/mh-usage`, order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, active background subagents, conversation activity, context, MemFS, RTK, model, reasoning, and backend state; it prefers the public lifecycle context and falls back to bounded descendant-process observation when the host context misses a live child. With quota enabled, the default status/identity row is followed by one dedicated row per enabled provider (Codex then Agy, three rows total with both). With both disabled, whole-segment default overflow remains bounded to two rows. Thai/grapheme widths preserve the right group across padded host renders. |
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
+| `mods/mahiro-secret-read-guard.js` | permission overlay | Letta-only secret-read/environment guard with the existing portable CCC security gate, checked at approval and final-argument execution. |
+| `mods/mahiro-commit-attribution-guard.js` | permission overlay | Preserves the old inline commit attribution guard. |
+| `mods/mahiro-finish-voice.js` | `turn_end` | Bounded macOS completion cue, excluding known subagent processes. |
 
 Agent Halo is not duplicated here. Its canonical mod remains in the separate [`agent-halo`](https://github.com/mahirocoko/agent-halo) repository and is installed by that project.
+
+## Commit and voice hook migration
+
+- `commit-attribution`: automatic public permission overlay at approval and final-argument execution. Preserves the old inline `git commit` matcher and its two exact Letta attribution strings; it is not a complete Git/shell parser and does not inspect `-F` files, aliases, or `git -C` commits.
+- `finish-voice`: speaks “ลาเต้ ทำงานเสร็จแล้วค่ะ” on public `turn_end` with `stopReason: "end_turn"`. Requires a host that actually supports/emits `turn_end`; the older event recipe does not list it. No `llm_end` approximation. Errors, cancellations, approval pauses, and other stop reasons stay silent.
+
+Finish voice preserves Kanya, rate 300, volume 0.4 (the old configured values), use `say` then `afplay`, and remove unique private temporary audio directories. macOS only; one active cue per entry, a 3-second cooldown, 10-second process deadlines, and a 20-second overall deadline. Reload/disposal aborts playback. Known `LETTA_CODE_AGENT_ROLE=subagent` processes stay silent; the public event has no parent-role field for other host paths. No cross-process deduplication, Halo relay, RTK rewriting, or transcript logging is added. Another mod may continue a completed turn after the finish event; this is a turn cue, not a whole-workflow completion guarantee.
+
+```sh
+pnpm check:hooks
+pnpm mods:entry status
+```
+
+The three migrated hooks are automatic-only, with no per-entry switches or disable environment overrides. After review, run `pnpm mods:install` from this checkout, then `/reload` in the active session. Installation does not remove legacy hooks: retire only verified replacements. Preserve Halo ownership separately. Tests use synthetic commands and a silent injected audio runner, never an actual commit or audible playback.
+
+## Secret-read guard migration
+
+The `secret-reads` entry replaces dispatch of the local `block-secret-reads.py`
+policy through the public permission API, not through `tool_start` or an
+`isEnabled` predicate. It returns **deny** for violations and no opinion for
+normal calls; both approval and execution inspect their own arguments. Other
+permission policies still apply. This entry adds no attribution rule.
+
+Exact `.env.example`, ordinary developer JSON/YAML/TOML/XML/TXT files, safe SSH
+metadata/public keys, narrow shell metadata checks, `set -e`/`set -eu`, `env`
+with a command, and heredoc data retain the existing exceptions. Real dotenv,
+credential/key/provider paths, environment dumps, and CCC file access without
+portable settings plus a fresh pinned strict receipt remain blocked. See
+[the full policy and limits](MOD.md#mahiro-secret-read-guard).
+
+Requires `/usr/bin/python3` (Python 3.9+) and the existing CCC helpers/scanner
+for CCC-gated operations. The single mod embeds its policy; it never imports
+the installed hook. Missing Python, check timeout, malformed input/output,
+process failure, or cancellation denies the call. A missing permissions
+capability instead reports an **inactive guard** diagnostic: a mod cannot
+secure a host that does not load permission overlays.
+
+Migration is not completed by source tests or installation. Keep the current
+hook enabled until separately authorized fixture-only Main and subagent
+runtime probes establish that this overlay actually loads and denies on each
+surface. Then remove only the old hook dispatch under separate authorization;
+this package does not edit hook settings. Duplicate guards may perform duplicate
+CCC checks during overlap. No live coverage is implied by mocked callbacks.
+
+From this checkout, after review:
+
+```bash
+pnpm check:secret-reads
+pnpm check
+pnpm mods:install
+pnpm mods:status
+pnpm check:secret-reads
+FIXTURE=$(node scripts/check-secret-read-guard.mjs --fixtures)
+cd "$FIXTURE"
+letta --new --backend local
+```
+
+The fixture command only creates synthetic files in a temporary directory and
+prints its path; it neither installs nor starts a session. In the fresh session,
+ask for Read of `package.json` and `.env.example` (normal permission flow), then
+Read of `.env` and `credentials.json`, and Bash `cat .env` (must deny). Repeat
+with a real Letta Agent child in the same fixture directory, and inspect the
+actual denied results and loaded overlay rather than accepting a narrative
+claim. Do not probe real secrets or other projects. An execution-transform
+probe and repeated reload checks remain separate real-host acceptance gates;
+the fixture suite verifies final-argument changes only through API-shaped mocks.
+Existing live sessions are not reloaded by these commands.
 
 ## Provider quota statusline
 
@@ -372,7 +442,7 @@ pnpm mods:entry enable goal
 ```
 
 Available names are `timestamps`, `herdr`, `goal`, `evidence`, `ux`,
-`code-map`, `execution`, `rtk`, `statusline`, and `mcp`. The manager writes only
+`code-map`, `execution`, `rtk`, `statusline`, and `mcp`. The three migrated hooks have no per-entry switches. The manager writes only
 fixed mode-`0600` sentinels under `~/.letta/mods/`, rejects symlinks and unknown
 names, and is idempotent. Run `/reload` after each change. This is local runtime
 control; it does not edit `packages.json`, package source, or durable state.

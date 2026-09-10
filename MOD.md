@@ -1,22 +1,102 @@
 ---
 name: "@mahirocoko/letta-mods"
-description: "Mahiro's private user timestamps, Herdr lifecycle, structured workflow goal, bounded code evidence, UX coordination, Code Map guidance, execution coordination, RTK control, compact statusline, and lazy MCP proxy bundle for Letta Code."
+description: "Mahiro's private user timestamps, Herdr lifecycle, structured workflow goal, bounded code evidence, UX coordination, Code Map guidance, execution coordination, RTK control, compact statusline, lazy MCP proxy, secret-read and commit attribution guards, and bounded voice bundle for Letta Code."
 ---
 
 # Mahiro Letta Mods semantics
 
-Each declared entry checks one fixed local disable sentinel before reporting
+The ten switchable entries check their fixed local disable sentinels before reporting
 diagnostics or registering commands, tools, permissions, events, or panels.
+The three migrated hooks are automatic-only and have no per-entry switches.
 `pnpm mods:entry status|disable|enable [entry]` owns those mode-`0600` sentinels
-for the ten closed entry names. Toggling an entry never edits the managed
+for the ten switchable entry names. Toggling an entry never edits the managed
 package registry or deletes its durable state; active sessions require
 `/reload`.
 
 ## Package boundary
 
-This package activates ten independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, sockets, and persistent MCP connections.
+This package activates thirteen independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, sockets, and persistent MCP connections.
 
 Installed package files are runtime copies. Edit this repository, validate it, reinstall/update the managed package, and run `/reload` rather than editing files below `~/.letta/mods/packages/`.
+
+## Commit attribution and voice boundaries
+
+`mahiro-commit-attribution-guard` is a public permission overlay for Bash/Shell command/cmd inputs, evaluated independently in approval and execution. It returns deny only for the old hook's exact inline `git commit` regex plus either exact Letta attribution string, otherwise no opinion. The lexical matcher intentionally retains old gaps (`git -C`, leading whitespace at command start, aliases, external message files) and can match shell text without understanding quoting. It does not rewrite commands or bypass other policies.
+
+`mahiro-finish-voice` registers public `turn_end` and speaks only for `end_turn`. Source inspection confirms TUI, headless, and listener dispatch in newer hosts; the older installed event recipe does not document this event. Registration failure degrades with a warning, not a guessed `llm_end` fallback. Hosts that accept but never emit it remain silent. Installed CLI inspection shows event `ctx.signal` is the mod owner's generation signal, not an automatically aborted turn signal; audio already uses `letta.signal`. Silent injected-runner tests confirm playback survives callback return and a separate turn abort. The TUI emits after Stop hooks and skips the event when a Stop hook blocks; the actual Main/Desktop runtime still needs a public event probe after installation. No live no-sound root cause is yet proven. It is not a workflow-finished guarantee when another handler continues the turn.
+
+Voice uses fixed historical Kanya/rate-300/volume-0.4 cues, one active job per entry, a 3-second cooldown, unique private temporary audio, 10-second subprocess timeouts and a 20-second job deadline. Disposal/abort kills playback and removes temporary audio; there is no persistent voice log. The known subagent process-role marker suppresses finish playback; no public event parent-role field or cross-process deduplication is available. The shared runtime does not relay to Agent Halo or invoke legacy scripts.
+
+All three migrated hooks are automatic-only: no per-entry switches, disable environment overrides, or manual commands. `pnpm check:hooks` is fully silent and synthetic. Installation never removes these hooks automatically; retire only verified replacements and preserve Halo separately.
+
+## Mahiro Secret-Read Guard
+
+`mods/mahiro-secret-read-guard.js` owns one public `permissions.register`
+overlay, `mahiro-secret-read-guard`, with no `isEnabled` predicate, model tool,
+slash command, argument transform, or approval cache. It evaluates `event.args`
+anew in both `approval` and `execution`, including post-transform arguments.
+Allowed policy results return `undefined`, never blanket `allow`. Denials do
+not include paths, raw commands, helper stderr, or input values.
+
+The entry embeds the existing local Python hook policy to preserve Python
+`shlex`, path-name, heredoc, and CCC contracts without a runtime dependency on
+the old hook file. Read/ReadFile/read_file and Bash/ShellCommand/shell_command/
+exec_command aliases (including dotted tool namespaces) are recognized. Other
+tools retain the recursive direct-path fallback. Exact `.env.example` remains
+an early filename exception, including inside otherwise sensitive directories.
+JSON/YAML/YML/TOML/XML/TXT are not blanket denied. Sensitive names include real
+`.env` variants, `.npmrc`, `.pypirc`, auth/credentials files, SSH private-key
+names and unknown SSH files, identity, key/PEM/P12/PFX suffixes, credentials./
+secret./secrets. prefixes, and local-backend provider-directory paths. SSH
+config, known_hosts variants, authorized_keys, and `.pub` retain their narrow
+exceptions unless another sensitive-name rule applies.
+
+Shell checks retain narrow `ls`/`stat`/`test`/`[`/`find` metadata exceptions,
+read-like command detection, `find -exec` reads, environment-dump checks, safe
+shell flags, `env` command wrappers, and heredoc-body stripping. The migration
+also recognizes shell separators before stripping punctuation, including
+unspaced separators, so a preceding metadata command cannot exempt a subsequent
+read, and recognizes `[` before punctuation stripping to honor the hook's
+explicit metadata allow-list intent. As in the hook, this is an accidental-read heuristic, **not a sandbox**:
+symlink targets, arbitrary globs/variables, encoded/interpreter-generated paths,
+alias expansion, heredoc substitutions, and arbitrary network/remote-tool reads
+are not comprehensively resolved. Developer files can still contain secrets.
+No filesystem contents are opened to classify a path.
+
+CCC index/grep/MCP/refresh and recognized indirections keep the existing gate:
+resolve the tool workdir/cwd inside Git, reject shell `cd` in gated commands,
+require regular non-symlink helper/scanner files and safe optional policy and
+allowlist controls, then run synchronized V2 settings `--check`, filename-only
+preflight `--check-settings`, and strict receipt `check` with Gitleaks 8.30.1 and
+SHA-256 `ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f`.
+The existing home-local CCC helper/scanner paths remain authoritative. This mod
+does not scan, refresh receipts, fix settings, or index on its own; helper checks
+may read their policy/receipt and source-freshness inputs. Helpers suppress all
+output; failure, drift, findings, stale receipt, missing scanner, or timeout
+blocks. No CCC gate is silently replaced by a filename-only check.
+
+The fixed policy runs via `/usr/bin/python3 -I -c` with tool input on stdin,
+never an agent-provided shell command. Requires Python 3.9+. Inputs are capped
+at 1 MiB, output at 4 KiB, and total time at 250 seconds (existing CCC stages
+retain 5/30/30/180-second limits). Each phase repeats checks; no stale approval
+can authorize a later execution. Host-specific permission deadlines may be
+shorter and need real-host verification. Nonzero exit, malformed response,
+missing interpreter, invalid phase/input/cwd, timeout, or abort returns a generic
+deny. Cancellation and cleanup kill the dedicated checker process group,
+including active CCC children. Normal cleanup unregisters; engine-aborted
+cleanup skips the redundant registry publish. No persistent state is written.
+
+This guard is automatic-only, without a per-entry switch or disable environment override.
+Missing permission
+capability reports an inactive-guard diagnostic rather than pretending to
+protect unsupported hosts. Disabling mods globally, failed loading, or a
+surface that never invokes overlays means there is no mod enforcement.
+
+Keep the existing hook dispatched until separately authorized Main/subagent
+fixture-runtime coverage and execution/reload checks pass; tests alone do not
+prove any live surface coverage. The installer does not modify or disable the
+hook. This migration is Letta Code only and intentionally adds no attribution,
+RTK, voice, or external-agent policy.
 
 ## Mahiro User Timestamps
 

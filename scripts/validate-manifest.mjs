@@ -27,6 +27,9 @@ const EXPECTED_MODS = [
   "./mods/rtk-control.ts",
   "./mods/statusline.tsx",
   "./mods/mahiro-mcp-proxy.js",
+  "./mods/mahiro-secret-read-guard.js",
+  "./mods/mahiro-commit-attribution-guard.js",
+  "./mods/mahiro-finish-voice.js",
 ];
 const KNOWN_CAPABILITIES = new Set([
   "tools",

@@ -19,6 +19,9 @@ const entries = [
   "mods/rtk-control.ts",
   "mods/statusline.tsx",
   "mods/mahiro-mcp-proxy.js",
+  "mods/mahiro-secret-read-guard.js",
+  "mods/mahiro-commit-attribution-guard.js",
+  "mods/mahiro-finish-voice.js",
 ];
 
 function assert(condition, message) {
@@ -93,7 +96,9 @@ async function loadMod(relativePath) {
     target: "node22",
   });
   const payload = Buffer.from(`${result.code}\n//# sourceURL=${pathToFileURL(absolutePath).href}`).toString("base64");
-  const loaded = await import(`data:text/javascript;base64,${payload}`);
+  const loaded = await import(relativePath.endsWith("-voice.js")
+    ? pathToFileURL(absolutePath).href
+    : `data:text/javascript;base64,${payload}`);
   assert(typeof loaded.default === "function", `${relativePath} must default-export an activation function`);
   return { activate: loaded.default, testing: loaded.__testing ?? null };
 }
@@ -112,7 +117,7 @@ async function smokeActivate(activate, relativePath) {
 }
 
 async function checkRegistrationBudget(activations) {
-  const budget = 40;
+  const budget = 44;
   const deferredEntries = new Set([
     "mods/mahiro-herdr-lifecycle.ts",
     "mods/mahiro-goal.ts",
@@ -130,6 +135,9 @@ async function checkRegistrationBudget(activations) {
     ["mods/rtk-control.ts", 2],
     ["mods/statusline.tsx", 10],
     ["mods/mahiro-mcp-proxy.js", 4],
+    ["mods/mahiro-secret-read-guard.js", 1],
+    ["mods/mahiro-commit-attribution-guard.js", 1],
+    ["mods/mahiro-finish-voice.js", 1],
   ]);
   const actualByEntry = new Map();
 
@@ -138,6 +146,7 @@ async function checkRegistrationBudget(activations) {
     const previousHerdrSocket = process.env.HERDR_SOCKET_PATH;
     const previousHerdrPane = process.env.HERDR_PANE_ID;
     const previousAgentRole = process.env.LETTA_CODE_AGENT_ROLE;
+    if (entry.endsWith("-voice.js")) delete process.env.LETTA_CODE_AGENT_ROLE;
     if (entry === "mods/mahiro-herdr-lifecycle.ts") {
       process.env.HERDR_ENV = "1";
       process.env.HERDR_SOCKET_PATH = join(tmpdir(), "mahiro-registration-budget.sock");
@@ -210,12 +219,14 @@ async function checkEntryDisableSwitches(activations) {
 
   for (const [entry, activate] of activations) {
     const path = paths.get(entry);
+    if (!paths.has(entry)) continue; // Automatic-only migrated hooks have no switches.
     assert(typeof path === "string" && path.length > 0, `${entry} must have an isolated disable path`);
     writeFileSync(path, "disabled\n", { mode: 0o600 });
     const previousHerdrEnv = process.env.HERDR_ENV;
     const previousHerdrSocket = process.env.HERDR_SOCKET_PATH;
     const previousHerdrPane = process.env.HERDR_PANE_ID;
     const previousAgentRole = process.env.LETTA_CODE_AGENT_ROLE;
+    if (entry.endsWith("-voice.js")) delete process.env.LETTA_CODE_AGENT_ROLE;
     if (entry === "mods/mahiro-herdr-lifecycle.ts") {
       process.env.HERDR_ENV = "1";
       process.env.HERDR_SOCKET_PATH = join(tmpdir(), "mahiro-entry-disable.sock");
@@ -1937,11 +1948,14 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/rtk-control.ts",
     "./mods/statusline.tsx",
     "./mods/mahiro-mcp-proxy.js",
+    "./mods/mahiro-secret-read-guard.js",
+    "./mods/mahiro-commit-attribution-guard.js",
+    "./mods/mahiro-finish-voice.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
   assert(packageJson.version === "0.9.0", "Package version must be 0.9.0");
-  assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact ten-entry order");
-  assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact ten-entry package");
+  assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact thirteen-entry order");
+  assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact thirteen-entry package");
 
   const missingDiagnostics = [];
   const missing = await activate({ capabilities: {}, diagnostics: { report: (item) => missingDiagnostics.push(item) } });

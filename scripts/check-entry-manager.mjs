@@ -17,7 +17,7 @@ const assert = (condition, message) => {
 
 try {
   const initial = run("status");
-  assert(initial.includes("goal: enabled") && initial.split("\n").filter(Boolean).length === 10, "entry status must list ten enabled entries");
+  assert(initial.includes("goal: enabled") && initial.split("\n").filter(Boolean).length === 10, "entry status must list ten switchable entries");
   assert(run("disable", "goal").includes("goal: disabled"), "entry manager must disable one entry");
   const sentinel = join(root, "mahiro-goal.disabled");
   assert((lstatSync(sentinel).mode & 0o777) === 0o600, "entry sentinel must use mode 0600");
@@ -63,7 +63,14 @@ try {
     symlinkBlocked = String(error.stderr).includes("Refusing unsafe disable sentinel");
   }
   assert(symlinkBlocked, "entry manager must reject symlink sentinels");
-  console.log("Per-entry mod manager valid: ten entries, atomic locked disable/enable, idempotence, mode, unknown-name, and symlink checks passed.");
+  for (const entry of ["secret-reads", "commit-attribution", "finish-voice"]) {
+    for (const action of ["status", "disable", "enable"]) {
+      let rejected = false;
+      try { run(action, entry); } catch (error) { rejected = String(error.stderr).includes("Unknown bundle entry"); }
+      assert(rejected, `${entry} must not expose a per-entry switch`);
+    }
+  }
+  console.log("Per-entry mod manager valid: ten switchable entries, three automatic-only hooks, atomic locked disable/enable, idempotence, mode, unknown-name, and symlink checks passed.");
 } finally {
   await rm(root, { recursive: true, force: true });
 }

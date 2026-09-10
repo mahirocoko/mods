@@ -58,6 +58,9 @@ pnpm mods:update
 | ดูหรือเปิดการ rewrite คำสั่งผ่าน RTK | RTK Control |
 | ดูสถานะ workspace, Git, context และ activity | Compact Statusline |
 | ค้นและเรียก MCP tools แบบมี approval boundary | Lazy MCP Proxy |
+| กันการอ่านไฟล์ลับผ่าน Letta Code | [Mahiro Secret-Read Guard](../MOD.md#mahiro-secret-read-guard) |
+| กัน Letta attribution ใน commit | [Commit Attribution Guard](../README.md#commit-and-voice-hook-migration) |
+| เสียงเมื่อจบ turn | Finish Voice (`turn_end`) |
 
 ## Slash command กับ model tool ต่างกันยังไง
 
