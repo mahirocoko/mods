@@ -412,9 +412,9 @@ Mahiro ใช้คำสั่งเหล่านี้เพื่อดู�
 
 ถ้า host รองรับ panel ก็จะเห็นแถว statusline หลัง `/reload` โดยไม่ต้องเปิดเอง
 
-ส่วน quota ต้องเปิดด้วย `/mh-usage codex on` หรือ `/mh-usage agy on` แยกกัน ปิดรายตัวด้วย `off` หรือปิดทั้งคู่ด้วย `/mh-usage off` เลือกแถบด้วย `/mh-usage bar` หรือดูเฉพาะตัวเลขด้วย `/mh-usage compact` ค่าที่เลือกจะจำไว้ข้าม session
+ส่วน quota ต้องเปิดด้วย `/mh-usage codex on` หรือ `/mh-usage agy on` แยกกัน ปิดรายตัวด้วย `off` หรือปิดทั้งคู่ด้วย `/mh-usage off` เลือก meter แบบ `▰▰▱▱▱▱▱▱` ด้วย `/mh-usage bar` หรือดูเฉพาะตัวเลขด้วย `/mh-usage compact` ค่าที่เลือกจะจำไว้ข้าม session
 
-ตัวเลขคือเปอร์เซ็นต์ที่เหลือในแต่ละช่วง quota ไม่ใช่ context usage และไม่รวมหลายช่วงเข้าด้วยกัน ใช้ `/mh-usage status` ดูสรุป Codex, Gemini และ Claude-GPT ได้ระหว่างที่ agent ทำงาน ถ้าต้องการดูทุกช่วงพร้อมเวลา reset ให้เปิด `/mh-usage status 1` แล้วใช้คำสั่งหน้าถัดไปที่ท้าย panel ปิดเองได้ด้วย `/mh-usage close` ค่าเก่าจะแสดง `stale` ส่วนข้อมูลที่อ่านไม่ได้จะแสดง `unavailable` ไม่แทนด้วยศูนย์ ตัว mod ใช้ login เดิมของ Codex และ Agy ที่รันอยู่แล้ว ไม่เปิด Agy หรือ refresh auth ให้เอง รายละเอียด cache และข้อจำกัดอยู่ใน [MOD.md](../MOD.md#compact-statusline)
+ตัวเลขคือเปอร์เซ็นต์ที่เหลือในแต่ละช่วง quota ไม่ใช่ context usage และไม่รวมหลายช่วงเข้าด้วยกัน แถว Agy จะเรียง `Gemini:5h`, `Gemini:7d`, `Claude-GPT:5h`, `Claude-GPT:7d` เพื่อให้ช่วงของ family เดียวกันอยู่ติดกันเมื่อพื้นที่พอ ใช้ `/mh-usage status` ดูสรุป Codex, Gemini และ Claude-GPT ได้ระหว่างที่ agent ทำงาน ถ้าต้องการดูทุกช่วงพร้อมเวลา reset ให้เปิด `/mh-usage status 1` แล้วใช้คำสั่งหน้าถัดไปที่ท้าย panel ปิดเองได้ด้วย `/mh-usage close` ค่าเก่าจะแสดง `stale` ส่วนข้อมูลที่อ่านไม่ได้จะแสดง `unavailable` ไม่แทนด้วยศูนย์ ตัว mod ใช้ login เดิมของ Codex และ Agy ที่รันอยู่แล้ว ไม่เปิด Agy หรือ refresh auth ให้เอง รายละเอียด cache และข้อจำกัดอยู่ใน [MOD.md](../MOD.md#compact-statusline)
 
 ### ต้องรู้
 

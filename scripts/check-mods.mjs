@@ -1953,7 +1953,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-finish-voice.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.9.1", "Package version must be 0.9.1");
+  assert(packageJson.version === "0.9.2", "Package version must be 0.9.2");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact thirteen-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact thirteen-entry package");
 
@@ -2590,20 +2590,22 @@ async function checkUsageQuota(testing, activate) {
     assert(rows.length <= 2 && rows.every((r) => [...r].length <= width), "quota layout must preserve the two-row bound");
   }
   const bars = testing.quotaSegments("agy", snapshot, "bar");
-  assert(bars[0].text.includes("[░░░░░░░░]") && bars[1].text.includes("[████████]"), "statusline bars must contain exactly eight cells at zero/full remaining");
+  assert(bars[0].text.includes("▱▱▱▱▱▱▱▱") && bars[1].text.includes("▰▰▰▰▰▰▰▰"), "statusline meters must contain exactly eight cells at zero/full remaining");
   const intermediate = testing.quotaSegments("codex", { ...snapshot, windows: [{ label: "P:7d", remaining: 30, reset: null }] }, "bar")[0];
-  assert(intermediate.text.includes("[██░░░░░░] 30% left") && !intermediate.text.includes("\u001b"), "intermediate quota must preserve remaining percentage and store only plain block cells");
+  assert(intermediate.text.includes("▰▰▱▱▱▱▱▱ 30% left") && !intermediate.text.includes("\u001b"), "intermediate quota must preserve remaining percentage and store only plain meter cells");
+  const endpoints = testing.quotaSegments("codex", { ...snapshot, windows: [{ label: "P:5h", remaining: 1, reset: null }, { label: "S:7d", remaining: 99, reset: null }] }, "bar");
+  assert(endpoints[0].text.includes("▰▱▱▱▱▱▱▱ 1% left") && endpoints[1].text.includes("▰▰▰▰▰▰▰▱ 99% left"), "non-endpoint percentages must never render as empty or full");
   assert(bars[0].color === "#F1689F" && bars[1].color === "#64CF64" && intermediate.color === "#FEE19C", "quota remaining thresholds must paint red/yellow/green");
   const dimmed = [];
   const hues = [];
   const paint = { hex(hue) { return (text) => { hues.push({ hue, text }); return text; }; }, dim(text) { dimmed.push(text); return text; } };
-  assert(testing.paintQuotaText(paint, intermediate.color, intermediate.text) === intermediate.text && dimmed.includes("░░░░░░") && !dimmed.some((text) => text.includes("█")), "public chalk must dim only the unfilled cells without changing layout text");
+  assert(testing.paintQuotaText(paint, intermediate.color, intermediate.text) === intermediate.text && dimmed.includes("▱▱▱▱▱▱") && !dimmed.some((text) => text.includes("▰")), "public chalk must dim only the unfilled cells without changing layout text");
   assert(hues.every(({ hue }) => hue === intermediate.color), "filled and dim remainder must use the same threshold hue");
   const panelBar = testing.renderUsagePanel(intermediate.text, paint).join("\n");
-  assert(panelBar.includes("[█████░░░░░░░░░░░] 30% left"), "details panel must expand the bar to sixteen cells without changing remaining percentage");
+  assert(panelBar.includes("▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱ 30% left"), "details panel must expand the meter to sixteen cells without changing remaining percentage");
   for (const bar of [bars[0], bars[1]]) {
     const panel = testing.renderUsagePanel(bar.text).join("\n");
-    assert(panel.includes(bar === bars[0] ? "[░░░░░░░░░░░░░░░░]" : "[████████████████]"), "panel zero/full endpoints must occupy sixteen cells");
+    assert(panel.includes(bar === bars[0] ? "▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱" : "▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰"), "panel zero/full endpoints must occupy sixteen cells");
   }
   const compactFit = testing.renderStatusline({ width: 29 }, { cwd: "/workspace", git: testing.emptyGitStatus(), processSubagents: [], usage: [bars[2]] });
   assert([compactFit].flat().join(" ").includes("Claude-GPT:5h") && [compactFit].flat().every((line) => testing.visibleWidth(line) <= 29), "single-provider quota row must shrink independently before omitting its actual window");
@@ -2627,7 +2629,11 @@ async function checkUsageQuota(testing, activate) {
     if (width >= 120) assert(rows[0].includes("อยากให้ pull"), "Thai conversation must be measured/truncated without dropping the identity row");
     assert(rows[1].startsWith("Codex ") && rows[1].includes("P:7d") && !rows[1].includes("Agy"), "line two belongs only to Codex");
     assert(rows[2].startsWith("Agy ") && rows[2].includes("Gemini:5h") && rows[2].includes("Claude-GPT:5h") && !rows[2].includes("Codex"), "line three belongs only to Agy and retains both actual families");
-    assert(rows.slice(1).every((line) => /\[[█░]{8}\]/.test(line)), "normal widths must retain full eight-cell provider bars independently");
+    const agyOrder = ["Gemini:5h", "Gemini:7d", "Claude-GPT:5h", "Claude-GPT:7d"];
+    const visibleAgyOrder = agyOrder.filter((label) => rows[2].includes(label));
+    assert(visibleAgyOrder.every((label, index) => index === 0 || rows[2].indexOf(visibleAgyOrder[index - 1]) < rows[2].indexOf(label)), "Agy rows must preserve normalized family order for every visible window");
+    if (width === 160) assert(visibleAgyOrder.length === 4, "roomy Agy rows must keep each family's 5h/7d windows together");
+    assert(rows.slice(1).every((line) => /[▰▱]{8}/.test(line)), "normal widths must retain full eight-cell provider meters independently");
     for (const disabled of ["Codex", "Agy"]) {
       const single = testing.renderStatusline({ ...bothContext, width }, { ...bothStatus, usage: bothUsage.filter((part) => !part.text.startsWith(disabled)) });
       assert(single.length === 2 && !single[1].includes(disabled), "disabling a provider removes only its row");
@@ -2639,7 +2645,7 @@ async function checkUsageQuota(testing, activate) {
     const rows = [testing.renderStatusline({ width }, bothStatus)].flat();
     assert(rows.length === 3 && rows.every((line) => testing.visibleWidth(line) <= width), "narrow width cannot let one provider consume the other's row");
     assert(rows[1].startsWith("Codex") && rows[2].startsWith("Agy"), "narrow omissions must retain truthful provider row labels");
-    if (width === 40) assert(/\[[█░]{8}\]/.test(rows[1]) && !/\[[█░]{8}\]/.test(rows[2]), "Agy narrowing must never force the roomy Codex row to shrink its bar");
+    if (width === 40) assert(/[▰▱]{8}/.test(rows[1]) && !/[▰▱]{8}/.test(rows[2]), "Agy narrowing must never force the roomy Codex row to shrink its meter");
   }
   const dir = process.env.MAHIRO_STATUSLINE_USAGE_DIR;
   let requests = 0;
@@ -2666,7 +2672,7 @@ async function checkUsageQuota(testing, activate) {
   const hostVisible = [...summary, "persistent status row 1", "Codex usage row 2", "Agy usage row 3"].slice(0, 8);
   assert(summary.length <= 5 && hostVisible.includes("Agy usage row 3"), "usage panel must budget five rows within the shared eight-row cap alongside all three statusline rows");
   const visible = hostVisible.join("\n");
-  assert(visible.includes("Codex P:7d") && visible.includes("Agy Gemini:5h") && visible.includes("Agy Claude-GPT:5h") && [...visible.matchAll(/\[([█░]{16})\]/g)].length === 3, "first actual visible host rows must include all three families with identical bars, not just returned hidden lines");
+  assert(visible.includes("Codex P:7d") && visible.includes("Agy Gemini:5h") && visible.includes("Agy Claude-GPT:5h") && [...visible.matchAll(/([▰▱]{16})/g)].length === 3, "first actual visible host rows must include all three families with identical meters, not just returned hidden lines");
   assert(summary.every((line) => [...line].length <= 80), "summary must respect supplied host row width");
   const pageCount = Number(summary.at(-1).match(/(\d+) detail pages/)[1]);
   const detailRows = [];
@@ -2679,7 +2685,7 @@ async function checkUsageQuota(testing, activate) {
   for (const required of ["Spark window P:5h", "Spark window S:7d", "Code review P:7d", "future family:24h", "credits: 12.5", "reset credits: 0", "resets 2030-03-17", "Gemini:7d", "Claude-GPT:7d"]) assert(paged.includes(required), `explicit pages must retain ${required}`);
   assert(testing.renderUsagePanel(fullOutput, undefined, pageCount + 1, 80).join(" ").includes("Page unavailable"), "invalid detail page must give bounded navigation guidance");
   controller.command("compact");
-  assert(!rendered[0].text.includes("█"), "compact config must update the visible presentation");
+  assert(!rendered[0].text.includes("▰"), "compact config must update the visible presentation");
   controller.command("off");
   const beforeOff = requests;
   await controller.update(); await second.update();

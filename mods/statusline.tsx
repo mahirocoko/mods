@@ -1194,6 +1194,8 @@ function usageIdentity(provider: UsageProvider): string {
 const USAGE_DIR = process.env.MAHIRO_STATUSLINE_USAGE_DIR ?? join(homedir(), ".letta", "mods", "mahiro-usage");
 const USAGE_TTL = 120_000;
 const USAGE_STALE = 300_000;
+const USAGE_METER_FILLED = "▰";
+const USAGE_METER_EMPTY = "▱";
 const usageDefaults = (): UsageSettings => ({ codex: false, agy: false, style: "bar" });
 
 function usageRead(name: string): any {
@@ -1234,6 +1236,12 @@ function quotaNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function usageMeter(printed: number, cells: number): string {
+  let filled = Math.round(Math.min(100, Math.max(0, printed)) / 100 * cells);
+  if (printed > 0 && printed < 100 && cells > 1) filled = Math.min(cells - 1, Math.max(1, filled));
+  return USAGE_METER_FILLED.repeat(filled) + USAGE_METER_EMPTY.repeat(cells - filled);
+}
+
 function providerUsageRow(segments: StatusSegment[], provider: string, width: number, chalk?: any): string {
   const representatives = provider === "Codex"
     ? [segments.find((part) => /^Codex P:/.test(part.text)) ?? segments[0]]
@@ -1241,21 +1249,23 @@ function providerUsageRow(segments: StatusSegment[], provider: string, width: nu
   const required = [...new Set(representatives.filter((part): part is StatusSegment => Boolean(part)))];
   const extras = segments.filter((part) => !required.includes(part));
   const concise = (part: StatusSegment, cells: number): StatusSegment => ({ ...part,
-    text: part.text.slice(provider.length + 1).replace(/ \[([█░]{8})\] (?=(\d+)% left)/, (_bar, _blocks, percent) => cells
-      ? ` [${"█".repeat(Math.round(Number(percent) / 100 * cells))}${"░".repeat(cells - Math.round(Number(percent) / 100 * cells))}] ` : " ")
+    text: part.text.slice(provider.length + 1).replace(/ ([▰▱]{8}) (?=(\d+)% left)/, (_meter, _cells, percent) => cells
+      ? ` ${usageMeter(Number(percent), cells)} ` : " ")
       .replace(/% left/g, "%"),
   });
   const render = (parts: StatusSegment[]) => `${color(chalk, STATUS_COLORS.context, provider)} ${renderSegments(chalk, parts)}`;
   // Providers own separate rows and shrink independently. Keep actual primary
-  // families before optional windows; details expose any remainder explicitly.
+  // families before optional windows at narrow widths. When extras fit, restore
+  // their normalized source order so each Agy family keeps its 5h/7d pair.
   for (const cells of [8, 6, 4, 2, 0]) {
-    const selected = required.map((part) => concise(part, cells));
-    if (visibleWidth(render(selected)) > width) continue;
+    const selected = [...required];
+    const rendered = () => render(segments.filter((part) => selected.includes(part)).map((part) => concise(part, cells)));
+    if (visibleWidth(rendered()) > width) continue;
     for (const extra of extras) {
-      const candidate = concise(extra, cells);
-      if (visibleWidth(render([...selected, candidate])) <= width) selected.push(candidate);
+      selected.push(extra);
+      if (visibleWidth(rendered()) > width) selected.pop();
     }
-    return render(selected);
+    return rendered();
   }
   const first = concise(required[0], 0);
   return visibleWidth(render([first])) <= width ? render([first]) : truncateAnsi(`${provider} …`, width);
@@ -1267,18 +1277,19 @@ function quotaColor(remaining: number): string {
   return STATUS_COLORS.memClean;
 }
 
-// Plain bar text is the layout/cache boundary; ANSI is applied only by public
-// render-context chalk. Only the patterned remainder is dimmed, in the same hue.
+// Plain meter text is the layout/cache boundary; ANSI is applied only by public
+// render-context chalk. Only the outlined remainder is dimmed, in the same hue.
 function paintQuotaText(chalk: any, hue: string | undefined, text: string, cells = 8, dim = false): string {
-  const match = text.match(/\[([█░]{2,16})\](?= (\d+)%)/);
+  const match = text.match(/([▰▱]{2,16})(?= (\d+)%)/);
   if (!match || match.index === undefined) return color(chalk, hue, text, dim);
   const remaining = Number(match[2]);
   const targetCells = cells === 8 ? match[1].length : cells;
-  const filled = cells === 8 ? [...match[1]].filter((cell) => cell === "█").length : Math.round(Math.min(100, remaining) / 100 * targetCells);
-  return color(chalk, hue, text.slice(0, match.index) + "[", dim)
-    + color(chalk, hue, "█".repeat(filled), dim)
-    + color(chalk, hue, "░".repeat(targetCells - filled), true)
-    + color(chalk, hue, "]" + text.slice(match.index + match[0].length), dim);
+  const meter = usageMeter(remaining, targetCells);
+  const filled = [...meter].filter((cell) => cell === USAGE_METER_FILLED).length;
+  return color(chalk, hue, text.slice(0, match.index), dim)
+    + color(chalk, hue, USAGE_METER_FILLED.repeat(filled), dim)
+    + color(chalk, hue, USAGE_METER_EMPTY.repeat(targetCells - filled), true)
+    + color(chalk, hue, text.slice(match.index + match[0].length), dim);
 }
 
 function renderUsagePanel(output: string, chalk?: any, page = 0, availableWidth = 80): string[] {
@@ -1321,10 +1332,10 @@ function renderUsagePanel(output: string, chalk?: any, page = 0, availableWidth 
   let cells = 16;
   for (const count of [16, 8, 4, 2, 0]) {
     cells = count;
-    if (representatives.every((line) => visibleWidth(count ? paintQuotaText(null, undefined, line, count) : line.replace(/ \[[█░]{8}\]/g, "")) <= width)) break;
+    if (representatives.every((line) => visibleWidth(count ? paintQuotaText(null, undefined, line, count) : line.replace(/ [▰▱]{8}/g, "")) <= width)) break;
   }
   const summary = representatives.map((line) => {
-    const text = cells ? paintQuotaText(chalk, tone(line), line, cells) : color(chalk, tone(line), line.replace(/ \[[█░]{8}\]/g, ""));
+    const text = cells ? paintQuotaText(chalk, tone(line), line, cells) : color(chalk, tone(line), line.replace(/ [▰▱]{8}/g, ""));
     return visibleWidth(text) <= width ? text : color(chalk, tone(line), truncateAnsi(text, width));
   });
   const notices = lines.filter((line) => /unavailable|not changed|^Usage:/.test(line) && !line.startsWith("fetched") && !line.startsWith("credits:") && !line.includes(" resets "));
@@ -1390,8 +1401,7 @@ function quotaSegments(provider: UsageProvider, snapshot: UsageSnapshot | undefi
   return snapshot.windows.map((window) => {
     const expired = stale || (window.reset !== null && window.reset <= now);
     const percent = Math.round(window.remaining);
-    const filled = Math.round(window.remaining / 100 * 8);
-    const bar = style === "bar" ? ` [${"█".repeat(filled)}${"░".repeat(8 - filled)}]` : "";
+    const bar = style === "bar" ? ` ${usageMeter(percent, 8)}` : "";
     return { text: `${name} ${window.label}${bar} ${percent}% left${expired ? " stale" : ""}`, color: expired ? STATUS_COLORS.model : quotaColor(window.remaining) };
   });
 }
