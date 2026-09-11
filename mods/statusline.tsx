@@ -705,7 +705,7 @@ async function getProcessSubagents(rootPid: number): Promise<Array<{ id: string;
 }
 
 export const __testing = process.env.MAHIRO_STATUSLINE_TESTING === "1"
-  ? Object.freeze({ parseSubagentProcesses, parseQuota, quotaSegments, parseUsageSettings, createUsageController, fetchQuota, renderStatusline, renderUsagePanel, paintQuotaText, visibleWidth, truncateAnsi, emptyGitStatus })
+  ? Object.freeze({ parseSubagentProcesses, parseQuota, quotaSegments, parseUsageSettings, createUsageController, herdrSidebarUsageConsumerActive, fetchQuota, renderStatusline, renderUsagePanel, paintQuotaText, visibleWidth, truncateAnsi, emptyGitStatus })
   : null;
 
 function emptyGitStatus(): GitStatus {
@@ -1198,6 +1198,19 @@ const USAGE_METER_FILLED = "▰";
 const USAGE_METER_EMPTY = "▱";
 const usageDefaults = (): UsageSettings => ({ codex: false, agy: false, style: "bar" });
 
+function herdrSidebarUsageConsumerActive(): boolean {
+  if (process.env.HERDR_ENV !== "1") return false;
+  const configRoot = process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config");
+  const snapshotPath = process.env.MAHIRO_HERDR_SIDEBAR_SNAPSHOT
+    ?? join(configRoot, "herdr", "plugins", "config", "mahiro-herdr-sidebar", "config-snapshots.json");
+  try {
+    const details = lstatSync(snapshotPath);
+    return details.isFile() && !details.isSymbolicLink() && details.size > 0 && details.size <= 64 * 1024;
+  } catch {
+    return false;
+  }
+}
+
 function usageRead(name: string): any {
   const path = join(USAGE_DIR, name);
   let fd: number | undefined;
@@ -1474,7 +1487,7 @@ function readUsageSnapshot(provider: UsageProvider): UsageSnapshot | undefined {
   return { windows: value.windows.map((w: UsageWindow) => ({ label: w.label, remaining: w.remaining, reset: w.reset })), fetched: value.fetched, retry: value.retry, failed: value.failed, credits: quotaBalance(value.credits), resetCredits: quotaBalance(value.resetCredits) };
 }
 
-function createUsageController(publish: (segments: StatusSegment[]) => void, load = fetchQuota) {
+function createUsageController(publish: (segments: StatusSegment[]) => void, load = fetchQuota, sidebarConsumer = herdrSidebarUsageConsumerActive) {
   let settings = usageDefaults();
   let disposed = false;
   let busy = false;
@@ -1488,9 +1501,10 @@ function createUsageController(publish: (segments: StatusSegment[]) => void, loa
     const current = generation;
     try {
       settings = parseUsageSettings(usageRead("settings.json"));
+      const collectForSidebar = sidebarConsumer();
       for (const provider of ["codex", "agy"] as const) {
         if (disposed || current !== generation) break;
-        if (!settings[provider]) { delete snapshots[provider]; continue; }
+        if (!settings[provider] && !collectForSidebar) { delete snapshots[provider]; continue; }
         snapshots[provider] = readUsageSnapshot(provider);
         emit();
         if ((snapshots[provider]?.retry ?? 0) > Date.now()) continue;

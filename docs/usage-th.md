@@ -76,7 +76,15 @@ pnpm mods:update
 ถ้าเปิด Letta Code อยู่ใน Herdr mod นี้จะทำงานเอง ไม่ต้องใช้ command เพิ่ม
 โดยจะส่งเฉพาะสถานะรวมของ main agent กับ subagent ไปยัง local Herdr socket เช่น
 `working`, `blocked`, `idle`, จำนวน child ที่กำลังรัน และชนิดของ subagent
+รวมถึง model, reasoning effort, provider identity ที่ยืนยันได้ และ context meter
+แบบย่อสำหรับ companion Mahiro Herdr Sidebar โดยไม่เดา provider จากชื่อ model
+runtime alias `chatgpt-plus-pro` กับ handle/provider `openai-codex` จะ normalize
+เป็น sidebar token `openai-codex` ค่าเดียวตาม public model contract ของ Letta
 ผลลัพธ์เต็ม, prompt, task description และ tool output จะไม่ถูกส่งไป Herdr
+
+เมื่อ companion sidebar ติดตั้งและมี config snapshot ที่ถูกต้อง ตัว statusline
+controller จะ refresh normalized Codex/Agy cache ให้ sidebar ด้วย แม้ปิดแถว quota
+ใน statusline อยู่ การเก็บ cache กับการแสดงผลจึงแยกจากกันและไม่ทำให้แถวที่ปิดไว้โผล่กลับมา
 
 สถานะ `done` เป็นหน้าที่ของ Herdr: เมื่อ Letta รายงาน `idle` ใน pane ที่ยังไม่
 ถูกเปิดดู Herdr จะเก็บ Done ไว้ให้ ถ้าเปิด Letta นอก Herdr mod นี้จะ no-op

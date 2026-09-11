@@ -29,8 +29,16 @@ identity, observes bounded local child-process identity, and reports one
 semantic pane state plus bounded presentation
 metadata. Herdr owns rollups, unseen `done`, focus, waits, and notifications.
 The mod never starts, stops, prompts, or reads output from another agent.
-It registers lifecycle, turn, and tool events only; LLM events are a fallback
-when turn events are unavailable. Engine-aborted reload cleanup deliberately
+It also reports bounded model/provider/context tokens for a separately owned
+Herdr sidebar renderer. LLM events always refresh that presentation metadata;
+they affect lifecycle state only as a fallback when turn events are unavailable.
+The public `chatgpt-plus-pro` runtime provider alias and `openai-codex` handle
+normalize to one `openai-codex` sidebar gate; no display-name inference is used.
+The statusline quota controller remains the normalized-cache owner. In a
+Herdr-managed Letta process, the companion plugin's regular bounded config
+snapshot acts as a cache-only consumer, so provider rows may stay hidden in the
+statusline while the sidebar cache remains current.
+Engine-aborted reload cleanup deliberately
 does not call each event disposer because Letta clears the whole generation
 after abort and every redundant unregister publishes a new host snapshot.
 
@@ -49,7 +57,8 @@ locked atomic re-key: the invoking empty conversation becomes the sole owner,
 the source entry is deleted in the same write, and the origin workspace remains
 attribution. The existing `mh_update_goal` registration owns model movement and
 Rule CRUD actions so this feature adds no registrations. The current bundle
-budget is 44 registrations, including both guard overlays and the finish event.
+budget is 45 registrations, including both guard overlays, the finish event,
+and the Herdr lifecycle model/context observer.
 Finish voice uses `mods/mahiro-voice-runtime.js` for bounded local audio;
 that helper is packaged but is not a manifest entry.
 

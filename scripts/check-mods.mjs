@@ -117,7 +117,7 @@ async function smokeActivate(activate, relativePath) {
 }
 
 async function checkRegistrationBudget(activations) {
-  const budget = 44;
+  const budget = 45;
   const deferredEntries = new Set([
     "mods/mahiro-herdr-lifecycle.ts",
     "mods/mahiro-goal.ts",
@@ -126,7 +126,7 @@ async function checkRegistrationBudget(activations) {
   ]);
   const expectedByEntry = new Map([
     ["mods/mahiro-user-timestamps.ts", 1],
-    ["mods/mahiro-herdr-lifecycle.ts", 7],
+    ["mods/mahiro-herdr-lifecycle.ts", 8],
     ["mods/mahiro-goal.ts", 7],
     ["mods/mahiro-code-evidence.ts", 2],
     ["mods/mahiro-ux-workflow.ts", 4],
@@ -538,8 +538,13 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
     blockedTools: [],
     subagents: [],
     appVersion: "0.28.18",
+    modelName: "GPT-5.6 Sol",
+    modelProvider: "openai-codex",
+    reasoningEffort: "high",
+    contextUsedPercentage: 42,
   });
   assert(idle.state === "idle" && idle.summary === "Ready", "settled Letta panes must report idle so Herdr can own unseen done");
+  assert(idle.model === "GPT-5.6 Sol · high" && idle.provider === "openai-codex" && idle.context === "ctx ▰▰▰▱▱▱ 42%", "Herdr lifecycle metadata must preserve exact model/provider identity and bracketless context usage");
   const working = testing.deriveLifecycleSnapshot({
     conversationOpen: true,
     turnActive: false,
@@ -568,6 +573,28 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
   });
   assert(blocked.state === "blocked" && blocked.summary.includes("Needs input"), "observed question tools must outrank child work as blocked");
   assert(testing.normalizeSocketPath(" /tmp/Herdr Session/herdr.sock \n") === "/tmp/Herdr Session/herdr.sock", "socket paths must preserve legitimate spaces while removing controls");
+  assert(testing.modelIdentity({ model: { id: "openai-codex/gpt-5.6-sol", displayName: "GPT-5.6 Sol", reasoningEffort: "High" } }).provider === "openai-codex", "model identity must expose the exact provider prefix instead of inferring it from display text");
+  assert(testing.modelIdentity({ model: { id: "chatgpt-plus-pro/gpt-5.6-sol", displayName: "GPT-5.6 Sol", provider: "chatgpt-plus-pro" } }).provider === "openai-codex", "the official local ChatGPT runtime alias must normalize to the sidebar Codex provider contract");
+  assert(testing.modelIdentity({ model: { displayName: "GPT-5.6 Sol", reasoningEffort: "High" }, rawPayload: { model: { id: "openai-codex/gpt-5.6-sol" } } }).provider === "openai-codex", "matching public raw model ID may supply an exact provider prefix when normalized context omits it");
+  assert(testing.modelIdentity({ model: { displayName: "Claude Sonnet" }, rawPayload: { model: { id: "openai-codex/gpt-5.6-sol" } } }).provider === "", "mismatched raw model identity must not enable stale Codex attribution");
+  assert(testing.modelIdentity({ model: { displayName: "GPT-5.6 Sol" } }).provider === "", "display names alone must not invent a provider for quota attribution");
+  const switchedIdentity = testing.mergeModelIdentity(
+    testing.modelIdentity({ model: { id: "openai-codex/gpt-5.6-sol", displayName: "GPT-5.6 Sol", reasoningEffort: "High" } }),
+    testing.modelIdentity({ model: { displayName: "Claude Sonnet" } }),
+  );
+  assert(switchedIdentity.displayName === "Claude Sonnet" && switchedIdentity.provider === "" && switchedIdentity.reasoningEffort === "", "a changed model without exact provider or effort evidence must clear stale Codex attribution");
+  const withdrawnIdentity = testing.mergeModelIdentity(
+    testing.modelIdentity({ model: { id: "openai-codex/gpt-5.6-sol", displayName: "GPT-5.6 Sol", reasoningEffort: "High" } }),
+    testing.modelIdentity({ model: { displayName: "GPT-5.6 Sol" } }),
+  );
+  assert(withdrawnIdentity.provider === "" && withdrawnIdentity.reasoningEffort === "", "a present same-model object must clear attribution fields that are no longer evidenced");
+  const retainedIdentity = testing.mergeModelIdentity(
+    testing.modelIdentity({ model: { id: "openai-codex/gpt-5.6-sol", displayName: "GPT-5.6 Sol", reasoningEffort: "High" } }),
+    testing.modelIdentity({}),
+  );
+  assert(retainedIdentity.provider === "openai-codex" && retainedIdentity.reasoningEffort === "high", "events without any model object must retain the current model identity");
+  assert(testing.modelIdentity({ model: { id: "unknown-provider/model", displayName: "Unknown" } }).provider === "", "arbitrary slash-qualified model IDs must not become quota providers");
+  assert(testing.contextMeter(1) === "ctx ▰▱▱▱▱▱ 1%" && testing.contextMeter(99) === "ctx ▰▰▰▰▰▱ 99%", "context meters must preserve honest intermediate endpoints");
   const processItems = testing.parseSubagentProcesses([
     " 100 1 bun /usr/local/bin/letta --conv local-conv-main",
     " 101 100 bun /opt/letta.js --new-agent --system repo-scout --tags type:repo-scout,parent:agent-main --output-format stream-json",
@@ -634,6 +661,8 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
   const context = {
     app: { version: "0.28.18" },
     conversation: { id: "local-conv-herdr" },
+    model: { id: "openai-codex/gpt-5.6-sol", displayName: "GPT-5.6 Sol", reasoningEffort: "high" },
+    contextWindow: { usedPercentage: 42 },
   };
   let disposer;
   try {
@@ -651,13 +680,14 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
         },
       },
     });
-    assert(handlers.size === 7, "Herdr lifecycle must register one bounded llm_end interrupt observer alongside lifecycle/turn/tool truth");
+    assert(handlers.size === 8, "Herdr lifecycle must register bounded llm metadata observers alongside lifecycle/turn/tool truth");
 
     handlers.get("conversation_open")({ conversationId: "local-conv-herdr" }, context);
     await waitFor(() => requests.length >= 2, "Herdr lifecycle did not report initial agent plus metadata state");
     assert(requests[0].method === "pane.report_agent" && requests[0].params.state === "idle", "initial Herdr semantic state must be idle");
     assert(requests[1].method === "pane.report_metadata" && requests[1].params.tokens.letta_version === "0.28.18", "initial Herdr metadata must include bounded capability evidence");
     assert(requests[1].params.tokens.letta_pid === String(process.pid) && requests[1].params.tokens.letta_scope === testing.scopeFingerprint("local-conv-herdr"), "Herdr metadata must bind focus identity to the exact Letta process and conversation scope");
+    assert(requests[1].params.tokens.mahiro_sidebar_model === "GPT-5.6 Sol · high" && requests[1].params.tokens.mahiro_sidebar_provider === "openai-codex" && requests[1].params.tokens.mahiro_sidebar_context === "ctx ▰▰▰▱▱▱ 42%", "initial Herdr metadata must expose bounded sidebar model, provider, and context tokens");
 
     responseDelayMs = 80;
     const beforeBurst = requests.length;
@@ -726,7 +756,7 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
     handlers.get("conversation_close")({ conversationId: "local-conv-herdr" }, context);
     await waitFor(() => requests.slice(beforeClose).some((request) => request.method === "pane.release_agent"), "conversation close must release custom Herdr authority");
     const closeMetadata = requests.slice(beforeClose).find((request) => request.method === "pane.report_metadata");
-    assert(closeMetadata?.params.clear_display_agent === true && closeMetadata.params.tokens.summary === null && closeMetadata.params.tokens.letta_scope === null, "conversation close must clear Herdr presentation and focus identity metadata before release");
+    assert(closeMetadata?.params.clear_display_agent === true && closeMetadata.params.tokens.summary === null && closeMetadata.params.tokens.letta_scope === null && closeMetadata.params.tokens.mahiro_sidebar_model === null && closeMetadata.params.tokens.mahiro_sidebar_context === null && closeMetadata.params.tokens.mahiro_sidebar_provider === null, "conversation close must clear Herdr presentation and sidebar metadata before release");
     const afterClose = requests.length;
     handlers.get("tool_start")({ conversationId: "local-conv-herdr", toolCallId: "stale-tool", toolName: "Read" }, context);
     handlers.get("tool_end")({ conversationId: "local-conv-herdr", toolCallId: "stale-tool", toolName: "Read" }, context);
@@ -759,7 +789,7 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
     if (previousAgentRole === undefined) delete process.env.LETTA_CODE_AGENT_ROLE;
     else process.env.LETTA_CODE_AGENT_ROLE = previousAgentRole;
   }
-  assert(cleanupCount === 7, "Herdr lifecycle cleanup must dispose every registered event outside engine-aborted reload");
+  assert(cleanupCount === 8, "Herdr lifecycle cleanup must dispose every registered event outside engine-aborted reload");
 }
 
 async function checkMahiroCodeEvidenceRegistration(activate, testing, testRoot) {
@@ -1953,7 +1983,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-finish-voice.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.9.2", "Package version must be 0.9.2");
+  assert(packageJson.version === "0.9.3", "Package version must be 0.9.3");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact thirteen-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact thirteen-entry package");
 
@@ -2655,6 +2685,13 @@ async function checkUsageQuota(testing, activate) {
   const controller = testing.createUsageController((segments) => { rendered = segments; }, load);
   await controller.update();
   assert(requests === 0 && rendered.length === 0, "default off must not fetch or render quotas");
+  const hiddenSidebar = testing.createUsageController((segments) => { rendered = segments; }, load, () => true);
+  await hiddenSidebar.update();
+  assert(requests === 2 && rendered.length === 0, "active Herdr sidebar consumer must refresh both shared caches without making disabled statusline rows visible");
+  hiddenSidebar.dispose();
+  rmSync(join(dir, "codex.json"));
+  rmSync(join(dir, "agy.json"));
+  requests = 0;
   controller.command("codex on");
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert(requests === 1 && rendered[0].text.includes("77% left"), "enabling provider must fetch real normalized quota");
@@ -2993,7 +3030,9 @@ const previousRtkDisablePath = process.env.MAHIRO_RTK_CONTROL_DISABLE_PATH;
 const previousStatuslineDisablePath = process.env.MAHIRO_STATUSLINE_DISABLE_PATH;
 const previousStatuslineTesting = process.env.MAHIRO_STATUSLINE_TESTING;
 const previousUsageDir = process.env.MAHIRO_STATUSLINE_USAGE_DIR;
+const previousSidebarSnapshot = process.env.MAHIRO_HERDR_SIDEBAR_SNAPSHOT;
 process.env.MAHIRO_STATUSLINE_USAGE_DIR = join(testRoot, "usage");
+process.env.MAHIRO_HERDR_SIDEBAR_SNAPSHOT = join(testRoot, "missing-herdr-sidebar-snapshot.json");
 const previousMcpDisablePath = process.env.MAHIRO_MCP_PROXY_DISABLE_PATH;
 process.env.MAHIRO_GOAL_STATE_PATH = join(testRoot, "state.json");
 process.env.MAHIRO_GOAL_TESTING = "1";
@@ -3080,6 +3119,8 @@ try {
 } finally {
   if (previousUsageDir === undefined) delete process.env.MAHIRO_STATUSLINE_USAGE_DIR;
   else process.env.MAHIRO_STATUSLINE_USAGE_DIR = previousUsageDir;
+  if (previousSidebarSnapshot === undefined) delete process.env.MAHIRO_HERDR_SIDEBAR_SNAPSHOT;
+  else process.env.MAHIRO_HERDR_SIDEBAR_SNAPSHOT = previousSidebarSnapshot;
   if (previousStatePath === undefined) delete process.env.MAHIRO_GOAL_STATE_PATH;
   else process.env.MAHIRO_GOAL_STATE_PATH = previousStatePath;
   if (previousGoalTesting === undefined) delete process.env.MAHIRO_GOAL_TESTING;

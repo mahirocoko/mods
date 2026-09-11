@@ -11,7 +11,7 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | Entry | Surface | Purpose |
 | --- | --- | --- |
 | `mods/mahiro-user-timestamps.ts` | `turn_start` | Adds safe local/IANA timestamp metadata and one visible block to each real user turn without timestamping synthetic workflow reminders. |
-| `mods/mahiro-herdr-lifecycle.ts` | lifecycle/turn/tool events + bounded child-process observation | Reports one truthful Letta pane state plus bounded child-task counts/types to the owning Herdr pane over its local socket. |
+| `mods/mahiro-herdr-lifecycle.ts` | lifecycle/turn/tool/LLM events + bounded child-process observation | Reports one truthful Letta pane state plus bounded child-task, model, provider, and context metadata to the owning Herdr pane over its local socket. |
 | `mods/mahiro-goal.ts` | `/mh-goal`, busy-safe `/mh-goal-status`, `mh_get_goal`, `mh_create_goal`, `mh_update_goal`, `turn_start` | Structured movable conversation goal with bounded operating rules, DoD criteria, evidence, blockers, revision guards, and human verification gates. |
 | `mods/mahiro-code-evidence.ts` | `/mh-evidence`, `mh_code_evidence` (`get` / `collect` / `record`) | Bounded read-only Git evidence with separate staged/unstaged/untracked/base lanes, stale-proof external records, conservative verdicts, and explicit Goal handoff. |
 | `mods/mahiro-ux-workflow.ts` | `/mh-ux`, `mh_get_ux_workflow`, `mh_create_ux_workflow`, `mh_update_ux_workflow` | Revisioned UX coordination from frame through review, with an explicit design-owner brief, human direction/review gates, bounded handoff/review evidence, and no Goal mutation. |
@@ -97,7 +97,7 @@ Existing live sessions are not reloaded by these commands.
 
 The current quota layout replaces the former two-row maximum: default statusline first, Codex second, Agy third; each disabled provider removes its own row. Providers shorten bars independently and never crowd each other. The summary/detail panel uses at most five rows so the three-row statusline also fits the host's shared eight-row cap.
 
-Quota display is opt-in: `/mh-usage codex on`, `/mh-usage agy on`; use each provider's `off` or `/mh-usage off` to hide both. `/mh-usage bar` and `/mh-usage compact` persist the presentation. `/mh-usage status` opens a busy-safe summary prioritizing Codex, Gemini, and Claude-GPT within the host's visible panel budget. `/mh-usage status 1` opens bounded detail pages for every independent window, reset, credit field, and stale/unavailable state; follow the next-page command in the footer. `/mh-usage close` dismisses the panel.
+Quota display is opt-in: `/mh-usage codex on`, `/mh-usage agy on`; use each provider's `off` or `/mh-usage off` to hide both. `/mh-usage bar` and `/mh-usage compact` persist the presentation. `/mh-usage status` opens a busy-safe summary prioritizing Codex, Gemini, and Claude-GPT within the host's visible panel budget. `/mh-usage status 1` opens bounded detail pages for every independent window, reset, credit field, and stale/unavailable state; follow the next-page command in the footer. `/mh-usage close` dismisses the panel. Inside Herdr, an active Mahiro Herdr Sidebar configuration snapshot also acts as a cache-only consumer: both normalized provider caches stay refreshed while disabled statusline rows remain hidden.
 
 Codex uses the existing CLI login; Agy requires an already-running local language server. This mod never starts Agy or refreshes auth. There are no invented absolute limits or combined quota windows. See [the statusline contract](MOD.md#compact-statusline) for cache, timeout, privacy, and runtime boundaries.
 
@@ -108,8 +108,14 @@ the inherited local `HERDR_SOCKET_PATH` and pane identity. It combines main
 turn/tool/model activity with a bounded local child-process observation, then
 reports one semantic `letta` state for Herdr rollups. Child output and
 prompts and task descriptions are never forwarded, and headless child processes
-never claim the parent pane's lifecycle authority. Presentation metadata is
-limited to bounded running/ended counts and subagent types. A process exit is
+never claim the parent pane's lifecycle authority. Presentation metadata also
+includes the current public model display name/reasoning effort, exact provider
+identity when exposed by the model contract, and a bounded context-use meter.
+Letta's official `chatgpt-plus-pro` runtime alias and `openai-codex` handle both
+normalize to the fail-closed `openai-codex` sidebar token.
+These `mahiro_sidebar_*` values let the separately owned Mahiro Herdr Sidebar
+plugin render model/context and gate account-level quota without guessing from
+display text. A process exit is
 reported only as `ended`, never fabricated as successful `done`. Outside Herdr
 the mod is a no-op.
 

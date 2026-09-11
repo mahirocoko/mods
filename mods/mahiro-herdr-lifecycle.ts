@@ -42,6 +42,10 @@ interface LifecycleInput {
   blockedTools: string[];
   subagents: SubagentItem[];
   appVersion: string | null;
+  modelName?: string | null;
+  modelProvider?: string | null;
+  reasoningEffort?: string | null;
+  contextUsedPercentage?: number | null;
 }
 
 interface LifecycleSnapshot {
@@ -53,16 +57,19 @@ interface LifecycleSnapshot {
   errorCount: number;
   activeTypes: string;
   appVersion: string;
+  model: string;
+  provider: string;
+  context: string;
 }
 
 const normalizeText = (value: unknown, maxLength = 80) => {
   if (typeof value !== "string") return "";
-  return value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLength);
+  return value.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLength);
 };
 
 const normalizeSocketPath = (value: unknown) => {
   if (typeof value !== "string") return "";
-  return value.replace(/[\u0000-\u001f\u007f]+/g, "").trim().slice(0, 1_024);
+  return value.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, "").trim().slice(0, 1_024);
 };
 
 const normalizeConversationScope = (event: any, context: any) => {
@@ -81,6 +88,69 @@ const scopeFingerprint = (scope: string) =>
   scope ? createHash("sha256").update(scope).digest("hex").slice(0, 16) : "unknown";
 
 const compactToolName = (value: unknown) => normalizeText(value, 40).replace(/^functions\./, "") || "tool";
+
+const boundedPercentage = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;
+
+const modelIdentity = (context: any) => {
+  const normalizedModel = context?.model;
+  const rawModel = context?.rawPayload?.model;
+  const selectedModel = normalizedModel !== undefined && normalizedModel !== null ? normalizedModel : rawModel;
+  const present = selectedModel !== undefined && selectedModel !== null;
+  const normalizedId = normalizeText(normalizedModel?.id, 120);
+  const rawId = normalizeText(rawModel?.id, 120);
+  const modelId = normalizedId || rawId;
+  const displayName = normalizeText(
+    selectedModel?.displayName
+      ?? selectedModel?.display_name
+      ?? modelId.replace(/^[^/]+\//, ""),
+    48,
+  );
+  const reasoningEffort = normalizeText(
+    selectedModel?.reasoningEffort
+      ?? selectedModel?.reasoning_effort
+      ?? selectedModel?.reasoning?.reasoning_effort,
+    20,
+  ).toLowerCase();
+  const identityKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const rawSuffix = rawId.replace(/^[^/]+\//, "");
+  const normalizedEvidence = normalizedId || displayName;
+  const rawMatchesNormalized = !normalizedModel || (
+    Boolean(normalizedEvidence)
+    && identityKey(normalizedEvidence) === identityKey(rawSuffix || rawId)
+  );
+  const explicitProvider = normalizeText(
+    normalizedModel?.provider ?? (rawMatchesNormalized ? rawModel?.provider : undefined),
+    40,
+  ).toLowerCase();
+  const qualifiedId = normalizedId || (rawMatchesNormalized ? rawId : "");
+  const codexProvider = explicitProvider === "openai-codex" || explicitProvider === "chatgpt-plus-pro";
+  const codexHandle = ["openai-codex/", "chatgpt-plus-pro/"].some((prefix) => qualifiedId.toLowerCase().startsWith(prefix));
+  const provider = codexProvider || codexHandle ? "openai-codex" : explicitProvider;
+  return { present, key: normalizedId || displayName || rawId, displayName, reasoningEffort, provider };
+};
+
+const mergeModelIdentity = (
+  current: { key: string; displayName: string; reasoningEffort: string; provider: string },
+  incoming: ReturnType<typeof modelIdentity>,
+) => {
+  if (!incoming.present) return current;
+  return {
+    key: incoming.key,
+    displayName: incoming.displayName,
+    reasoningEffort: incoming.reasoningEffort,
+    provider: incoming.provider,
+  };
+};
+
+const contextMeter = (usedPercentage: number | null) => {
+  if (usedPercentage === null) return "";
+  const printed = Math.round(usedPercentage);
+  const cells = 6;
+  let filled = Math.round((printed / 100) * cells);
+  if (printed > 0 && printed < 100) filled = Math.min(cells - 1, Math.max(1, filled));
+  return `ctx ${"▰".repeat(filled)}${"▱".repeat(cells - filled)} ${printed}%`;
+};
 
 const subagentStatus = (item: SubagentItem) => normalizeText(item.status, 20).toLowerCase();
 
@@ -225,6 +295,12 @@ const deriveLifecycleSnapshot = (input: LifecycleInput): LifecycleSnapshot => {
     errorCount,
     activeTypes,
     appVersion: normalizeText(input.appVersion, 24) || "unknown",
+    model: normalizeText(
+      [normalizeText(input.modelName, 48), normalizeText(input.reasoningEffort, 20).toLowerCase()].filter(Boolean).join(" · "),
+      72,
+    ),
+    provider: normalizeText(input.modelProvider, 40).toLowerCase(),
+    context: contextMeter(boundedPercentage(input.contextUsedPercentage)),
   };
 };
 
@@ -279,7 +355,7 @@ const socketRequest = (
 });
 
 export const __testing = process.env.MAHIRO_HERDR_TESTING === "1"
-  ? Object.freeze({ deriveLifecycleSnapshot, normalizeText, normalizeSocketPath, isAskTool, parseSubagentProcesses, scopeFingerprint, shouldScanSubagentProcesses, processDiscoveryDeadline, userInterruptedEvent })
+  ? Object.freeze({ deriveLifecycleSnapshot, normalizeText, normalizeSocketPath, isAskTool, modelIdentity, mergeModelIdentity, contextMeter, parseSubagentProcesses, scopeFingerprint, shouldScanSubagentProcesses, processDiscoveryDeadline, userInterruptedEvent })
   : null;
 
 export default async function activate(letta: any) {
@@ -312,6 +388,12 @@ export default async function activate(letta: any) {
   let turnActive = false;
   let llmDepth = 0;
   let appVersion: string | null = null;
+  let modelName = "";
+  let modelProvider = "";
+  let reasoningEffort = "";
+  let contextWindow: number | null = null;
+  let contextUsedPercentage: number | null = null;
+  let modelKey = "";
   let conversationScope = "";
   let processSubagents: SubagentItem[] = [];
   let processScanInFlight = false;
@@ -374,6 +456,10 @@ export default async function activate(letta: any) {
     blockedTools: [...blockedTools.values()],
     subagents: readSubagents(),
     appVersion,
+    modelName,
+    modelProvider,
+    reasoningEffort,
+    contextUsedPercentage,
   });
 
   const sendSnapshot = async (snapshot: LifecycleSnapshot, scope: string) => {
@@ -411,6 +497,9 @@ export default async function activate(letta: any) {
         letta_pid: String(process.pid),
         letta_started_at: String(PROCESS_STARTED_AT_MS),
         letta_scope: scopeFingerprint(scope),
+        mahiro_sidebar_model: snapshot.model,
+        mahiro_sidebar_context: snapshot.context,
+        mahiro_sidebar_provider: snapshot.provider,
       },
       seq: metadataSequence,
       ttl_ms: METADATA_TTL_MS,
@@ -438,6 +527,9 @@ export default async function activate(letta: any) {
         letta_pid: null,
         letta_started_at: null,
         letta_scope: null,
+        mahiro_sidebar_model: null,
+        mahiro_sidebar_context: null,
+        mahiro_sidebar_provider: null,
       },
       seq: metadataSequence,
     });
@@ -498,6 +590,17 @@ export default async function activate(letta: any) {
   const rememberContext = (event: any, context: any) => {
     appVersion = normalizeText(context?.app?.version, 24) || appVersion;
     conversationScope = normalizeConversationScope(event, context) || conversationScope;
+    const identity = modelIdentity(context);
+    const nextIdentity = mergeModelIdentity({ key: modelKey, displayName: modelName, provider: modelProvider, reasoningEffort }, identity);
+    modelKey = nextIdentity.key;
+    modelName = nextIdentity.displayName;
+    modelProvider = nextIdentity.provider;
+    reasoningEffort = nextIdentity.reasoningEffort;
+    contextUsedPercentage = boundedPercentage(
+      context?.contextWindow?.usedPercentage
+        ?? context?.contextWindow?.used_percentage
+        ?? context?.rawPayload?.context_window?.used_percentage,
+    ) ?? contextUsedPercentage;
   };
 
   const belongsToActiveConversation = (event: any, context: any) => {
@@ -570,6 +673,12 @@ export default async function activate(letta: any) {
     interrupted = false;
     turnActive = false;
     llmDepth = 0;
+    modelName = "";
+    modelProvider = "";
+    reasoningEffort = "";
+    modelKey = "";
+    contextWindow = null;
+    contextUsedPercentage = null;
     activeTools.clear();
     blockedTools.clear();
     processSubagents = [];
@@ -611,15 +720,23 @@ export default async function activate(letta: any) {
     blockedTools.clear();
     report(false);
   });
-  addEvent(!letta.capabilities.events?.turns && letta.capabilities.events?.llm, "llm_start", (event, context) => {
+  addEvent(letta.capabilities.events?.llm, "llm_start", (event, context) => {
     if (!belongsToActiveConversation(event, context)) return;
     rememberContext(event, context);
-    llmDepth += 1;
+    const nextContextWindow = event?.contextWindow;
+    if (typeof nextContextWindow === "number" && Number.isFinite(nextContextWindow) && nextContextWindow > 0) {
+      contextWindow = nextContextWindow;
+    }
+    if (!letta.capabilities.events?.turns) llmDepth += 1;
     report(false);
   });
   addEvent(letta.capabilities.events?.llm, "llm_end", (event, context) => {
     if (!belongsToActiveConversation(event, context)) return;
     rememberContext(event, context);
+    const promptTokens = event?.usage?.promptTokens;
+    if (typeof promptTokens === "number" && Number.isFinite(promptTokens) && promptTokens >= 0 && contextWindow) {
+      contextUsedPercentage = boundedPercentage((promptTokens / contextWindow) * 100) ?? contextUsedPercentage;
+    }
     if (userInterruptedEvent(event, true)) {
       settleUserInterrupt();
       return;
