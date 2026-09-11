@@ -583,11 +583,16 @@ async function checkMahiroHerdrLifecycleRegistration(activate, testing, testRoot
     testing.modelIdentity({ model: { displayName: "Claude Sonnet" } }),
   );
   assert(switchedIdentity.displayName === "Claude Sonnet" && switchedIdentity.provider === "" && switchedIdentity.reasoningEffort === "", "a changed model without exact provider or effort evidence must clear stale Codex attribution");
-  const withdrawnIdentity = testing.mergeModelIdentity(
+  const partialIdentity = testing.mergeModelIdentity(
     testing.modelIdentity({ model: { id: "openai-codex/gpt-5.6-sol", displayName: "GPT-5.6 Sol", reasoningEffort: "High" } }),
     testing.modelIdentity({ model: { displayName: "GPT-5.6 Sol" } }),
   );
-  assert(withdrawnIdentity.provider === "" && withdrawnIdentity.reasoningEffort === "", "a present same-model object must clear attribution fields that are no longer evidenced");
+  assert(partialIdentity.provider === "openai-codex" && partialIdentity.reasoningEffort === "high", "partial same-model event context must retain provider and effort established by a prior complete public context");
+  const explicitProviderSwitch = testing.mergeModelIdentity(
+    testing.modelIdentity({ model: { id: "openai-codex/gpt-5.6-sol", displayName: "GPT-5.6 Sol", reasoningEffort: "High" } }),
+    testing.modelIdentity({ model: { id: "gpt-5.6-sol", displayName: "GPT-5.6 Sol", provider: "openai" } }),
+  );
+  assert(explicitProviderSwitch.provider === "openai", "an explicit provider change for the same model must replace prior Codex attribution");
   const retainedIdentity = testing.mergeModelIdentity(
     testing.modelIdentity({ model: { id: "openai-codex/gpt-5.6-sol", displayName: "GPT-5.6 Sol", reasoningEffort: "High" } }),
     testing.modelIdentity({}),
@@ -1983,7 +1988,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-finish-voice.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.9.3", "Package version must be 0.9.3");
+  assert(packageJson.version === "0.9.4", "Package version must be 0.9.4");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact thirteen-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact thirteen-entry package");
 
@@ -2685,9 +2690,15 @@ async function checkUsageQuota(testing, activate) {
   const controller = testing.createUsageController((segments) => { rendered = segments; }, load);
   await controller.update();
   assert(requests === 0 && rendered.length === 0, "default off must not fetch or render quotas");
-  const hiddenSidebar = testing.createUsageController((segments) => { rendered = segments; }, load, () => true);
+  let sidebarRefreshes = 0;
+  const hiddenSidebar = testing.createUsageController(
+    (segments) => { rendered = segments; },
+    load,
+    () => true,
+    async () => { sidebarRefreshes++; },
+  );
   await hiddenSidebar.update();
-  assert(requests === 2 && rendered.length === 0, "active Herdr sidebar consumer must refresh both shared caches without making disabled statusline rows visible");
+  assert(requests === 2 && rendered.length === 0 && sidebarRefreshes === 1, "active Herdr sidebar consumer must refresh both shared caches, request one projection update, and keep disabled statusline rows hidden");
   hiddenSidebar.dispose();
   rmSync(join(dir, "codex.json"));
   rmSync(join(dir, "agy.json"));

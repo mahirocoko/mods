@@ -34,10 +34,14 @@ Herdr sidebar renderer. LLM events always refresh that presentation metadata;
 they affect lifecycle state only as a fallback when turn events are unavailable.
 The public `chatgpt-plus-pro` runtime provider alias and `openai-codex` handle
 normalize to one `openai-codex` sidebar gate; no display-name inference is used.
+Partial event contexts retain complete attribution only while the normalized
+model identity is unchanged; key/provider changes and conversation cleanup win.
 The statusline quota controller remains the normalized-cache owner. In a
 Herdr-managed Letta process, the companion plugin's regular bounded config
 snapshot acts as a cache-only consumer, so provider rows may stay hidden in the
-statusline while the sidebar cache remains current.
+statusline while the sidebar cache remains current. A cache-writing update cycle
+then invokes the companion's bounded public refresh action once; the statusline
+does not own sidebar token interpretation and no plugin daemon is introduced.
 Engine-aborted reload cleanup deliberately
 does not call each event disposer because Letta clears the whole generation
 after abort and every redundant unregister publishes a new host snapshot.

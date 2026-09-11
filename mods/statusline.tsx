@@ -1475,6 +1475,17 @@ async function fetchQuota(provider: UsageProvider, signal: AbortSignal): Promise
   throw new Error("unavailable");
 }
 
+async function refreshHerdrSidebar(signal: AbortSignal): Promise<void> {
+  await execFileAsync(process.env.HERDR_BIN_PATH ?? "herdr", [
+    "plugin", "action", "invoke", "refresh", "--plugin", "mahiro-herdr-sidebar",
+  ], {
+    encoding: "utf8",
+    timeout: 3_000,
+    maxBuffer: 32_768,
+    signal,
+  });
+}
+
 function readUsageSnapshot(provider: UsageProvider): UsageSnapshot | undefined {
   const value = usageRead(`${provider}.json`);
   if (!value || value.identity !== usageIdentity(provider)) return undefined;
@@ -1487,7 +1498,12 @@ function readUsageSnapshot(provider: UsageProvider): UsageSnapshot | undefined {
   return { windows: value.windows.map((w: UsageWindow) => ({ label: w.label, remaining: w.remaining, reset: w.reset })), fetched: value.fetched, retry: value.retry, failed: value.failed, credits: quotaBalance(value.credits), resetCredits: quotaBalance(value.resetCredits) };
 }
 
-function createUsageController(publish: (segments: StatusSegment[]) => void, load = fetchQuota, sidebarConsumer = herdrSidebarUsageConsumerActive) {
+function createUsageController(
+  publish: (segments: StatusSegment[]) => void,
+  load = fetchQuota,
+  sidebarConsumer = herdrSidebarUsageConsumerActive,
+  notifySidebar = refreshHerdrSidebar,
+) {
   let settings = usageDefaults();
   let disposed = false;
   let busy = false;
@@ -1502,6 +1518,7 @@ function createUsageController(publish: (segments: StatusSegment[]) => void, loa
     try {
       settings = parseUsageSettings(usageRead("settings.json"));
       const collectForSidebar = sidebarConsumer();
+      let cacheWritten = false;
       for (const provider of ["codex", "agy"] as const) {
         if (disposed || current !== generation) break;
         if (!settings[provider] && !collectForSidebar) { delete snapshots[provider]; continue; }
@@ -1539,6 +1556,7 @@ function createUsageController(publish: (segments: StatusSegment[]) => void, loa
           if (identity !== usageIdentity(provider)) continue;
           next.identity = identity;
           usageWrite(`${provider}.json`, next);
+          cacheWritten = true;
           snapshots[provider] = next;
         } finally {
           clearTimeout(timeout);
@@ -1546,6 +1564,13 @@ function createUsageController(publish: (segments: StatusSegment[]) => void, loa
           closeSync(fd);
           try { if (lstatSync(lock).ino === inode) unlinkSync(lock); } catch {}
         }
+      }
+      if (cacheWritten && collectForSidebar && !disposed && current === generation) {
+        const controller = new AbortController();
+        controllers.add(controller);
+        try { await notifySidebar(controller.signal); }
+        catch { /* Cache remains valid; the next cache write or pane event retries projection. */ }
+        finally { controllers.delete(controller); }
       }
     } catch { delete snapshots.codex; delete snapshots.agy; }
     finally { busy = false; emit(); }

@@ -80,11 +80,15 @@ pnpm mods:update
 แบบย่อสำหรับ companion Mahiro Herdr Sidebar โดยไม่เดา provider จากชื่อ model
 runtime alias `chatgpt-plus-pro` กับ handle/provider `openai-codex` จะ normalize
 เป็น sidebar token `openai-codex` ค่าเดียวตาม public model contract ของ Letta
+ถ้า event ถัดมาส่ง model เดิมแต่ขาด provider/effort จะเก็บหลักฐานชุดล่าสุดไว้
+จนกว่า model key หรือ provider เปลี่ยนแบบ explicit หรือ conversation ถูกปิด/reset
 ผลลัพธ์เต็ม, prompt, task description และ tool output จะไม่ถูกส่งไป Herdr
 
 เมื่อ companion sidebar ติดตั้งและมี config snapshot ที่ถูกต้อง ตัว statusline
 controller จะ refresh normalized Codex/Agy cache ให้ sidebar ด้วย แม้ปิดแถว quota
 ใน statusline อยู่ การเก็บ cache กับการแสดงผลจึงแยกจากกันและไม่ทำให้แถวที่ปิดไว้โผล่กลับมา
+หลัง cycle ไหนเขียน cache สำเร็จ จะเรียก public sidebar refresh แบบ bounded หนึ่งครั้ง
+เพื่อไม่ให้ quota TTL ที่สั้นและซื่อตรงหายระหว่าง pane idle หรือ turn ที่ยาว
 
 สถานะ `done` เป็นหน้าที่ของ Herdr: เมื่อ Letta รายงาน `idle` ใน pane ที่ยังไม่
 ถูกเปิดดู Herdr จะเก็บ Done ไว้ให้ ถ้าเปิด Letta นอก Herdr mod นี้จะ no-op

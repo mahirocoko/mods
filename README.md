@@ -97,7 +97,7 @@ Existing live sessions are not reloaded by these commands.
 
 The current quota layout replaces the former two-row maximum: default statusline first, Codex second, Agy third; each disabled provider removes its own row. Providers shorten bars independently and never crowd each other. The summary/detail panel uses at most five rows so the three-row statusline also fits the host's shared eight-row cap.
 
-Quota display is opt-in: `/mh-usage codex on`, `/mh-usage agy on`; use each provider's `off` or `/mh-usage off` to hide both. `/mh-usage bar` and `/mh-usage compact` persist the presentation. `/mh-usage status` opens a busy-safe summary prioritizing Codex, Gemini, and Claude-GPT within the host's visible panel budget. `/mh-usage status 1` opens bounded detail pages for every independent window, reset, credit field, and stale/unavailable state; follow the next-page command in the footer. `/mh-usage close` dismisses the panel. Inside Herdr, an active Mahiro Herdr Sidebar configuration snapshot also acts as a cache-only consumer: both normalized provider caches stay refreshed while disabled statusline rows remain hidden.
+Quota display is opt-in: `/mh-usage codex on`, `/mh-usage agy on`; use each provider's `off` or `/mh-usage off` to hide both. `/mh-usage bar` and `/mh-usage compact` persist the presentation. `/mh-usage status` opens a busy-safe summary prioritizing Codex, Gemini, and Claude-GPT within the host's visible panel budget. `/mh-usage status 1` opens bounded detail pages for every independent window, reset, credit field, and stale/unavailable state; follow the next-page command in the footer. `/mh-usage close` dismisses the panel. Inside Herdr, an active Mahiro Herdr Sidebar configuration snapshot also acts as a cache-only consumer: both normalized provider caches stay refreshed while disabled statusline rows remain hidden. A successful cache-write cycle invokes one bounded public sidebar refresh so quota rows keep their honest short TTL through idle panes and long turns.
 
 Codex uses the existing CLI login; Agy requires an already-running local language server. This mod never starts Agy or refreshes auth. There are no invented absolute limits or combined quota windows. See [the statusline contract](MOD.md#compact-statusline) for cache, timeout, privacy, and runtime boundaries.
 
@@ -113,6 +113,9 @@ includes the current public model display name/reasoning effort, exact provider
 identity when exposed by the model contract, and a bounded context-use meter.
 Letta's official `chatgpt-plus-pro` runtime alias and `openai-codex` handle both
 normalize to the fail-closed `openai-codex` sidebar token.
+Partial event contexts for the same model retain prior complete provider/effort
+evidence; model-key changes, explicit provider changes, and conversation cleanup
+replace or clear that attribution.
 These `mahiro_sidebar_*` values let the separately owned Mahiro Herdr Sidebar
 plugin render model/context and gate account-level quota without guessing from
 display text. A process exit is

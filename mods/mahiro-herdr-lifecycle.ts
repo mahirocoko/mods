@@ -92,6 +92,11 @@ const compactToolName = (value: unknown) => normalizeText(value, 40).replace(/^f
 const boundedPercentage = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;
 
+const modelIdentityKey = (value: string) => value
+  .replace(/^[^/]+\//, "")
+  .toLowerCase()
+  .replace(/[^a-z0-9]/g, "");
+
 const modelIdentity = (context: any) => {
   const normalizedModel = context?.model;
   const rawModel = context?.rawPayload?.model;
@@ -112,12 +117,11 @@ const modelIdentity = (context: any) => {
       ?? selectedModel?.reasoning?.reasoning_effort,
     20,
   ).toLowerCase();
-  const identityKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
   const rawSuffix = rawId.replace(/^[^/]+\//, "");
   const normalizedEvidence = normalizedId || displayName;
   const rawMatchesNormalized = !normalizedModel || (
     Boolean(normalizedEvidence)
-    && identityKey(normalizedEvidence) === identityKey(rawSuffix || rawId)
+    && modelIdentityKey(normalizedEvidence) === modelIdentityKey(rawSuffix || rawId)
   );
   const explicitProvider = normalizeText(
     normalizedModel?.provider ?? (rawMatchesNormalized ? rawModel?.provider : undefined),
@@ -134,12 +138,20 @@ const mergeModelIdentity = (
   current: { key: string; displayName: string; reasoningEffort: string; provider: string },
   incoming: ReturnType<typeof modelIdentity>,
 ) => {
-  if (!incoming.present) return current;
+  if (!incoming.present || !incoming.key) return current;
+  if (!current.key || modelIdentityKey(incoming.key) !== modelIdentityKey(current.key)) {
+    return {
+      key: incoming.key,
+      displayName: incoming.displayName,
+      reasoningEffort: incoming.reasoningEffort,
+      provider: incoming.provider,
+    };
+  }
   return {
-    key: incoming.key,
-    displayName: incoming.displayName,
-    reasoningEffort: incoming.reasoningEffort,
-    provider: incoming.provider,
+    key: incoming.key || current.key,
+    displayName: incoming.displayName || current.displayName,
+    reasoningEffort: incoming.reasoningEffort || current.reasoningEffort,
+    provider: incoming.provider || current.provider,
   };
 };
 
