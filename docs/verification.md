@@ -2,6 +2,9 @@
 
 Evidence captured on 2026-07-15 with Letta Code 0.28.8 and pnpm 10.33.0.
 
+> [!NOTE]
+> **Historical Supporting Evidence**: This document records historical test evidence and earlier verification milestones. As of v0.10.0, Mods ownership of Agy quota production and presentation has been retired (superseded) because Agy CLI 1.2.2+ no longer exposes the local CSRF contract; active statusline quota production and display are scoped to Codex-only, while Agy quota display requires an external/Agy-native producer publishing to the public sidebar cache protocol (`~/.letta/mods/mahiro-usage/agy.json`). Historical entries below mentioning Agy quota verification remain preserved as historical records.
+
 ## Passed
 
 - `pnpm check`

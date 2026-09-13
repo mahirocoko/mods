@@ -84,6 +84,81 @@ function checkUpstreamProvenanceContracts() {
   }
 }
 
+function checkAgyQuotaRetirementDrift() {
+  const activeDocSurfaces = [
+    "README.md",
+    "MOD.md",
+    "docs/usage-th.md",
+  ];
+  const activeCodeSurfaces = [
+    "mods/statusline.tsx",
+  ];
+
+  const hasRetiredAgyQuotaDocClaim = (paragraph) => {
+    const rejectsLegacyCommand = /\b(?:reject(?:ed|s)?|no longer supports?)\b/i.test(paragraph)
+      || /(?:ใช้ไม่ได้แล้ว|ไม่รองรับ|ถูกปฏิเสธ)/i.test(paragraph);
+    if (/\/mh-usage\s+agy\b/i.test(paragraph) && !rejectsLegacyCommand) return true;
+    if (/agy\s+on\/off/i.test(paragraph) && !rejectsLegacyCommand) return true;
+    if (/\bAgy\s+third\b/i.test(paragraph)) return true;
+    if (/Codex second,\s*Agy third/i.test(paragraph)) return true;
+    if (/three rows total with both/i.test(paragraph)) return true;
+    if (/รวม 3 แถวเมื่อเปิดทั้งคู่/i.test(paragraph)) return true;
+    if (/both normalized provider caches/i.test(paragraph)) return true;
+    if (/normalized Codex\/Agy cache/i.test(paragraph)) return true;
+    if (/refresh normalized Codex\/Agy/i.test(paragraph)) return true;
+    if (/แถว Agy จะเรียง/i.test(paragraph)) return true;
+    if (/Agy keeps each family together/i.test(paragraph)) return true;
+    if (/prioritizing actual Codex,\s*Gemini,\s*and Claude-GPT/i.test(paragraph)) return true;
+    if (/สรุป Codex,\s*Gemini และ Claude-GPT/i.test(paragraph)) return true;
+
+    return false;
+  };
+
+  for (const staleExample of [
+    "Quota display is opt-in: /mh-usage codex on, /mh-usage agy on",
+    "default statusline first, Codex second, Agy third; each disabled provider removes its own row.",
+    "both normalized provider caches stay refreshed while disabled statusline rows remain hidden.",
+    "controller จะ refresh normalized Codex/Agy cache ให้ sidebar ด้วย",
+    "ส่วน quota ต้องเปิดด้วย `/mh-usage codex on` หรือ `/mh-usage agy on` แยกกัน",
+  ]) {
+    assert(hasRetiredAgyQuotaDocClaim(staleExample), `matcher must detect retired active claim: ${staleExample}`);
+  }
+
+  assert(
+    !hasRetiredAgyQuotaDocClaim("Agy quota production and presentation were retired in v0.10.0 because Agy CLI 1.2.2+ no longer exposes the local CSRF contract; Agy quota requires an external/Agy-native producer for the public sidebar protocol."),
+    "matcher must permit explicit retirement rationale",
+  );
+  assert(
+    !hasRetiredAgyQuotaDocClaim("Rules ใช้เก็บข้อตกลงการทำงานชั่วคราวของ Goal นั้น เช่น “ให้ Agy เป็นคนลงมือ ส่วน main agent ตรวจ correctness”"),
+    "matcher must permit unrelated Agy workflow mentions",
+  );
+  assert(
+    hasRetiredAgyQuotaDocClaim("Agy quota was retired, but default statusline first, Codex second, Agy third remains current."),
+    "retirement wording must not mask a stale current claim in the same paragraph",
+  );
+
+  for (const relativePath of activeDocSurfaces) {
+    const source = readFileSync(resolve(repositoryRoot, relativePath), "utf8");
+    const paragraphs = source.split(/\n\s*\n/);
+    for (const paragraph of paragraphs) {
+      assert(
+        !hasRetiredAgyQuotaDocClaim(paragraph),
+        `${relativePath} contains retired active Agy quota claim: ${paragraph.slice(0, 100)}...`,
+      );
+    }
+  }
+
+  for (const relativePath of activeCodeSurfaces) {
+    const source = readFileSync(resolve(repositoryRoot, relativePath), "utf8");
+    assert(!source.includes("RetrieveUserQuotaSummary"), `${relativePath} must not contain RetrieveUserQuotaSummary`);
+    assert(!source.includes("x-codeium-csrf-token"), `${relativePath} must not contain x-codeium-csrf-token`);
+    assert(!source.includes("--csrf_token"), `${relativePath} must not contain --csrf_token`);
+    assert(!source.includes("Agy Gemini:"), `${relativePath} must not contain Agy Gemini:`);
+    assert(!source.includes("Agy Claude-GPT:"), `${relativePath} must not contain Agy Claude-GPT:`);
+    assert(!source.includes("agy.lock"), `${relativePath} must not contain agy.lock`);
+  }
+}
+
 async function loadMod(relativePath) {
   const absolutePath = resolve(repositoryRoot, relativePath);
   const source = await readFile(absolutePath, "utf8");
@@ -1988,7 +2063,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-finish-voice.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.9.4", "Package version must be 0.9.4");
+  assert(packageJson.version === "0.10.0", "Package version must be 0.10.0");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact thirteen-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact thirteen-entry package");
 
@@ -2596,39 +2671,49 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
 }
 
 async function checkUsageQuota(testing, activate) {
-  const weeklyOnly = testing.parseQuota("codex", { rate_limit: { primary_window: { used_percent: 23, limit_window_seconds: 604800, reset_at: 1900000000 } } });
+  const weeklyOnly = testing.parseQuota({ rate_limit: { primary_window: { used_percent: 23, limit_window_seconds: 604800, reset_at: 1900000000 } } });
   assert(weeklyOnly.length === 1 && weeklyOnly[0].label === "P:7d" && weeklyOnly[0].remaining === 77, "Codex primary is not necessarily 5h; never invent secondary");
-  const independent = testing.parseQuota("codex", { rate_limit: { primary_window: { used_percent: 100, limit_window_seconds: 18000 }, secondary_window: { used_percent: 0, limit_window_seconds: 604800 } } });
+  const independent = testing.parseQuota({ rate_limit: { primary_window: { used_percent: 100, limit_window_seconds: 18000 }, secondary_window: { used_percent: 0, limit_window_seconds: 604800 } } });
   assert(independent.length === 2 && independent[0].remaining === 0 && independent[1].remaining === 100, "Codex windows must remain independent, including zero/full");
-  assert(testing.parseQuota("codex", { rate_limit: { primary_window: { used_percent: "0", limit_window_seconds: 18000 } } }).length === 0, "quota parsers must reject missing/string/invalid percentages");
-  const optional = testing.parseQuota("codex", {
+  assert(testing.parseQuota({ rate_limit: { primary_window: { used_percent: "0", limit_window_seconds: 18000 } } }).length === 0, "quota parsers must reject missing/string/invalid percentages");
+  const optional = testing.parseQuota({
     additional_rate_limits: [{ limit_name: "Spark\nwindow", rate_limit: { primary_window: { used_percent: 12, limit_window_seconds: 18000 }, secondary_window: { used_percent: 34, limit_window_seconds: 604800 } } }],
     code_review_rate_limit: { primary_window: { used_percent: 56, limit_window_seconds: 604800 } },
     credits: { balance: "12.50" }, rate_limit_reset_credits: { available_count: 0 },
   });
   assert(optional.length === 3 && optional[0].label === "Spark window P:5h" && optional[2].label === "Code review P:7d" && optional[2].remaining === 44, "optional Codex limits and code review must retain separate named windows");
   assert(optional.credits === 12.5 && optional.resetCredits === 0 && weeklyOnly.credits === null, "credits must use actual envelope values including zero, never invented dollars");
-  const agy = testing.parseQuota("agy", { response: { groups: [{ buckets: [
-    { bucketId: "3p-weekly", remainingFraction: 0.4, resetTime: "2030-01-01T00:00:00Z" },
-    { bucketId: "gemini-5h", remainingFraction: 0 }, { bucketId: "gemini-weekly", remainingFraction: 1 },
-    { bucketId: "3p-5h", remainingFraction: 0.8 }, { bucketId: "3p-5h", remainingFraction: 0.1 },
-    { bucketId: "future\nfamily", window: "24h", remainingFraction: 0.5 },
-  ] }] } });
-  assert(agy.length === 5 && agy.map((w) => w.remaining).join() === "0,100,80,40,50" && agy[0].label === "Gemini:5h" && agy[2].label === "Claude-GPT:5h" && agy[4].label === "future family:24h", "Agy must retain unknown sanitized identities and source windows alongside evidenced human-readable families");
-  assert(testing.parseQuota("agy", { response: { groups: [{ buckets: [{ bucketId: "gemini-5h", remainingFraction: -1 }] }] } }).length === 0, "invalid fractions must not be fabricated as exhausted");
-  const snapshot = { windows: agy, fetched: Date.now(), retry: Date.now() + 120000, failed: false };
-  assert(testing.quotaSegments("agy", undefined, "bar")[0].text.includes("unavailable"), "missing quotas must be unavailable, not zero");
-  assert(testing.quotaSegments("agy", { ...snapshot, failed: true }, "compact").every((s) => s.text.includes("stale") && !s.text.includes("[")), "stale compact quotas must remain explicitly stale");
+
+  // Direct tests for legacy settings migration/ignore behavior
+  assert(JSON.stringify(testing.parseUsageSettings({ codex: true, agy: true, style: "bar" })) === JSON.stringify({ codex: true, style: "bar" }), "legacy settings with agy: true must be safely readable and return codex/style only");
+  assert(JSON.stringify(testing.parseUsageSettings({ codex: false, agy: false, style: "compact" })) === JSON.stringify({ codex: false, style: "compact" }), "legacy settings with agy: false must be safely readable and return codex/style only");
+  assert(JSON.stringify(testing.parseUsageSettings({ codex: true, style: "bar" })) === JSON.stringify({ codex: true, style: "bar" }), "modern settings without agy must parse safely");
+  const expectThrow = (fn, message) => {
+    let threw = false;
+    try {
+      fn();
+    } catch {
+      threw = true;
+    }
+    assert(threw, message);
+  };
+  expectThrow(() => testing.parseUsageSettings({ codex: true, agy: "invalid", style: "bar" }), "non-boolean legacy agy field must throw");
+  expectThrow(() => testing.parseUsageSettings({ codex: "true", style: "bar" }), "invalid codex boolean must throw");
+  expectThrow(() => testing.parseUsageSettings({ codex: true, style: "unknown" }), "invalid style must throw");
+
+  const snapshot = { windows: [{ label: "P:5h", remaining: 0, reset: null }, { label: "S:7d", remaining: 100, reset: null }], fetched: Date.now(), retry: Date.now() + 120000, failed: false };
+  assert(testing.quotaSegments(undefined, "bar")[0].text.includes("unavailable"), "missing quotas must be unavailable, not zero");
+  assert(testing.quotaSegments({ ...snapshot, failed: true }, "compact").every((s) => s.text.includes("stale") && !s.text.includes("[")), "stale compact quotas must remain explicitly stale");
   for (const width of [40, 80, 120, 240]) {
-    const layout = testing.renderStatusline({ width }, { cwd: "/workspace", git: testing.emptyGitStatus(), processSubagents: [], usage: testing.quotaSegments("agy", snapshot, "bar") });
+    const layout = testing.renderStatusline({ width }, { cwd: "/workspace", git: testing.emptyGitStatus(), processSubagents: [], usage: testing.quotaSegments(snapshot, "bar") });
     const rows = Array.isArray(layout) ? layout : [layout];
     assert(rows.length <= 2 && rows.every((r) => [...r].length <= width), "quota layout must preserve the two-row bound");
   }
-  const bars = testing.quotaSegments("agy", snapshot, "bar");
+  const bars = testing.quotaSegments(snapshot, "bar");
   assert(bars[0].text.includes("▱▱▱▱▱▱▱▱") && bars[1].text.includes("▰▰▰▰▰▰▰▰"), "statusline meters must contain exactly eight cells at zero/full remaining");
-  const intermediate = testing.quotaSegments("codex", { ...snapshot, windows: [{ label: "P:7d", remaining: 30, reset: null }] }, "bar")[0];
+  const intermediate = testing.quotaSegments({ ...snapshot, windows: [{ label: "P:7d", remaining: 30, reset: null }] }, "bar")[0];
   assert(intermediate.text.includes("▰▰▱▱▱▱▱▱ 30% left") && !intermediate.text.includes("\u001b"), "intermediate quota must preserve remaining percentage and store only plain meter cells");
-  const endpoints = testing.quotaSegments("codex", { ...snapshot, windows: [{ label: "P:5h", remaining: 1, reset: null }, { label: "S:7d", remaining: 99, reset: null }] }, "bar");
+  const endpoints = testing.quotaSegments({ ...snapshot, windows: [{ label: "P:5h", remaining: 1, reset: null }, { label: "S:7d", remaining: 99, reset: null }] }, "bar");
   assert(endpoints[0].text.includes("▰▱▱▱▱▱▱▱ 1% left") && endpoints[1].text.includes("▰▰▰▰▰▰▰▱ 99% left"), "non-endpoint percentages must never render as empty or full");
   assert(bars[0].color === "#F1689F" && bars[1].color === "#64CF64" && intermediate.color === "#FEE19C", "quota remaining thresholds must paint red/yellow/green");
   const dimmed = [];
@@ -2642,11 +2727,11 @@ async function checkUsageQuota(testing, activate) {
     const panel = testing.renderUsagePanel(bar.text).join("\n");
     assert(panel.includes(bar === bars[0] ? "▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱" : "▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰"), "panel zero/full endpoints must occupy sixteen cells");
   }
-  const compactFit = testing.renderStatusline({ width: 29 }, { cwd: "/workspace", git: testing.emptyGitStatus(), processSubagents: [], usage: [bars[2]] });
-  assert([compactFit].flat().join(" ").includes("Claude-GPT:5h") && [compactFit].flat().every((line) => testing.visibleWidth(line) <= 29), "single-provider quota row must shrink independently before omitting its actual window");
-  const bothUsage = [...testing.quotaSegments("codex", { ...snapshot, windows: [...weeklyOnly, ...optional] }, "bar"), ...bars];
-  // Independent fixture oracle for installed host row(): grapheme widths and
-  // full-width padding, not the mod's own fallbackRow or code-point .length.
+  const compactFit = testing.renderStatusline({ width: 29 }, { cwd: "/workspace", git: testing.emptyGitStatus(), processSubagents: [], usage: [intermediate] });
+  assert([compactFit].flat().join(" ").includes("P:7d") && [compactFit].flat().every((line) => testing.visibleWidth(line) <= 29), "single-provider quota row must shrink independently before omitting its actual window");
+
+  // One-row Codex layout and panel budget tests
+  const codexUsage = testing.quotaSegments({ ...snapshot, windows: [...weeklyOnly, ...optional] }, "bar");
   const hostSegmenter = new Intl.Segmenter();
   const hostWidth = (text) => [...hostSegmenter.segment(text.replace(/\u001b\[[0-9;]*m/g, ""))].reduce((total, { segment }) => total + (/\p{Emoji_Presentation}/u.test(segment) || segment.includes("\uFE0F") ? 2 : 1), 0);
   const hostRow = (left, right, width) => {
@@ -2655,53 +2740,46 @@ async function checkUsageQuota(testing, activate) {
   };
   assert([..."อยากให้ pull mods"].length === 17 && hostWidth("อยากให้ pull mods") === 16 && testing.visibleWidth("อยากให้ pull mods") === 16, "Thai combining marks must not inflate host-compatible grapheme width");
   assert(testing.truncateAnsi("กิx", 1) === "กิ" && testing.visibleWidth("👩‍💻") === 2 && testing.truncateAnsi("👩‍💻x", 2) === "👩‍💻", "width and truncation must preserve Thai and joined emoji graphemes coherently");
-  const bothContext = { row: hostRow, agent: { name: "ผู้ช่วยมาฮิโระ" }, conversationSummary: "อยากให้ pull mods", model: { displayName: "GPT-5.6 Sol", reasoningEffort: "extra-high" }, workspace: { cwd: "/workspace/mods" }, contextWindow: { usedPercentage: 42 }, permissionMode: "acceptEdits" };
-  const bothStatus = { cwd: "/workspace/mods", git: { ...testing.emptyGitStatus(), branch: "main" }, processSubagents: [], usage: bothUsage };
+  const codexContext = { row: hostRow, agent: { name: "ผู้ช่วยมาฮิโระ" }, conversationSummary: "อยากให้ pull mods", model: { displayName: "GPT-5.6 Sol", reasoningEffort: "extra-high" }, workspace: { cwd: "/workspace/mods" }, contextWindow: { usedPercentage: 42 }, permissionMode: "acceptEdits" };
+  const codexStatus = { cwd: "/workspace/mods", git: { ...testing.emptyGitStatus(), branch: "main" }, processSubagents: [], usage: codexUsage };
   for (const width of [80, 120, 160]) {
-    const rows = testing.renderStatusline({ ...bothContext, width }, bothStatus);
-    assert(Array.isArray(rows) && rows.length === 3 && rows.every((line) => hostWidth(line) <= width), "enabled providers must own independent second and third rows under real padded host semantics");
-    assert(hostWidth(rows[0]) === width && rows[0].includes("mods") && rows[0].includes("GPT-5.6 Sol") && rows[0].includes("ผู้ช่วยมาฮิโระ"), "Thai agent identity must survive the padded row without the old false overflow rejection");
+    const rows = testing.renderStatusline({ ...codexContext, width }, codexStatus);
+    assert(Array.isArray(rows) && rows.length === 2 && rows.every((line) => hostWidth(line) <= width), "one-row Codex quota layout must produce exactly two statusline rows (main + Codex)");
+    assert(hostWidth(rows[0]) === width && rows[0].includes("mods") && rows[0].includes("GPT-5.6 Sol") && rows[0].includes("ผู้ช่วยมาฮิโระ"), "Thai agent identity must survive the padded row without false overflow rejection");
     if (width >= 120) assert(rows[0].includes("อยากให้ pull"), "Thai conversation must be measured/truncated without dropping the identity row");
-    assert(rows[1].startsWith("Codex ") && rows[1].includes("P:7d") && !rows[1].includes("Agy"), "line two belongs only to Codex");
-    assert(rows[2].startsWith("Agy ") && rows[2].includes("Gemini:5h") && rows[2].includes("Claude-GPT:5h") && !rows[2].includes("Codex"), "line three belongs only to Agy and retains both actual families");
-    const agyOrder = ["Gemini:5h", "Gemini:7d", "Claude-GPT:5h", "Claude-GPT:7d"];
-    const visibleAgyOrder = agyOrder.filter((label) => rows[2].includes(label));
-    assert(visibleAgyOrder.every((label, index) => index === 0 || rows[2].indexOf(visibleAgyOrder[index - 1]) < rows[2].indexOf(label)), "Agy rows must preserve normalized family order for every visible window");
-    if (width === 160) assert(visibleAgyOrder.length === 4, "roomy Agy rows must keep each family's 5h/7d windows together");
-    assert(rows.slice(1).every((line) => /[▰▱]{8}/.test(line)), "normal widths must retain full eight-cell provider meters independently");
-    for (const disabled of ["Codex", "Agy"]) {
-      const single = testing.renderStatusline({ ...bothContext, width }, { ...bothStatus, usage: bothUsage.filter((part) => !part.text.startsWith(disabled)) });
-      assert(single.length === 2 && !single[1].includes(disabled), "disabling a provider removes only its row");
-    }
-    const off = testing.renderStatusline({ ...bothContext, width }, { ...bothStatus, usage: [] });
-    assert([off].flat().length <= 2 && [off].flat().join(" ").includes("GPT-5.6 Sol"), "both disabled preserves default statusline behavior and Thai identity");
+    assert(rows[1].startsWith("Codex ") && rows[1].includes("P:7d") && !rows[1].includes("Agy"), "line two belongs only to Codex without Agy traces");
+    assert(/[▰▱]{8}/.test(rows[1]), "normal widths must retain full eight-cell provider meters");
+    const off = testing.renderStatusline({ ...codexContext, width }, { ...codexStatus, usage: [] });
+    assert([off].flat().length <= 2 && [off].flat().join(" ").includes("GPT-5.6 Sol"), "disabled quota preserves default statusline behavior and Thai identity");
   }
   for (const width of [20, 40, 60]) {
-    const rows = [testing.renderStatusline({ width }, bothStatus)].flat();
-    assert(rows.length === 3 && rows.every((line) => testing.visibleWidth(line) <= width), "narrow width cannot let one provider consume the other's row");
-    assert(rows[1].startsWith("Codex") && rows[2].startsWith("Agy"), "narrow omissions must retain truthful provider row labels");
-    if (width === 40) assert(/[▰▱]{8}/.test(rows[1]) && !/[▰▱]{8}/.test(rows[2]), "Agy narrowing must never force the roomy Codex row to shrink its meter");
+    const rows = [testing.renderStatusline({ width }, codexStatus)].flat();
+    assert(rows.length === 2 && rows.every((line) => testing.visibleWidth(line) <= width), "narrow width must preserve two-row layout");
+    assert(rows[1].startsWith("Codex"), "narrow omissions must retain truthful Codex row label");
   }
+
+  // Codex-only sidebar cache refresh
   const dir = process.env.MAHIRO_STATUSLINE_USAGE_DIR;
   let requests = 0;
   let rendered = [];
   const complete = Object.assign([...weeklyOnly, ...optional], { credits: optional.credits, resetCredits: optional.resetCredits });
-  const load = async (provider) => { requests++; return provider === "agy" ? agy : complete; };
+  const load = async () => { requests++; return complete; };
   const controller = testing.createUsageController((segments) => { rendered = segments; }, load);
   await controller.update();
   assert(requests === 0 && rendered.length === 0, "default off must not fetch or render quotas");
   let sidebarRefreshes = 0;
+  let fetchedCalls = 0;
   const hiddenSidebar = testing.createUsageController(
     (segments) => { rendered = segments; },
-    load,
+    async () => { fetchedCalls++; return complete; },
     () => true,
     async () => { sidebarRefreshes++; },
   );
   await hiddenSidebar.update();
-  assert(requests === 2 && rendered.length === 0 && sidebarRefreshes === 1, "active Herdr sidebar consumer must refresh both shared caches, request one projection update, and keep disabled statusline rows hidden");
+  assert(fetchedCalls === 1 && rendered.length === 0 && sidebarRefreshes === 1, "active Herdr sidebar consumer must refresh Codex shared cache with one request, request one projection update, and keep disabled statusline rows hidden");
+  assert(existsSync(join(dir, "codex.json")) && !existsSync(join(dir, "agy.json")), "sidebar cache refresh must be Codex-only and never write agy cache");
   hiddenSidebar.dispose();
   rmSync(join(dir, "codex.json"));
-  rmSync(join(dir, "agy.json"));
   requests = 0;
   controller.command("codex on");
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -2712,25 +2790,36 @@ async function checkUsageQuota(testing, activate) {
   assert(controller.command("status").output.includes("resets 2030-03-17"), "details must include actual reset timestamps");
   const details = second.command("status").output;
   assert(details.includes("Spark window P:5h") && details.includes("Spark window S:7d") && details.includes("Code review P:7d") && details.includes("credits: 12.5") && details.includes("reset credits: 0") && details.includes("resets unavailable"), "cached status must include every optional window and truthful credit/reset availability");
-  controller.command("agy on");
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert(!details.includes("Agy") && !details.includes("agy:"), "status details must be Codex-only");
+
+  // Direct tests for rejected /mh-usage agy commands
+  const legacyRejectedSettings = JSON.stringify({ codex: true, agy: true, style: "bar" });
+  writeFileSync(join(dir, "settings.json"), legacyRejectedSettings);
+  const rejectedAgyOn = controller.command("agy on");
+  assert(rejectedAgyOn.output === "Usage: /mh-usage [status|off|codex on/off|bar|compact]", "rejected /mh-usage agy on must return usage syntax");
+  assert(readFileSync(join(dir, "settings.json"), "utf8") === legacyRejectedSettings, "rejected /mh-usage agy on must preserve legacy settings bytes");
+  const rejectedAgyOff = controller.command("agy off");
+  assert(rejectedAgyOff.output === "Usage: /mh-usage [status|off|codex on/off|bar|compact]", "rejected /mh-usage agy off must return usage syntax");
+  assert(readFileSync(join(dir, "settings.json"), "utf8") === legacyRejectedSettings, "rejected /mh-usage agy off must preserve legacy settings bytes");
+
+  // Panel budget
   const fullOutput = controller.command("status").output;
-  assert(fullOutput.includes("future family:24h"), "status must include unknown Agy bucket details even if panel omits them");
   const summary = testing.renderUsagePanel(fullOutput, undefined, 0, 80);
-  const hostVisible = [...summary, "persistent status row 1", "Codex usage row 2", "Agy usage row 3"].slice(0, 8);
-  assert(summary.length <= 5 && hostVisible.includes("Agy usage row 3"), "usage panel must budget five rows within the shared eight-row cap alongside all three statusline rows");
+  const hostVisible = [...summary, "persistent status row 1", "Codex usage row 2"].slice(0, 8);
+  assert(summary.length <= 5 && hostVisible.length <= 7 && hostVisible.includes("Codex usage row 2"), "usage panel must budget five rows within the shared eight-row cap alongside both statusline rows");
   const visible = hostVisible.join("\n");
-  assert(visible.includes("Codex P:7d") && visible.includes("Agy Gemini:5h") && visible.includes("Agy Claude-GPT:5h") && [...visible.matchAll(/([▰▱]{16})/g)].length === 3, "first actual visible host rows must include all three families with identical meters, not just returned hidden lines");
+  assert(visible.includes("Codex P:7d") && !visible.includes("Agy") && [...visible.matchAll(/([▰▱]{16})/g)].length === 1, "first actual visible host rows must show Codex meter without Agy");
   assert(summary.every((line) => [...line].length <= 80), "summary must respect supplied host row width");
   const pageCount = Number(summary.at(-1).match(/(\d+) detail pages/)[1]);
   const detailRows = [];
   for (let page = 1; page <= pageCount; page++) {
     const rows = testing.renderUsagePanel(fullOutput, undefined, page, 80);
-    assert(rows.length <= 5 && rows.every((line) => [...line].length <= 80), "every detail page must leave room for the three-row statusline within the host cap");
+    assert(rows.length <= 5 && rows.every((line) => [...line].length <= 80), "every detail page must leave room for the statusline within the host cap");
     detailRows.push(...rows.slice(1, -1));
   }
   const paged = detailRows.join("\n");
-  for (const required of ["Spark window P:5h", "Spark window S:7d", "Code review P:7d", "future family:24h", "credits: 12.5", "reset credits: 0", "resets 2030-03-17", "Gemini:7d", "Claude-GPT:7d"]) assert(paged.includes(required), `explicit pages must retain ${required}`);
+  for (const required of ["Spark window P:5h", "Spark window S:7d", "Code review P:7d", "credits: 12.5", "reset credits: 0", "resets 2030-03-17"]) assert(paged.includes(required), `explicit pages must retain ${required}`);
+  assert(!paged.includes("Gemini:") && !paged.includes("Claude-GPT:"), "paged details must not retain retired Agy families");
   assert(testing.renderUsagePanel(fullOutput, undefined, pageCount + 1, 80).join(" ").includes("Page unavailable"), "invalid detail page must give bounded navigation guidance");
   controller.command("compact");
   assert(!rendered[0].text.includes("▰"), "compact config must update the visible presentation");
@@ -2740,17 +2829,34 @@ async function checkUsageQuota(testing, activate) {
   assert(rendered.length === 0 && requests === beforeOff, "persisted off must immediately hide quotas and prevent requests in every session");
   controller.dispose(); second.dispose();
   const settings = JSON.parse(readFileSync(join(dir, "settings.json"), "utf8"));
-  assert(settings.codex === false && settings.agy === false && settings.style === "compact", "safe settings must persist");
+  assert(settings.codex === false && !("agy" in settings) && settings.style === "compact", "safe settings must persist codex and style only");
   writeFileSync(join(dir, "settings.json"), "{broken");
   const corrupt = testing.createUsageController(() => {}, load);
   assert(corrupt.command("codex on").output.includes("not changed") && readFileSync(join(dir, "settings.json"), "utf8") === "{broken", "corrupt settings must not be overwritten");
   corrupt.dispose();
+  const malformedLegacySettings = JSON.stringify({ codex: true, agy: "invalid", style: "bar" });
+  writeFileSync(join(dir, "settings.json"), malformedLegacySettings);
+  const malformedLegacy = testing.createUsageController(() => {}, load);
+  assert(malformedLegacy.command("compact").output.includes("not changed"), "malformed legacy agy settings must fail closed through the command surface");
+  assert(readFileSync(join(dir, "settings.json"), "utf8") === malformedLegacySettings, "malformed legacy agy settings must remain byte-identical after a rejected mutation");
+  malformedLegacy.dispose();
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir);
-  writeFileSync(join(dir, "settings.json"), JSON.stringify({ codex: true, agy: false, style: "bar" }));
+
+  // Migration test: existing settings JSON containing an old agy boolean must remain safely readable and ignored; future writes should persist only current codex/style fields.
+  writeFileSync(join(dir, "settings.json"), JSON.stringify({ codex: true, agy: true, style: "bar" }));
+  const legacyController = testing.createUsageController(() => {}, load);
+  legacyController.command("compact");
+  const rewrittenSettings = JSON.parse(readFileSync(join(dir, "settings.json"), "utf8"));
+  assert(rewrittenSettings.codex === true && rewrittenSettings.style === "compact" && !("agy" in rewrittenSettings), "future writes must persist only codex and style, safely dropping legacy agy boolean");
+  legacyController.dispose();
+
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir);
+  writeFileSync(join(dir, "settings.json"), JSON.stringify({ codex: true, style: "bar" }));
   let aborted = false;
   let publishes = 0;
-  const pending = testing.createUsageController(() => publishes++, (_p, signal) => new Promise((_resolve, reject) => signal.addEventListener("abort", () => { aborted = true; reject(new Error("aborted")); }, { once: true })));
+  const pending = testing.createUsageController(() => publishes++, (signal) => new Promise((_resolve, reject) => signal.addEventListener("abort", () => { aborted = true; reject(new Error("aborted")); }, { once: true })));
   const running = pending.update();
   let duplicated = 0;
   const follower = testing.createUsageController(() => {}, async () => { duplicated++; return weeklyOnly; });
@@ -3071,6 +3177,7 @@ process.env.MAHIRO_MCP_PROXY_DISABLE_PATH = join(testRoot, "mahiro-mcp-proxy.dis
 
 try {
   checkUpstreamProvenanceContracts();
+  checkAgyQuotaRetirementDrift();
   const activations = new Map();
   const testingSurfaces = new Map();
   for (const entry of entries) {

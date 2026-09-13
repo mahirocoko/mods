@@ -85,10 +85,14 @@ runtime alias `chatgpt-plus-pro` กับ handle/provider `openai-codex` จะ
 ผลลัพธ์เต็ม, prompt, task description และ tool output จะไม่ถูกส่งไป Herdr
 
 เมื่อ companion sidebar ติดตั้งและมี config snapshot ที่ถูกต้อง ตัว statusline
-controller จะ refresh normalized Codex/Agy cache ให้ sidebar ด้วย แม้ปิดแถว quota
+controller จะ refresh normalized Codex cache ให้ sidebar ด้วย แม้ปิดแถว quota
 ใน statusline อยู่ การเก็บ cache กับการแสดงผลจึงแยกจากกันและไม่ทำให้แถวที่ปิดไว้โผล่กลับมา
 หลัง cycle ไหนเขียน cache สำเร็จ จะเรียก public sidebar refresh แบบ bounded หนึ่งครั้ง
 เพื่อไม่ให้ quota TTL ที่สั้นและซื่อตรงหายระหว่าง pane idle หรือ turn ที่ยาว
+
+ตั้งแต่ v0.10.0 Mods จะไม่เก็บหรือแสดง Agy quota แล้ว เพราะ Agy CLI 1.2.2+
+ไม่เปิด local CSRF contract แบบเดิม หากต้องการแสดง Agy ใน sidebar ต้องให้
+external หรือ Agy-native producer เขียนข้อมูลตาม public sidebar protocol แทน
 
 สถานะ `done` เป็นหน้าที่ของ Herdr: เมื่อ Letta รายงาน `idle` ใน pane ที่ยังไม่
 ถูกเปิดดู Herdr จะเก็บ Done ไว้ให้ ถ้าเปิด Letta นอก Herdr mod นี้จะ no-op
@@ -424,17 +428,17 @@ Mahiro ใช้คำสั่งเหล่านี้เพื่อดู�
 
 ถ้า host รองรับ panel ก็จะเห็นแถว statusline หลัง `/reload` โดยไม่ต้องเปิดเอง
 
-ส่วน quota ต้องเปิดด้วย `/mh-usage codex on` หรือ `/mh-usage agy on` แยกกัน ปิดรายตัวด้วย `off` หรือปิดทั้งคู่ด้วย `/mh-usage off` เลือก meter แบบ `▰▰▱▱▱▱▱▱` ด้วย `/mh-usage bar` หรือดูเฉพาะตัวเลขด้วย `/mh-usage compact` ค่าที่เลือกจะจำไว้ข้าม session
+ส่วน quota เปิดด้วย `/mh-usage codex on` และปิดด้วย `/mh-usage codex off` หรือ `/mh-usage off` เลือก meter แบบ `▰▰▱▱▱▱▱▱` ด้วย `/mh-usage bar` หรือดูเฉพาะตัวเลขด้วย `/mh-usage compact` ส่วน `/mh-usage agy on` และ `/mh-usage agy off` ใช้ไม่ได้แล้ว เพราะ Mods ไม่ได้เป็น owner ของ Agy quota ค่าที่เลือกจะจำไว้ข้าม session
 
-ตัวเลขคือเปอร์เซ็นต์ที่เหลือในแต่ละช่วง quota ไม่ใช่ context usage และไม่รวมหลายช่วงเข้าด้วยกัน แถว Agy จะเรียง `Gemini:5h`, `Gemini:7d`, `Claude-GPT:5h`, `Claude-GPT:7d` เพื่อให้ช่วงของ family เดียวกันอยู่ติดกันเมื่อพื้นที่พอ ใช้ `/mh-usage status` ดูสรุป Codex, Gemini และ Claude-GPT ได้ระหว่างที่ agent ทำงาน ถ้าต้องการดูทุกช่วงพร้อมเวลา reset ให้เปิด `/mh-usage status 1` แล้วใช้คำสั่งหน้าถัดไปที่ท้าย panel ปิดเองได้ด้วย `/mh-usage close` ค่าเก่าจะแสดง `stale` ส่วนข้อมูลที่อ่านไม่ได้จะแสดง `unavailable` ไม่แทนด้วยศูนย์ ตัว mod ใช้ login เดิมของ Codex และ Agy ที่รันอยู่แล้ว ไม่เปิด Agy หรือ refresh auth ให้เอง รายละเอียด cache และข้อจำกัดอยู่ใน [MOD.md](../MOD.md#compact-statusline)
+ตัวเลขคือเปอร์เซ็นต์ที่เหลือในแต่ละช่วง quota ไม่ใช่ context usage และไม่รวมหลายช่วงเข้าด้วยกัน ใช้ `/mh-usage status` ดูสรุป Codex ได้ระหว่างที่ agent ทำงาน ถ้าต้องการดูทุกช่วงพร้อมเวลา reset ให้เปิด `/mh-usage status 1` แล้วใช้คำสั่งหน้าถัดไปที่ท้าย panel ปิดเองได้ด้วย `/mh-usage close` ค่าเก่าจะแสดง `stale` ส่วนข้อมูลที่อ่านไม่ได้จะแสดง `unavailable` ไม่แทนด้วยศูนย์ ตัว mod ใช้ login เดิมของ Codex ใน `~/.codex` และไม่ refresh auth ให้เอง ส่วน Agy quota ต้องมาจาก external หรือ Agy-native producer ที่เขียนข้อมูลตาม public sidebar protocol รายละเอียด cache และข้อจำกัดอยู่ใน [MOD.md](../MOD.md#compact-statusline)
 
 ### ต้องรู้
 
 - ข้อมูล Git, memory, reflection และ RTK refresh ทุก 10 วินาที ไม่ใช่ทุก millisecond
 - Background subagent ที่ยัง `pending` หรือ `running` จะแสดงเป็น `⏳ bg <type> [+N] <elapsed>` ต่อให้ parent turn จบแล้ว โดยไม่แสดง task description หรือ prompt ถ้า lifecycle context ของ host ไม่ส่ง child ที่ยังรันอยู่ ตัว statusline จะ fallback ไปดูเฉพาะ descendant Letta process และแสดงเป็น `⏳ agent <type> [+N] <elapsed>`; shell/monitor task ยังตรวจด้วย `/bg`
 - Activity จาก turn, LLM, tool และ compaction เป็นสถานะชั่วคราว
-- แบบใหม่แทนข้อจำกัดเดิมที่มีไม่เกิน 2 แถว: แถวแรกเป็น statusline ปกติ แถวถัดมาเป็น Codex และ Agy แยกกัน รวม 3 แถวเมื่อเปิดทั้งคู่ ปิดตัวไหนก็เอาเฉพาะแถวของตัวนั้นออก แต่ละ provider ย่อแถบของตัวเองโดยไม่แย่งพื้นที่กัน ถ้าปิดทั้งคู่จะกลับไปใช้แบบเดิมที่มีแถวหลักและแถวล้นได้อีกหนึ่งแถว
-- Panel สรุปและหน้ารายละเอียดใช้ไม่เกิน 5 แถว เพื่อเหลือพื้นที่ให้ statusline ทั้ง 3 แถวภายใต้เพดานรวม 8 แถวของ host ถ้ามี panel อื่นอยู่ด้วย อาจต้องปิด panel นั้นก่อน
+- แถวสถานะ quota มีไม่เกิน 2 แถว: แถวแรกเป็น statusline ปกติ แถวถัดมาเป็น Codex เมื่อเปิดใช้งาน ปิด Codex ก็เอาแถวนั้นออก ถ้าปิดไว้จะกลับไปใช้แบบเดิมที่มีแถวหลักและแถวล้นได้อีกหนึ่งแถวเมื่อพื้นที่ไม่พอ
+- Panel สรุปและหน้ารายละเอียดใช้ไม่เกิน 5 แถว เพื่อเหลือพื้นที่ให้ statusline ทั้ง 2 แถวภายใต้เพดานรวม 8 แถวของ host ถ้ามี panel อื่นอยู่ด้วย อาจต้องปิด panel นั้นก่อน
 - ถ้า host ไม่มี `ui.panels` จะไม่มี statusline และ diagnostics อาจมี warning เรื่อง panel capability ซึ่งไม่เท่ากับ mod พัง
 - ถ้า statusline หายหลังแก้ source ให้ติดตั้ง package ใหม่แล้ว `/reload` แทนการแก้ installed copy
 

@@ -184,7 +184,7 @@ export default async function activate(letta: LettaApi) {
     disposers.push(letta.commands.register({
       id: "mh-usage",
       description: "Show cached provider quotas in a busy-safe panel and control quota display",
-      args: "[status [page]|close|off|codex on/off|agy on/off|bar|compact]",
+      args: "[status [page]|close|off|codex on/off|bar|compact]",
       runWhenBusy: true,
       showInTranscript: false,
       run: (context) => {
@@ -535,10 +535,8 @@ function renderStatusline(context: any, status: CachedStatus): string | string[]
       const primaryStatus = leftCandidates.filter((part) => !status.usage?.includes(part));
       const left = renderSegments(chalk, fitSegmentPrefix(primaryStatus, availableLeftWidth, chalk).fitted);
       const first = row(left, right, width);
-      const providerRows = ["Codex", "Agy"].flatMap((provider) => {
-        const parts = status.usage!.filter((part) => part.text.startsWith(`${provider} `));
-        return parts.length ? [providerUsageRow(parts, provider, width, chalk)] : [];
-      });
+      const parts = status.usage.filter((part) => part.text.startsWith("Codex "));
+      const providerRows = parts.length ? [providerUsageRow(parts, width, chalk)] : [];
       // The public row helper already clips/pads to its width contract. Do not
       // reject its padded identity row using an incompatible code-point count.
       return [first, ...providerRows];
@@ -1179,13 +1177,11 @@ function shortId(value: string, max = 18): string {
 
 // Quota is provider-owned remaining capacity, never Letta token usage. Disk state
 // contains only allowlisted settings/normalized windows, never auth or responses.
-type UsageProvider = "codex" | "agy";
-type UsageSettings = { codex: boolean; agy: boolean; style: "bar" | "compact" };
+type UsageSettings = { codex: boolean; style: "bar" | "compact" };
 type UsageWindow = { label: string; remaining: number; reset: number | null };
 type QuotaResult = UsageWindow[] & { credits?: number | null; resetCredits?: number | null };
 type UsageSnapshot = { windows: UsageWindow[]; fetched: number; retry: number; failed: boolean; identity?: string; credits?: number | null; resetCredits?: number | null };
-function usageIdentity(provider: UsageProvider): string {
-  if (provider === "agy") return "local-ls";
+function usageIdentity(): string {
   try {
     const stat = lstatSync(join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "auth.json"));
     return `${stat.dev}:${stat.ino}:${stat.mtimeMs}:${stat.size}`;
@@ -1196,7 +1192,7 @@ const USAGE_TTL = 120_000;
 const USAGE_STALE = 300_000;
 const USAGE_METER_FILLED = "▰";
 const USAGE_METER_EMPTY = "▱";
-const usageDefaults = (): UsageSettings => ({ codex: false, agy: false, style: "bar" });
+const usageDefaults = (): UsageSettings => ({ codex: false, style: "bar" });
 
 function herdrSidebarUsageConsumerActive(): boolean {
   if (process.env.HERDR_ENV !== "1") return false;
@@ -1240,9 +1236,10 @@ function usageWrite(name: string, value: unknown) {
 
 function parseUsageSettings(value: any): UsageSettings {
   if (value === null) return usageDefaults();
-  if (!value || typeof value.codex !== "boolean" || typeof value.agy !== "boolean"
+  if (!value || typeof value.codex !== "boolean"
+    || (typeof value.agy !== "undefined" && typeof value.agy !== "boolean")
     || !["bar", "compact"].includes(value.style)) throw new Error("Invalid usage settings.");
-  return { codex: value.codex, agy: value.agy, style: value.style };
+  return { codex: value.codex, style: value.style };
 }
 
 function quotaNumber(value: unknown): number | null {
@@ -1255,21 +1252,16 @@ function usageMeter(printed: number, cells: number): string {
   return USAGE_METER_FILLED.repeat(filled) + USAGE_METER_EMPTY.repeat(cells - filled);
 }
 
-function providerUsageRow(segments: StatusSegment[], provider: string, width: number, chalk?: any): string {
-  const representatives = provider === "Codex"
-    ? [segments.find((part) => /^Codex P:/.test(part.text)) ?? segments[0]]
-    : [segments.find((part) => part.text.startsWith("Agy Gemini:")) ?? segments[0], segments.find((part) => part.text.startsWith("Agy Claude-GPT:"))];
-  const required = [...new Set(representatives.filter((part): part is StatusSegment => Boolean(part)))];
+function providerUsageRow(segments: StatusSegment[], width: number, chalk?: any): string {
+  const representative = segments.find((part) => /^Codex P:/.test(part.text)) ?? segments[0];
+  const required = representative ? [representative] : [];
   const extras = segments.filter((part) => !required.includes(part));
   const concise = (part: StatusSegment, cells: number): StatusSegment => ({ ...part,
-    text: part.text.slice(provider.length + 1).replace(/ ([▰▱]{8}) (?=(\d+)% left)/, (_meter, _cells, percent) => cells
+    text: part.text.slice(6).replace(/ ([▰▱]{8}) (?=(\d+)% left)/, (_meter, _cells, percent) => cells
       ? ` ${usageMeter(Number(percent), cells)} ` : " ")
       .replace(/% left/g, "%"),
   });
-  const render = (parts: StatusSegment[]) => `${color(chalk, STATUS_COLORS.context, provider)} ${renderSegments(chalk, parts)}`;
-  // Providers own separate rows and shrink independently. Keep actual primary
-  // families before optional windows at narrow widths. When extras fit, restore
-  // their normalized source order so each Agy family keeps its 5h/7d pair.
+  const render = (parts: StatusSegment[]) => `${color(chalk, STATUS_COLORS.context, "Codex")} ${renderSegments(chalk, parts)}`;
   for (const cells of [8, 6, 4, 2, 0]) {
     const selected = [...required];
     const rendered = () => render(segments.filter((part) => selected.includes(part)).map((part) => concise(part, cells)));
@@ -1280,8 +1272,8 @@ function providerUsageRow(segments: StatusSegment[], provider: string, width: nu
     }
     return rendered();
   }
-  const first = concise(required[0], 0);
-  return visibleWidth(render([first])) <= width ? render([first]) : truncateAnsi(`${provider} …`, width);
+  const first = concise(required[0] ?? segments[0], 0);
+  return visibleWidth(render([first])) <= width ? render([first]) : truncateAnsi("Codex …", width);
 }
 
 function quotaColor(remaining: number): string {
@@ -1312,12 +1304,10 @@ function renderUsagePanel(output: string, chalk?: any, page = 0, availableWidth 
     .slice(0, 240);
   const width = Math.max(1, Math.min(240, Number.isFinite(availableWidth) ? Math.floor(availableWidth) : 80));
   const lines = output.split("\n").slice(0, 300).map((line) => clean(line).trim()).filter(Boolean);
-  const states = lines.filter((line) => /^(codex|agy): (on|off)$/.test(line));
-  const windows = lines.filter((line) => /^(Codex|Agy) .*\d+% left(?: stale)?$/.test(line));
+  const states = lines.filter((line) => /^codex: (on|off)$/.test(line));
+  const windows = lines.filter((line) => /^Codex .*\d+% left(?: stale)?$/.test(line));
   const codex = windows.find((line) => line.startsWith("Codex P:")) ?? windows.find((line) => line.startsWith("Codex "));
-  const gemini = windows.find((line) => line.startsWith("Agy Gemini:")) ?? windows.find((line) => line.startsWith("Agy "));
-  const claude = windows.find((line) => line.startsWith("Agy Claude-GPT:"));
-  const representatives = [...new Set([codex, gemini, claude].filter((line): line is string => Boolean(line)))];
+  const representatives = codex ? [codex] : [];
   const tone = (line: string) => {
     const remaining = line.match(/ (\d+)% left(?: stale)?$/);
     return /unavailable|stale|not changed/.test(line) ? STATUS_COLORS.dirty : remaining ? quotaColor(Number(remaining[1])) : STATUS_COLORS.model;
@@ -1329,13 +1319,13 @@ function renderUsagePanel(output: string, chalk?: any, page = 0, availableWidth 
   };
   let provider = "";
   const details = lines.filter((line) => !line.startsWith("Provider quota:") && !line.startsWith("Codex P/S =")).flatMap((line) => {
-    if (/^(codex|agy):/.test(line)) provider = line.split(":")[0];
-    const tagged = /^(Codex|Agy|codex|agy)[ :]/.test(line) ? line : `${provider ? `${provider}: ` : ""}${line}`;
+    if (/^codex:/.test(line)) provider = line.split(":")[0];
+    const tagged = /^(Codex|codex)[ :]/.test(line) ? line : `${provider ? `${provider}: ` : ""}${line}`;
     return wrap(paintQuotaText(null, undefined, tagged, 16)).map((chunk) => paintQuotaText(chalk, tone(line), chunk));
   });
   // Installed ModPanelRow caps ALL additive + product-status rows at eight.
-  // Five local rows leave three for the provider-separated statusline; pages
-  // hold three width-bounded detail rows plus title/navigation.
+  // Five local rows leave room for the statusline rows; pages hold three
+  // width-bounded detail rows plus title/navigation.
   const pages = Math.max(1, Math.ceil(details.length / 3));
   const heading = color(chalk, STATUS_COLORS.agent, truncateAnsi(page ? `Mahiro Usage · details ${page}/${pages}` : "Mahiro Usage · remaining", width));
   const footer = color(chalk, STATUS_COLORS.model, truncateAnsi(page
@@ -1352,7 +1342,7 @@ function renderUsagePanel(output: string, chalk?: any, page = 0, availableWidth 
     return visibleWidth(text) <= width ? text : color(chalk, tone(line), truncateAnsi(text, width));
   });
   const notices = lines.filter((line) => /unavailable|not changed|^Usage:/.test(line) && !line.startsWith("fetched") && !line.startsWith("credits:") && !line.includes(" resets "));
-  const state = summary.length < 3 ? states.map((line) => line.replace(": ", " · ").toUpperCase()).join(" · ") : "";
+  const state = summary.length === 0 ? states.map((line) => line.replace(": ", " · ").toUpperCase()).join(" · ") : "";
   return [heading, ...summary, ...(state ? [color(chalk, STATUS_COLORS.context, truncateAnsi(state, width))] : []),
     ...notices.slice(0, Math.max(0, 3 - summary.length - (state ? 1 : 0))).map((line) => color(chalk, STATUS_COLORS.dirty, truncateAnsi(line, width))),
     ...(!summary.length && !state && !notices.length ? lines.slice(0, 3).map((line) => color(chalk, tone(line), truncateAnsi(line, width))) : []), footer].slice(0, 5);
@@ -1367,61 +1357,40 @@ function quotaBalance(value: unknown): number | null {
   return number !== null && Number.isFinite(number) && number >= 0 ? number : null;
 }
 
-function parseQuota(provider: UsageProvider, data: any): QuotaResult {
+function parseQuota(data: any): QuotaResult {
   const windows: QuotaResult = [];
-  if (provider === "codex") {
-    windows.credits = quotaBalance(data?.credits?.balance);
-    windows.resetCredits = quotaBalance(data?.rate_limit_reset_credits?.available_count);
-    const limits = [{ label: "", rate_limit: data?.rate_limit },
-      ...(Array.isArray(data?.additional_rate_limits) ? data.additional_rate_limits.map((limit: any, index: number) => ({ label: safeQuotaLabel(limit?.limit_name) || safeQuotaLabel(limit?.metered_feature) || `Additional ${index + 1}`, rate_limit: limit?.rate_limit })) : []),
-      { label: "Code review", rate_limit: data?.code_review_rate_limit }];
-    for (const limit of limits) for (const key of ["primary_window", "secondary_window"]) {
-      const window = limit.rate_limit?.[key];
-      const used = quotaNumber(window?.used_percent);
-      const seconds = quotaNumber(window?.limit_window_seconds);
-      if (used === null || used < 0 || used > 100 || seconds === null || seconds <= 0) continue;
-      const duration = seconds % 86400 === 0 ? `${seconds / 86400}d` : seconds % 3600 === 0 ? `${seconds / 3600}h` : `${seconds}s`;
-      const reset = quotaNumber(window?.reset_at);
-      windows.push({ label: `${limit.label ? `${limit.label} ` : ""}${key === "primary_window" ? "P" : "S"}:${duration}`, remaining: 100 - used, reset: reset !== null && reset > 0 && reset < 8.64e12 ? reset * 1000 : null });
-    }
-  } else {
-    const response = data?.response?.response ?? data?.response;
-    // Known family mappings follow Agent Halo's quota-summary contract. Unknown
-    // buckets retain their provider identity and explicit window metadata.
-    const labels: Record<string, string> = { "gemini-5h": "Gemini:5h", "gemini-weekly": "Gemini:7d", "3p-5h": "Claude-GPT:5h", "3p-weekly": "Claude-GPT:7d" };
-    const groups = Array.isArray(response?.groups) ? response.groups : [];
-    const seen = new Set<string>();
-    for (const group of groups) for (const bucket of Array.isArray(group?.buckets) ? group.buckets : []) {
-      const id = bucket?.bucketId;
-      const fraction = quotaNumber(bucket?.remainingFraction);
-      if (!safeQuotaLabel(id) || seen.has(id) || fraction === null || fraction < 0 || fraction > 1) continue;
-      seen.add(id);
-      const reset = typeof bucket.resetTime === "string" ? Date.parse(bucket.resetTime) : NaN;
-      const label = Object.hasOwn(labels, id) ? labels[id] : `${safeQuotaLabel(id)}:${safeQuotaLabel(bucket.window) || "window unavailable"}`;
-      windows.push({ label, remaining: fraction * 100, reset: Number.isFinite(reset) ? reset : null });
-    }
-    const rank = (label: string) => { const index = Object.values(labels).indexOf(label); return index < 0 ? 4 : index; };
-    windows.sort((a, b) => rank(a.label) - rank(b.label));
+  windows.credits = quotaBalance(data?.credits?.balance);
+  windows.resetCredits = quotaBalance(data?.rate_limit_reset_credits?.available_count);
+  const limits = [{ label: "", rate_limit: data?.rate_limit },
+    ...(Array.isArray(data?.additional_rate_limits) ? data.additional_rate_limits.map((limit: any, index: number) => ({ label: safeQuotaLabel(limit?.limit_name) || safeQuotaLabel(limit?.metered_feature) || `Additional ${index + 1}`, rate_limit: limit?.rate_limit })) : []),
+    { label: "Code review", rate_limit: data?.code_review_rate_limit }];
+  for (const limit of limits) for (const key of ["primary_window", "secondary_window"]) {
+    const window = limit.rate_limit?.[key];
+    const used = quotaNumber(window?.used_percent);
+    const seconds = quotaNumber(window?.limit_window_seconds);
+    if (used === null || used < 0 || used > 100 || seconds === null || seconds <= 0) continue;
+    const duration = seconds % 86400 === 0 ? `${seconds / 86400}d` : seconds % 3600 === 0 ? `${seconds / 3600}h` : `${seconds}s`;
+    const reset = quotaNumber(window?.reset_at);
+    windows.push({ label: `${limit.label ? `${limit.label} ` : ""}${key === "primary_window" ? "P" : "S"}:${duration}`, remaining: 100 - used, reset: reset !== null && reset > 0 && reset < 8.64e12 ? reset * 1000 : null });
   }
   if (windows.length > 64) throw new Error("Quota window count exceeds safe detail bound");
   return windows;
 }
 
-function quotaSegments(provider: UsageProvider, snapshot: UsageSnapshot | undefined, style: UsageSettings["style"], now = Date.now()): StatusSegment[] {
-  const name = provider === "codex" ? "Codex" : "Agy";
-  if (!snapshot?.windows.length) return [{ text: `${name} unavailable`, dim: true }];
+function quotaSegments(snapshot: UsageSnapshot | undefined, style: UsageSettings["style"], now = Date.now()): StatusSegment[] {
+  if (!snapshot?.windows.length) return [{ text: "Codex unavailable", dim: true }];
   const stale = snapshot.failed || now - snapshot.fetched > USAGE_STALE;
   return snapshot.windows.map((window) => {
     const expired = stale || (window.reset !== null && window.reset <= now);
     const percent = Math.round(window.remaining);
     const bar = style === "bar" ? ` ${usageMeter(percent, 8)}` : "";
-    return { text: `${name} ${window.label}${bar} ${percent}% left${expired ? " stale" : ""}`, color: expired ? STATUS_COLORS.model : quotaColor(window.remaining) };
+    return { text: `Codex ${window.label}${bar} ${percent}% left${expired ? " stale" : ""}`, color: expired ? STATUS_COLORS.model : quotaColor(window.remaining) };
   });
 }
 
-async function fetchQuota(provider: UsageProvider, signal: AbortSignal): Promise<QuotaResult> {
+async function fetchQuota(signal: AbortSignal): Promise<QuotaResult> {
   const json = async (url: string, options: RequestInit) => {
-    const response = await fetch(url, { ...options, signal: AbortSignal.any([signal, AbortSignal.timeout(provider === "agy" ? 1500 : 6000)]), redirect: "error" });
+    const response = await fetch(url, { ...options, signal: AbortSignal.any([signal, AbortSignal.timeout(6000)]), redirect: "error" });
     if (!response.ok) throw new Error("unavailable");
     // Stream cap also bounds malformed local services and remote error payloads.
     const reader = response.body?.getReader();
@@ -1438,41 +1407,12 @@ async function fetchQuota(provider: UsageProvider, signal: AbortSignal): Promise
       return JSON.parse(body + decoder.decode());
     } finally { await reader.cancel().catch(() => {}); }
   };
-  if (provider === "codex") {
-    const auth = await readJson(join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "auth.json"));
-    const token = auth?.tokens?.access_token;
-    if (typeof token !== "string" || !token) throw new Error("unavailable");
-    const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: "application/json" };
-    if (typeof auth.tokens.account_id === "string") headers["ChatGPT-Account-Id"] = auth.tokens.account_id;
-    return parseQuota(provider, await json("https://chatgpt.com/backend-api/wham/usage", { headers }));
-  }
-  // Inspect existing executables only; never launch Agy or refresh authentication.
-  const ps = await execFileAsync("ps", ["-ax", "-o", "pid=,command="], { encoding: "utf8", timeout: 1500, maxBuffer: 2_000_000, signal });
-  const candidates = ps.stdout.split("\n").map((line) => line.match(/^\s*(\d+)\s+(\S+)(.*)$/)).filter((match) => {
-    if (!match) return false;
-    const executable = match[2].toLowerCase();
-    return /(?:^|\/)agy$/.test(executable) || (executable.includes("language_server") && executable.includes("antigravity"));
-  }).slice(0, 2);
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    const csrf = candidate[3].match(/--csrf_token(?:=|\s+)([^\s]+)/)?.[1]?.replace(/^"|"$/g, "") ?? "";
-    let ports: string[] = [];
-    try {
-      const result = await execFileAsync("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", candidate[1]], { encoding: "utf8", timeout: 1500, maxBuffer: 64_000, signal });
-      ports = [...new Set([...result.stdout.matchAll(/:(\d+) \(LISTEN\)/g)].map((match) => match[1]))].slice(0, 4);
-    } catch { continue; }
-    for (const port of ports) {
-      try {
-        const data = await json(`http://127.0.0.1:${port}/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary`, {
-          method: "POST", headers: { "Content-Type": "application/json", "Connect-Protocol-Version": "1", "x-codeium-csrf-token": csrf },
-          body: JSON.stringify({ metadata: { ideName: "antigravity", extensionName: "antigravity", ideVersion: "unknown", locale: "en" } }),
-        });
-        const windows = parseQuota(provider, data);
-        if (windows.length) return windows;
-      } catch { if (signal.aborted) break; }
-    }
-  }
-  throw new Error("unavailable");
+  const auth = await readJson(join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "auth.json"));
+  const token = auth?.tokens?.access_token;
+  if (typeof token !== "string" || !token) throw new Error("unavailable");
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: "application/json" };
+  if (typeof auth.tokens.account_id === "string") headers["ChatGPT-Account-Id"] = auth.tokens.account_id;
+  return parseQuota(await json("https://chatgpt.com/backend-api/wham/usage", { headers }));
 }
 
 async function refreshHerdrSidebar(signal: AbortSignal): Promise<void> {
@@ -1486,9 +1426,9 @@ async function refreshHerdrSidebar(signal: AbortSignal): Promise<void> {
   });
 }
 
-function readUsageSnapshot(provider: UsageProvider): UsageSnapshot | undefined {
-  const value = usageRead(`${provider}.json`);
-  if (!value || value.identity !== usageIdentity(provider)) return undefined;
+function readUsageSnapshot(): UsageSnapshot | undefined {
+  const value = usageRead("codex.json");
+  if (!value || value.identity !== usageIdentity()) return undefined;
   if (!Array.isArray(value.windows) || value.windows.length > 64 || typeof value.failed !== "boolean"
     || ![value.fetched, value.retry].every((n) => quotaNumber(n) !== null && n >= 0 && n <= Date.now() + 900_000)) return undefined;
   const allowed = /^[a-zA-Z0-9 ._:/()-]+$/;
@@ -1509,8 +1449,8 @@ function createUsageController(
   let busy = false;
   let generation = 0;
   const controllers = new Set<AbortController>();
-  const snapshots: Partial<Record<UsageProvider, UsageSnapshot>> = {};
-  const emit = () => { if (!disposed) publish((["codex", "agy"] as const).flatMap((p) => settings[p] ? quotaSegments(p, snapshots[p], settings.style) : [])); };
+  let snapshot: UsageSnapshot | undefined;
+  const emit = () => { if (!disposed) publish(settings.codex ? quotaSegments(snapshot, settings.style) : []); };
   const update = async () => {
     if (disposed || busy) return;
     busy = true;
@@ -1519,50 +1459,54 @@ function createUsageController(
       settings = parseUsageSettings(usageRead("settings.json"));
       const collectForSidebar = sidebarConsumer();
       let cacheWritten = false;
-      for (const provider of ["codex", "agy"] as const) {
-        if (disposed || current !== generation) break;
-        if (!settings[provider] && !collectForSidebar) { delete snapshots[provider]; continue; }
-        snapshots[provider] = readUsageSnapshot(provider);
+      if (!settings.codex && !collectForSidebar) {
+        snapshot = undefined;
+      } else {
+        snapshot = readUsageSnapshot();
         emit();
-        if ((snapshots[provider]?.retry ?? 0) > Date.now()) continue;
-        mkdirSync(USAGE_DIR, { recursive: true, mode: 0o700 });
-        if (lstatSync(USAGE_DIR).isSymbolicLink()) throw new Error("unsafe directory");
-        const lock = join(USAGE_DIR, `${provider}.lock`);
-        let fd: number;
-        try { fd = openSync(lock, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
-        catch {
-          // Crashed owners expire only beyond the complete fetch deadline. Do not
-          // retry acquisition in this tick; a live successor owns its own inode.
-          try { if (Date.now() - lstatSync(lock).mtimeMs > 30_000) unlinkSync(lock); } catch {}
-          continue;
-        }
-        const inode = fstatSync(fd).ino;
-        const controller = new AbortController();
-        controllers.add(controller);
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        try {
-          const cached = readUsageSnapshot(provider);
-          if (cached && cached.retry > Date.now()) { snapshots[provider] = cached; continue; }
-          const identity = usageIdentity(provider);
-          let next: UsageSnapshot;
+        if ((snapshot?.retry ?? 0) <= Date.now()) {
+          mkdirSync(USAGE_DIR, { recursive: true, mode: 0o700 });
+          if (lstatSync(USAGE_DIR).isSymbolicLink()) throw new Error("unsafe directory");
+          const lock = join(USAGE_DIR, "codex.lock");
+          let fd: number | undefined;
           try {
-            const windows = await load(provider, controller.signal);
-            if (!windows.length && windows.credits == null && windows.resetCredits == null) throw new Error("unavailable");
-            next = { windows, fetched: Date.now(), retry: Date.now() + USAGE_TTL, failed: false, credits: windows.credits ?? null, resetCredits: windows.resetCredits ?? null };
+            fd = openSync(lock, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
           } catch {
-            next = { windows: cached?.windows ?? [], fetched: cached?.fetched ?? 0, retry: Date.now() + 300_000, failed: true, credits: cached?.credits ?? null, resetCredits: cached?.resetCredits ?? null };
+            try { if (Date.now() - lstatSync(lock).mtimeMs > 30_000) unlinkSync(lock); } catch {}
           }
-          if (disposed || current !== generation) continue;
-          if (identity !== usageIdentity(provider)) continue;
-          next.identity = identity;
-          usageWrite(`${provider}.json`, next);
-          cacheWritten = true;
-          snapshots[provider] = next;
-        } finally {
-          clearTimeout(timeout);
-          controllers.delete(controller);
-          closeSync(fd);
-          try { if (lstatSync(lock).ino === inode) unlinkSync(lock); } catch {}
+          if (fd !== undefined) {
+            const inode = fstatSync(fd).ino;
+            const controller = new AbortController();
+            controllers.add(controller);
+            const timeout = setTimeout(() => controller.abort(), 8000);
+            try {
+              const cached = readUsageSnapshot();
+              if (cached && cached.retry > Date.now()) {
+                snapshot = cached;
+              } else {
+                const identity = usageIdentity();
+                let next: UsageSnapshot;
+                try {
+                  const windows = await load(controller.signal);
+                  if (!windows.length && windows.credits == null && windows.resetCredits == null) throw new Error("unavailable");
+                  next = { windows, fetched: Date.now(), retry: Date.now() + USAGE_TTL, failed: false, credits: windows.credits ?? null, resetCredits: windows.resetCredits ?? null };
+                } catch {
+                  next = { windows: cached?.windows ?? [], fetched: cached?.fetched ?? 0, retry: Date.now() + 300_000, failed: true, credits: cached?.credits ?? null, resetCredits: cached?.resetCredits ?? null };
+                }
+                if (!disposed && current === generation && identity === usageIdentity()) {
+                  next.identity = identity;
+                  usageWrite("codex.json", next);
+                  cacheWritten = true;
+                  snapshot = next;
+                }
+              }
+            } finally {
+              clearTimeout(timeout);
+              controllers.delete(controller);
+              closeSync(fd);
+              try { if (lstatSync(lock).ino === inode) unlinkSync(lock); } catch {}
+            }
+          }
         }
       }
       if (cacheWritten && collectForSidebar && !disposed && current === generation) {
@@ -1572,7 +1516,7 @@ function createUsageController(
         catch { /* Cache remains valid; the next cache write or pane event retries projection. */ }
         finally { controllers.delete(controller); }
       }
-    } catch { delete snapshots.codex; delete snapshots.agy; }
+    } catch { snapshot = undefined; }
     finally { busy = false; emit(); }
   };
   return {
@@ -1583,29 +1527,29 @@ function createUsageController(
         const args = raw.trim().toLowerCase().split(/\s+/);
         settings = parseUsageSettings(usageRead("settings.json"));
         if (args[0] && args[0] !== "status") {
-          if (args.length === 1 && args[0] === "off") settings = { ...settings, codex: false, agy: false };
+          if (args.length === 1 && args[0] === "off") settings = { ...settings, codex: false };
           else if (args.length === 1 && ["bar", "compact"].includes(args[0])) settings.style = args[0] as UsageSettings["style"];
-          else if (args.length === 2 && ["codex", "agy"].includes(args[0]) && ["on", "off"].includes(args[1])) settings[args[0] as UsageProvider] = args[1] === "on";
-          else return { type: "output", output: "Usage: /mh-usage [status|off|codex on/off|agy on/off|bar|compact]" };
+          else if (args.length === 2 && args[0] === "codex" && ["on", "off"].includes(args[1])) settings.codex = args[1] === "on";
+          else return { type: "output", output: "Usage: /mh-usage [status|off|codex on/off|bar|compact]" };
           usageWrite("settings.json", settings);
           generation += 1;
           for (const controller of controllers) controller.abort();
           emit();
           void update();
         }
-        const lines = [`Provider quota: ${settings.style}; percentages are remaining.`, "Codex P/S = actual primary/secondary duration. Agy labels retain provider bucket identity. Windows are independent."];
-        for (const provider of ["codex", "agy"] as const) {
-          lines.push(`${provider}: ${settings[provider] ? "on" : "off"}`);
-          if (!settings[provider]) continue;
-          let snapshot = snapshots[provider];
-          try { snapshot ??= readUsageSnapshot(provider); } catch {}
-          lines.push(...quotaSegments(provider, snapshot, settings.style).map((s) => s.text));
-          if (provider === "codex") {
-            const stale = snapshot && (snapshot.failed || Date.now() - snapshot.fetched > USAGE_STALE) ? " (stale)" : "";
-            lines.push(`  credits: ${snapshot?.credits ?? "unavailable"}${stale}; reset credits: ${snapshot?.resetCredits ?? "unavailable"}${stale}`);
-          }
-          for (const window of snapshot?.windows ?? []) lines.push(`  ${window.label} resets ${window.reset === null ? "unavailable" : new Date(window.reset).toISOString()}`);
-          lines.push(`  fetched ${snapshot?.fetched ? new Date(snapshot.fetched).toISOString() : "never"}; absolute limits not supplied by these quota APIs.`);
+        const lines = [
+          `Provider quota: ${settings.style}; percentages are remaining.`,
+          "Codex P/S = actual primary/secondary duration. Windows are independent.",
+        ];
+        lines.push(`codex: ${settings.codex ? "on" : "off"}`);
+        if (settings.codex) {
+          let currentSnapshot = snapshot;
+          try { currentSnapshot ??= readUsageSnapshot(); } catch {}
+          lines.push(...quotaSegments(currentSnapshot, settings.style).map((s) => s.text));
+          const stale = currentSnapshot && (currentSnapshot.failed || Date.now() - currentSnapshot.fetched > USAGE_STALE) ? " (stale)" : "";
+          lines.push(`  credits: ${currentSnapshot?.credits ?? "unavailable"}${stale}; reset credits: ${currentSnapshot?.resetCredits ?? "unavailable"}${stale}`);
+          for (const window of currentSnapshot?.windows ?? []) lines.push(`  ${window.label} resets ${window.reset === null ? "unavailable" : new Date(window.reset).toISOString()}`);
+          lines.push(`  fetched ${currentSnapshot?.fetched ? new Date(currentSnapshot.fetched).toISOString() : "never"}; absolute limits not supplied by these quota APIs.`);
         }
         return { type: "output", output: lines.join("\n") };
       } catch { return { type: "output", output: "Usage state unavailable; settings were not changed." }; }
