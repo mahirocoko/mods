@@ -62,6 +62,7 @@ const SKIPPED_DIRECTORIES = new Set([
   "dist",
   "coverage",
 ]);
+const SAFE_DOTENV_TEMPLATE_BASENAMES = new Set([".env.example", ".env.sample", ".env.template"]);
 const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const SAFE_MOD_PATH = /^\.\/(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*[A-Za-z0-9][A-Za-z0-9._-]*\.(?:js|mjs|ts|tsx)$/;
 
@@ -187,7 +188,7 @@ function isForbiddenSourcePath(relativePath) {
   const basename = lowerSegments.at(-1) ?? "";
 
   if (lowerSegments.includes("backups")) return "files under backups/ are runtime-only";
-  if (basename.startsWith(".env") && basename !== ".env.example") return ".env files other than .env.example are forbidden";
+  if (basename.startsWith(".env") && !SAFE_DOTENV_TEMPLATE_BASENAMES.has(basename)) return "real .env files are forbidden";
   if (basename === ".mcp.json") return ".mcp.json is runtime-only";
   if (basename === "settings.json" || basename === "settings.local.json") return `${basename} is runtime-only`;
   if (basename.endsWith(".state.json")) return "*.state.json files are runtime-only";

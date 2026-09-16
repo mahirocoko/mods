@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const root = mkdtempSync(join(tmpdir(), "mahiro-secret-read-fixture-"));
-const allowed = [".env.example", "package.json", "settings.json", "config.yaml", "config.yml", "pyproject.toml", "pom.xml", "notes.txt", "src/index.ts", ".ssh/config", ".ssh/known_hosts", ".ssh/known_hosts.old", ".ssh/authorized_keys", ".ssh/work.pub"];
-const blocked = [".env", ".env.local", ".env.sample", ".env.template", "nested/.env.production", ".npmrc", ".pypirc", "auth.json", "credentials.json", "credentials.dev.json", "secret.txt", "secrets.yaml", "id_rsa", "id_dsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "id_xmss", "identity", "server.KEY", "server.pem", "server.p12", "server.pfx", ".ssh/work_deploy", ".ssh/github", ".letta/lc-local-backend/providers/custom.json"];
+const allowed = [".env.example", ".env.sample", ".env.template", "nested/.ENV.EXAMPLE", "nested/.Env.Sample", "nested/.ENV.TEMPLATE", "package.json", "settings.json", "config.yaml", "config.yml", "pyproject.toml", "pom.xml", "notes.txt", "src/index.ts", ".ssh/config", ".ssh/known_hosts", ".ssh/known_hosts.old", ".ssh/authorized_keys", ".ssh/work.pub"];
+const blocked = [".env", ".env.local", "nested/.env.production", ".ENV", ".ENV.local", "nested/.Env.Production", ".env.sample.local", ".ENV.TEMPLATE.local", ".npmrc", ".pypirc", "auth.json", "credentials.json", "credentials.dev.json", "secret.txt", "secrets.yaml", "id_rsa", "id_dsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "id_xmss", "identity", "server.KEY", "server.pem", "server.p12", "server.pfx", ".ssh/work_deploy", ".ssh/github", ".letta/lc-local-backend/providers/custom.json"];
 for (const file of [...allowed, ...blocked]) {
   const path = join(root, file);
   mkdirSync(join(path, ".."), { recursive: true });
@@ -39,17 +39,19 @@ try {
     }
     for (const alias of ["Bash", "ShellCommand", "shell_command", "exec_command", "functions.Bash", "functions.exec_command"]) {
       await expect(event(alias, { command: "cat .env" }, phase), true);
-      await expect(event(alias, { cmd: ["cat", ".env.example"] }, phase), false);
+      for (const template of [".env.example", ".env.sample", ".env.template"]) {
+        await expect(event(alias, { cmd: ["cat", template] }, phase), false);
+      }
     }
   }
   for (const command of [
-    "cat .env.example", "cat package.json config.yaml pyproject.toml pom.xml notes.txt", "set -e", "set -eu", "set -euo pipefail",
+    "cat .env.example", "cat .env.sample", "cat .env.template", "cat nested/.ENV.EXAMPLE", "cat nested/.Env.Sample", "cat nested/.ENV.TEMPLATE", "cat package.json config.yaml pyproject.toml pom.xml notes.txt", "set -e", "set -eu", "set -euo pipefail",
     "env NODE_ENV=test node --version", "/usr/bin/env python3 --version", "env -u EXAMPLE node --version",
     "ls .env .npmrc", "test -f .npmrc", "[ -f .env ]", "stat .env", "find . -name .npmrc", "find . -name credentials.json",
     "cat <<'PY'\n#!/usr/bin/env python3\nprint('cat .env and printenv')\nPY", "ccc search parser", "ccc --help",
   ]) await expect(event("Bash", { command }), false);
   for (const command of [
-    "cat .npmrc", "cat 'nested/.env.local'", "head credentials.json", "base64 ~/.ssh/work", "rg token .env",
+    "cat .npmrc", "cat 'nested/.env.local'", "cat nested/.ENV", "cat nested/.Env.Local", "cat nested/.env.sample.local", "head credentials.json", "base64 ~/.ssh/work", "rg token .env",
     "find . -name .npmrc -exec cat {} \\;", "find . -name credentials.json -exec head {} \\;",
     "ls .env && cat .env", "ls .env;cat .env", "test -f .npmrc|cat .npmrc",
     "printenv", "export -p", "declare -x", "set", "true; set", "cat /proc/self/environ", "env", "/usr/bin/env -0", "env X=fixture", "env -u EXAMPLE",

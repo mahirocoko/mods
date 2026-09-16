@@ -42,8 +42,9 @@ The entry embeds the existing local Python hook policy to preserve Python
 `shlex`, path-name, heredoc, and CCC contracts without a runtime dependency on
 the old hook file. Read/ReadFile/read_file and Bash/ShellCommand/shell_command/
 exec_command aliases (including dotted tool namespaces) are recognized. Other
-tools retain the recursive direct-path fallback. Exact `.env.example` remains
-an early filename exception, including inside otherwise sensitive directories.
+tools retain the recursive direct-path fallback. Exact `.env.example`,
+`.env.sample`, and `.env.template` files remain a case-normalized early
+filename exception, including inside otherwise sensitive directories.
 JSON/YAML/YML/TOML/XML/TXT are not blanket denied. Sensitive names include real
 `.env` variants, `.npmrc`, `.pypirc`, auth/credentials files, SSH private-key
 names and unknown SSH files, identity, key/PEM/P12/PFX suffixes, credentials./

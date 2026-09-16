@@ -48,7 +48,8 @@ policy through the public permission API, not through `tool_start` or an
 normal calls; both approval and execution inspect their own arguments. Other
 permission policies still apply. This entry adds no attribution rule.
 
-Exact `.env.example`, ordinary developer JSON/YAML/TOML/XML/TXT files, safe SSH
+Case-normalized exact `.env.example`, `.env.sample`, and `.env.template`
+files, ordinary developer JSON/YAML/TOML/XML/TXT files, safe SSH
 metadata/public keys, narrow shell metadata checks, `set -e`/`set -eu`, `env`
 with a command, and heredoc data retain the existing exceptions. Real dotenv,
 credential/key/provider paths, environment dumps, and CCC file access without
@@ -84,7 +85,7 @@ letta --new --backend local
 
 The fixture command only creates synthetic files in a temporary directory and
 prints its path; it neither installs nor starts a session. In the fresh session,
-ask for Read of `package.json` and `.env.example` (normal permission flow), then
+ask for Read of `package.json` and one explicit dotenv template such as `.env.sample` (normal permission flow), then
 Read of `.env` and `credentials.json`, and Bash `cat .env` (must deny). Repeat
 with a real Letta Agent child in the same fixture directory, and inspect the
 actual denied results and loaded overlay rather than accepting a narrative

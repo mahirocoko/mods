@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath
 
 SENSITIVE_BASENAMES = {'.env', '.npmrc', '.pypirc', 'auth.json', 'credentials.json',
     'id_dsa', 'id_ecdsa', 'id_ecdsa_sk', 'id_ed25519', 'id_ed25519_sk', 'id_rsa', 'id_xmss', 'identity'}
+SAFE_DOTENV_TEMPLATE_BASENAMES = {'.env.example', '.env.sample', '.env.template'}
 SSH_SAFE_BASENAMES = {'authorized_keys', 'config', 'known_hosts', 'known_hosts.old'}
 READ_COMMAND_BASENAMES = {'awk', 'base64', 'bat', 'cat', 'grep', 'head', 'hexdump',
     'less', 'more', 'openssl', 'rg', 'sed', 'strings', 'tail', 'xxd'}
@@ -28,8 +29,8 @@ def basename(value):
 
 def is_sensitive_path(value):
     normalized = value.replace('\\', '/')
-    name = basename(value)
-    if not name or name == '.env.example':
+    name = basename(value).lower()
+    if not name or name in SAFE_DOTENV_TEMPLATE_BASENAMES:
         return False
     lower_path = normalized.lower()
     if (lower_path.startswith(('~/.ssh/', '.ssh/')) or '/.ssh/' in lower_path):
