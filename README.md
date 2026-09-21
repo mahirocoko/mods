@@ -266,6 +266,13 @@ checks, reports, changed paths, and cross-workflow references are caller-supplie
 coordination metadata—not process truth, filesystem enforcement, or
 verification evidence.
 
+New Letta-subagent session references use
+`letta:agent=<agent-id>;conversation=<conversation-id>` so raw `default`
+conversation IDs never collide across agents. The pair remains caller-supplied
+coordination metadata: it identifies the launch lane but does not prove readiness,
+execution, completion, or result ownership. Other executor kinds retain their
+native receipt format, and existing stored records remain readable.
+
 For Direct-CLI v0.1.89 live-return jobs, a controller-owned background wait may
 wake the same open conversation and trigger later collection. Record its job or
 session reference and eventual bounded report normally. The wake event proves

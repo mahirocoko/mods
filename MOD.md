@@ -341,6 +341,13 @@ means a bounded report was recorded; `handed_off` means the scope owner consumed
 the report and can collect fresh Code Evidence. Neither means successful,
 verified, accepted, merged, or complete.
 
+For new `letta_subagent` lane writes, each session reference must encode both
+launch identities as `letta:agent=<agent-id>;conversation=<conversation-id>`.
+This prevents raw `default` conversation IDs from colliding across agents while
+remaining caller metadata rather than a trusted execution or completion receipt.
+Other executor kinds keep their owner-native session reference format; existing
+stored records remain readable.
+
 A Direct-CLI v0.1.89 controller may use a background wait to wake the same open
 conversation before collecting a finished Herdr job. That terminal wake is
 still only lifecycle metadata: the caller must collect and record a bounded

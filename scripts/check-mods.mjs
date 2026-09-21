@@ -2063,7 +2063,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-finish-voice.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.10.1", "Package version must be 0.10.1");
+  assert(packageJson.version === "0.10.2", "Package version must be 0.10.2");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact thirteen-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact thirteen-entry package");
 
@@ -2506,6 +2506,17 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   fail(() => execution.run({ ...ctx, args: { operation: "unknown", workspace } }), "operation must be");
   const initial = run(base());
   assert(initial.revision === 1 && initial.stage === "plan" && Object.values(testing.readState().runs)[0].workspace === resolve(workspace), "Execution Run must use explicit target workspace rather than ctx.cwd");
+  const legacySessionContext = { agent: { id: "agent-run" }, conversation: { id: "legacy-session-ref" }, cwd };
+  let legacySessionRun = call(create, base({ summary: "Preserve a pre-canonical Letta session reference" }), legacySessionContext).run;
+  legacySessionRun = call(update, { workspace, action: "add_lane", expected_run_id: legacySessionRun.id, expected_revision: legacySessionRun.revision, lane_id: "legacy-reader", required: false, executor_kind: "letta_subagent", role: "research", worktree_ref: "main", summary: "Legacy reader" }, legacySessionContext).run;
+  const legacySessionState = testing.readState();
+  const legacySessionKey = JSON.stringify(["agent-run", "legacy-session-ref", ""]);
+  legacySessionState.runs[legacySessionKey].lanes[0].session_refs = ["default"];
+  testing.writeState(legacySessionState);
+  const loadedLegacySession = call(get, { workspace }, legacySessionContext).run;
+  assert(loadedLegacySession.lanes[0].session_refs[0] === "default", "schema-v1 state must keep pre-canonical Letta session references readable");
+  const updatedLegacySession = call(update, { workspace, action: "set_open_questions", expected_run_id: loadedLegacySession.id, expected_revision: loadedLegacySession.revision, open_questions: [{ question: "Unrelated legacy-state update", blocking: false }] }, legacySessionContext).run;
+  assert(updatedLegacySession.lanes[0].session_refs[0] === "default" && updatedLegacySession.open_questions.length === 1, "unrelated updates must preserve pre-canonical Letta session references without forcing migration");
   const archivedContext = { agent: { id: "agent-run" }, conversation: { id: "stale-run" }, cwd };
   const archivedRun = call(create, base({ summary: `Stale bounded coordination ${"detail ".repeat(30)}` }), archivedContext).run;
   const listedRuns = commands[0].run({ ...ctx, args: "list" });
@@ -2525,6 +2536,7 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   assert((statSync(testing.statePath).mode & 0o777) === 0o600, "Execution Run state must use mode 0600");
   assert(get.run({ ...ctx, args: { workspace } }).execution_handoff === null, "plan responses must not emit executable handoff controls");
   assert(execution.parameters.required.join(",") === "operation" && execution.parameters.properties.operation.enum.join(",") === "get,create,update" && execution.parameters.properties.targets && execution.parameters.properties.action.enum.join(",") === "add_lane,set_lane_sessions,set_lane_status,add_report,add_blocker,resolve_blocker,set_open_questions,set_goal_refs,set_handoff,set_stage", "Execution Run unified schema must preserve every current operation and update action");
+  assert(execution.parameters.properties.session_refs.description.includes("letta:agent=<agent-id>;conversation=<conversation-id>"), "Execution Run schema must expose the canonical Letta subagent identity pair");
   fail(() => updateRun(initial, { action: "set_stage", stage: "active" }), "Invalid Execution Run transition");
   let current = updateRun(initial, { action: "add_lane", lane_id: "main", required: true, executor_kind: "main_agent", role: "implement", worktree_ref: "main", summary: "Main implementation" });
   current = updateRun(current, { action: "add_lane", lane_id: "reader", required: false, executor_kind: "letta_subagent", role: "research", worktree_ref: "main", summary: "Reader overlap" });
@@ -2537,6 +2549,9 @@ function checkMahiroExecutionRunRegistration(activate, testing, testRoot) {
   current = updateRun(current, { action: "set_open_questions", open_questions: [] });
   current = updateRun(current, { action: "set_stage", stage: "ready" });
   fail(() => updateRun(current, { action: "set_stage", stage: "active" }), "session refs");
+  fail(() => updateRun(current, { action: "set_lane_sessions", lane_id: "reader", session_refs: ["conversation:default"] }), "Letta subagent must use letta:agent=<agent-id>;conversation=<conversation-id>");
+  current = updateRun(current, { action: "set_lane_sessions", lane_id: "reader", session_refs: ["letta:agent=agent-local-reader;conversation=default"] });
+  assert(current.lanes[1].session_refs[0] === "letta:agent=agent-local-reader;conversation=default", "Letta subagent lanes must retain both launch identities in one canonical session reference");
   current = updateRun(current, { action: "set_lane_sessions", lane_id: "main", session_refs: ["session-main"] });
   current = updateRun(current, { action: "set_stage", stage: "active" });
   current = updateRun(current, { action: "set_lane_status", lane_id: "main", status: "active" });

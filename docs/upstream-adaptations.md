@@ -294,6 +294,10 @@ Upstream pattern references:
   humans, and other external executors without changing trust by executor type.
 - Track declared targets, one-writer/many-reader ownership, bounded session and
   worktree references, blockers, reports, and changed paths as caller metadata.
+- Encode new Letta-subagent session references as
+  `letta:agent=<agent-id>;conversation=<conversation-id>` so the same raw
+  `default` conversation value cannot collapse distinct agents; retain other
+  executor receipt formats and treat every reference as caller metadata.
 - Gate `plan → ready → active → reported → handed_off`, with blockers
   orthogonal and `abandoned` terminal. Handed off means ready for fresh Code
   Evidence, never verified, accepted, merged, or complete.

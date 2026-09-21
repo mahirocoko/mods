@@ -367,6 +367,7 @@ Mahiro ใช้คำสั่งเหล่านี้เพื่อดู�
 - Target ที่เขียนได้มี writer ได้หนึ่ง lane ส่วน reader มีได้หลาย lane
 - Execution Run ไม่ได้เปิด agent, เลือก model, ส่ง prompt, ตรวจ process หรือ enforce filesystem permission
 - Report, session ref, changed path และ check เป็น caller metadata
+- ถ้า lane เป็น `letta_subagent` ต้องบันทึก session ref เป็น `letta:agent=<agent-id>;conversation=<conversation-id>` เพื่อไม่ให้ `default` จากคนละ agent ชนกัน โดยค่านี้ยังไม่ใช่หลักฐานว่า agent เริ่มทำงานหรือส่งผลลัพธ์แล้ว
 - `reported` แปลว่ามีรายงานถูกบันทึก ไม่ได้แปลว่างานผ่าน
 - `handed_off` แปลว่าส่ง scope ต่อแล้ว ไม่ได้แปลว่า verified, merged หรือ complete
 - หลัง handoff ต้อง collect Code Evidence ใหม่ แล้วค่อยแนบเข้า Goal

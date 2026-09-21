@@ -94,6 +94,13 @@ cross-turn coordination, or a material implementation handoff justifies the
 extra state. Straightforward work remains `Goal (optional) → implement → Code
 Evidence (when acceptance needs it)`.
 
+When a Letta subagent lane is recorded, its current session-reference owner is
+the launch result's complete identity pair:
+`letta:agent=<agent-id>;conversation=<conversation-id>`. A bare conversation ID
+is insufficient because `default` is not globally unique. The canonical string
+is still caller metadata, not child readiness, execution, report, or proof. Other
+executor kinds retain their own receipt formats.
+
 Direct-CLI may arrange a controller-owned same-conversation wake after a
 background wait reaches terminal status. Execution Run does not observe or
 control that wait. A wake/session/job reference remains caller metadata until
