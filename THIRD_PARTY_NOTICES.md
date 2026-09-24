@@ -127,6 +127,26 @@ present caller reports as verification.
 
 No endorsement by Letta or the upstream authors is implied.
 
+## Letta Model Profiles
+
+`mods/mahiro-model-profiles.ts` is adapted in part from
+`@letta-ai/model-profiles` version `0.1.0` in the
+[`letta-ai/mods`](https://github.com/letta-ai/mods) repository.
+
+- Upstream package author: just-cameron
+- Source commit: `60b29e648a77b943a3ebae4baf7a14562a82ee6d`
+- Upstream source file SHA-256: `10c64b4da84b8aadb8cdd8fe4e437216d2c0d4d5ff933cff4a435c16f2355d73`
+- Upstream license: Apache License 2.0; a complete copy is included at
+  `LICENSES/Apache-2.0.txt`.
+
+The Mahiro adaptation keeps per-model context/reasoning profiles, label lookup,
+conversation/agent scope, atomic MemFS persistence, and the one-call
+`updateLlmConfig` switch. It namespaces the public surface, uses the Mahiro
+state filename and disable sentinel, applies stricter bounded input validation,
+and keeps the statusline as a separate read-only consumer.
+
+No endorsement by Letta or the upstream author is implied.
+
 ## Letta User Timestamps
 
 `mods/mahiro-user-timestamps.ts` is adapted from

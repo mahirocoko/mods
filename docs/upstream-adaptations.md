@@ -362,3 +362,42 @@ Upstream:
   Mahiro explicitly superseded that temporary boundary after the replacement
   passed live use; future upstream comparison should use the pinned receipt or a
   deliberate reinstall rather than preserving a stale runtime package.
+
+## Mahiro Model Profiles Phase 6
+
+Upstream:
+
+- package: `@letta-ai/model-profiles@0.1.0`
+- source commit: `60b29e648a77b943a3ebae4baf7a14562a82ee6d`
+- source file SHA-256:
+  `10c64b4da84b8aadb8cdd8fe4e437216d2c0d4d5ff933cff4a435c16f2355d73`
+- license: Apache-2.0
+
+### Keep
+
+- Per-model context-window and reasoning-effort profile records.
+- Exact-handle, case-insensitive-handle, and case-insensitive-label lookup.
+- Conversation versus agent scope, with explicit switch overrides taking priority.
+- One `ctx.conversation.updateLlmConfig` call so model and saved settings move
+  together and become effective on the next turn.
+- Agent-scoped MemFS persistence, atomic replacement, and corrupt-file recovery.
+
+### Adapt
+
+- Namespace the public surface as `/mh-model-profile` and `mh_*_model_profile`
+  tools so this bundle owns its commands and remains collision-safe.
+- Use `mahiro-model-profiles.json` under the current agent's MemFS `mods`
+  directory and the bundle's fixed disable sentinel.
+- Use the authored TypeScript interface convention and stricter bounded handle,
+  label, control-character, and positive-integer validation.
+- Keep statusline/model metadata as a separate read-only consumer; this mod owns
+  only profiles and the explicit switch operation.
+
+### Reject
+
+- Installing or editing the official package as a runtime dependency.
+- Importing Letta Code internals or the statusline implementation.
+- Provider routing, model capability claims, automatic profile creation, or
+  background model switching.
+- Treating a saved context/reasoning preference as proof that the provider
+  accepts the value.

@@ -8,6 +8,7 @@ const modsRoot = resolve(process.env.LETTA_MODS_ROOT ?? join(homedir(), ".letta"
 const lockPath = join(modsRoot, ".mahiro-entry-manager.lock");
 const entries = new Map([
   ["timestamps", "mahiro-user-timestamps.disabled"],
+  ["model-profiles", "mahiro-model-profiles.disabled"],
   ["herdr", "mahiro-herdr-lifecycle.disabled"],
   ["goal", "mahiro-goal.disabled"],
   ["evidence", "mahiro-code-evidence.disabled"],

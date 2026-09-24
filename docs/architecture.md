@@ -2,11 +2,12 @@
 
 ## Current reality
 
-The repository root is one installable Letta package with thirteen manifest entries. This deliberately favors one-command private Git installation and one update source over independent npm publication.
+The repository root is one installable Letta package with fourteen manifest entries. This deliberately favors one-command private Git installation and one update source over independent npm publication.
 
 ```text
 package.json#letta
 ├── mods/mahiro-user-timestamps.ts
+├── mods/mahiro-model-profiles.ts
 ├── mods/mahiro-herdr-lifecycle.ts
 ├── mods/mahiro-goal.ts
 ├── mods/mahiro-code-evidence.ts
@@ -21,7 +22,7 @@ package.json#letta
 └── mods/mahiro-finish-voice.js
 ```
 
-The declared capability list is the union of the thirteen entries. Runtime behavior still remains independent because each activation function checks the capabilities it needs.
+The declared capability list is the union of the fourteen entries. Runtime behavior still remains independent because each activation function checks the capabilities it needs.
 
 `mahiro-herdr-lifecycle.ts` is a local observability adapter, not a Herdr
 controller. It activates only when Herdr injects its local socket and pane
@@ -61,7 +62,8 @@ locked atomic re-key: the invoking empty conversation becomes the sole owner,
 the source entry is deleted in the same write, and the origin workspace remains
 attribution. The existing `mh_update_goal` registration owns model movement and
 Rule CRUD actions so this feature adds no registrations. The current bundle
-budget is 45 registrations, including both guard overlays, the finish event,
+budget is 50 registrations, including the five model-profile registrations,
+both guard overlays, the finish event,
 and the Herdr lifecycle model/context observer.
 Finish voice uses `mods/mahiro-voice-runtime.js` for bounded local audio;
 that helper is packaged but is not a manifest entry.
@@ -87,7 +89,7 @@ state stay separate and are never imported or mutated.
 - The bundle matches Mahiro's current machine, where these mods are intended to be active together after each new entry passes its explicit runtime gate.
 
 Letta still installs and versions the bundle as a unit. Local troubleshooting
-and optional runtime use can disable one of the ten switchable entries through a fixed sentinel before
+and optional runtime use can disable one of the eleven switchable entries through a fixed sentinel before
 that entry registers anything; this leaves the managed registry and state
 untouched. Split a mod into an independently versioned package only when
 separate distribution—not merely local runtime control—becomes a real

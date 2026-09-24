@@ -17,7 +17,7 @@ const assert = (condition, message) => {
 
 try {
   const initial = run("status");
-  assert(initial.includes("goal: enabled") && initial.split("\n").filter(Boolean).length === 10, "entry status must list ten switchable entries");
+  assert(initial.includes("goal: enabled") && initial.split("\n").filter(Boolean).length === 11, "entry status must list eleven switchable entries");
   assert(run("disable", "goal").includes("goal: disabled"), "entry manager must disable one entry");
   const sentinel = join(root, "mahiro-goal.disabled");
   assert((lstatSync(sentinel).mode & 0o777) === 0o600, "entry sentinel must use mode 0600");
@@ -70,7 +70,7 @@ try {
       assert(rejected, `${entry} must not expose a per-entry switch`);
     }
   }
-  console.log("Per-entry mod manager valid: ten switchable entries, three automatic-only hooks, atomic locked disable/enable, idempotence, mode, unknown-name, and symlink checks passed.");
+  console.log("Per-entry mod manager valid: eleven switchable entries, three automatic-only hooks, atomic locked disable/enable, idempotence, mode, unknown-name, and symlink checks passed.");
 } finally {
   await rm(root, { recursive: true, force: true });
 }

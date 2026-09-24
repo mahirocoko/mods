@@ -18,6 +18,7 @@ const errors = [];
 
 const EXPECTED_MODS = [
   "./mods/mahiro-user-timestamps.ts",
+  "./mods/mahiro-model-profiles.ts",
   "./mods/mahiro-herdr-lifecycle.ts",
   "./mods/mahiro-goal.ts",
   "./mods/mahiro-code-evidence.ts",

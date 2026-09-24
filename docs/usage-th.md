@@ -49,6 +49,7 @@ pnpm mods:update
 | ถ้าต้องการ… | ใช้ mod |
 | --- | --- |
 | ให้ทุกข้อความมีเวลาท้องถิ่นที่เชื่อถือได้ | Mahiro User Timestamps |
+| จำ context window และ reasoning effort แยกตาม model | Mahiro Model Profiles |
 | ดูว่า Letta main/subagent ในแต่ละ Herdr Space กำลังทำงาน รอ input หรือเสร็จแล้ว | Mahiro Herdr Lifecycle |
 | ตั้งเป้าหมาย มี DoD และกำหนด human gate เมื่อต้องให้ Mahiro ตรวจรับ | Mahiro Goal |
 | เก็บ Git state และผล check เพื่อใช้อ้างอิง | Mahiro Code Evidence |
@@ -110,7 +111,7 @@ pnpm mods:entry disable herdr
 pnpm mods:entry enable herdr
 ```
 
-ชื่อที่ใช้ได้คือ `timestamps`, `herdr`, `goal`, `evidence`, `ux`, `code-map`,
+ชื่อที่ใช้ได้คือ `timestamps`, `model-profiles`, `herdr`, `goal`, `evidence`, `ux`, `code-map`,
 `execution`, `rtk`, `statusline` และ `mcp` ทุกครั้งที่เปลี่ยนสถานะต้อง
 `/reload` ใน session ที่เปิดอยู่ ตัว manager จะไม่แก้ `packages.json`, ไม่ลบ
 state และไม่ปิด entry อื่นใน bundle
@@ -139,7 +140,56 @@ state และไม่ปิด entry อื่นใน bundle
 
 ---
 
-## 2. Mahiro Goal
+## 2. Mahiro Model Profiles
+
+### ใช้เมื่อไร
+
+ใช้เมื่อสลับ model แล้วอยากให้ context window และ reasoning effort ที่ตั้งไว้
+ถูกนำไปใช้พร้อมกันโดยไม่ต้องตั้งค่าซ้ำทุกครั้ง ตัวนี้เป็น preference ต่อ agent
+ไม่ใช่ model router และไม่เปลี่ยน provider ให้เอง
+
+### ใช้อย่างไร
+
+ดู profile และค่าปัจจุบัน:
+
+```text
+/mh-model-profile list
+```
+
+บันทึก profile สำหรับ GPT-6 Sol:
+
+```text
+/mh-model-profile set openai-codex/gpt-6-sol 272000 high GPT-6 Sol
+```
+
+สลับไปใช้ profile จาก handle หรือ label:
+
+```text
+/mh-model-profile switch GPT-6 Sol
+/mh-model-profile switch GPT-6 Sol --agent
+```
+
+ลบ profile:
+
+```text
+/mh-model-profile remove GPT-6 Sol
+```
+
+การ switch มีผลใน turn ถัดไป และค่า explicit ที่ส่งให้ model tool จะ override
+profile ที่บันทึกไว้ การเปลี่ยนแบบ `conversation` เป็นค่าเริ่มต้นและกระทบเฉพาะ
+thread ปัจจุบัน ส่วน `--agent` เปลี่ยนค่า default ของ agent
+
+### ต้องรู้
+
+- Profile เก็บใน agent-scoped MemFS ไม่ได้เก็บใน checkout ของ project
+- `context_window` ต้องเป็น positive integer และ reasoning ต้องเป็น tier ที่ host รองรับ
+- ถ้าไม่มี profile ตรงกัน ตัวนี้ยังสลับ model ได้ แต่ค่าที่ไม่ระบุจะใช้ provider default
+- Profile ไม่ได้ยืนยันว่า provider รองรับ context window หรือ reasoning tier ที่เลือก
+- หลัง update bundle ให้ `/reload` ใน session ที่เปิดอยู่
+
+---
+
+## 3. Mahiro Goal
 
 ### ใช้เมื่อไร
 
@@ -233,7 +283,7 @@ Agent จัดการ Rules ผ่าน `mh_create_goal` และ action `a
 
 ---
 
-## 3. Mahiro Code Evidence
+## 4. Mahiro Code Evidence
 
 ### ใช้เมื่อไร
 
@@ -265,7 +315,7 @@ Agent จัดการ Rules ผ่าน `mh_create_goal` และ action `a
 
 ---
 
-## 4. Mahiro UX Workflow
+## 5. Mahiro UX Workflow
 
 ### ใช้เมื่อไร
 
@@ -301,7 +351,7 @@ Agent ใช้ `mh_create_ux_workflow` และ `mh_update_ux_workflow` เก
 
 ---
 
-## 5. Mahiro Code Map
+## 6. Mahiro Code Map
 
 ### ใช้เมื่อไร
 
@@ -330,7 +380,7 @@ Intent มีสามแบบ:
 
 ---
 
-## 6. Mahiro Execution Run
+## 7. Mahiro Execution Run
 
 ### ใช้เมื่อไร
 
@@ -375,7 +425,7 @@ Mahiro ใช้คำสั่งเหล่านี้เพื่อดู�
 
 ---
 
-## 7. RTK Control
+## 8. RTK Control
 
 ### ใช้เมื่อไร
 
@@ -421,7 +471,7 @@ Mahiro ใช้คำสั่งเหล่านี้เพื่อดู�
 
 ---
 
-## 8. Compact Statusline
+## 9. Compact Statusline
 
 ### ใช้เมื่อไร
 
@@ -445,7 +495,7 @@ Mahiro ใช้คำสั่งเหล่านี้เพื่อดู�
 
 ---
 
-## 9. Lazy MCP Proxy
+## 10. Lazy MCP Proxy
 
 ### ใช้เมื่อไร
 

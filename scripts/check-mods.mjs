@@ -10,6 +10,7 @@ import { transform } from "esbuild";
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const entries = [
   "mods/mahiro-user-timestamps.ts",
+  "mods/mahiro-model-profiles.ts",
   "mods/mahiro-herdr-lifecycle.ts",
   "mods/mahiro-goal.ts",
   "mods/mahiro-code-evidence.ts",
@@ -192,7 +193,7 @@ async function smokeActivate(activate, relativePath) {
 }
 
 async function checkRegistrationBudget(activations) {
-  const budget = 45;
+  const budget = 50;
   const deferredEntries = new Set([
     "mods/mahiro-herdr-lifecycle.ts",
     "mods/mahiro-goal.ts",
@@ -201,6 +202,7 @@ async function checkRegistrationBudget(activations) {
   ]);
   const expectedByEntry = new Map([
     ["mods/mahiro-user-timestamps.ts", 1],
+    ["mods/mahiro-model-profiles.ts", 5],
     ["mods/mahiro-herdr-lifecycle.ts", 8],
     ["mods/mahiro-goal.ts", 7],
     ["mods/mahiro-code-evidence.ts", 2],
@@ -281,6 +283,7 @@ async function checkRegistrationBudget(activations) {
 async function checkEntryDisableSwitches(activations) {
   const paths = new Map([
     ["mods/mahiro-user-timestamps.ts", process.env.MAHIRO_USER_TIMESTAMPS_DISABLE_PATH],
+    ["mods/mahiro-model-profiles.ts", process.env.MAHIRO_MODEL_PROFILES_DISABLE_PATH],
     ["mods/mahiro-herdr-lifecycle.ts", process.env.MAHIRO_HERDR_DISABLE_PATH],
     ["mods/mahiro-goal.ts", process.env.MAHIRO_GOAL_DISABLE_PATH],
     ["mods/mahiro-code-evidence.ts", process.env.MAHIRO_CODE_EVIDENCE_DISABLE_PATH],
@@ -492,6 +495,117 @@ function checkRtkRegistration(activate) {
 
 function countMarker(value, marker) {
   return (String(value).match(new RegExp(marker, "g")) || []).length;
+}
+
+async function checkMahiroModelProfilesRegistration(activate, testing) {
+  const tools = [];
+  const commands = [];
+  const cleanup = [];
+  const disposer = activate({
+    capabilities: { tools: true, commands: true },
+    tools: {
+      register(definition) {
+        tools.push(definition);
+        return () => cleanup.push(`tool:${definition.name}`);
+      },
+    },
+    commands: {
+      register(definition) {
+        commands.push(definition);
+        return () => cleanup.push(`command:${definition.id}`);
+      },
+    },
+    diagnostics: { report() {} },
+  });
+
+  assert(testing && typeof testing.parseCommandArgs === "function", "model profiles test seam must load only in isolated checks");
+  assert(
+    tools.map(({ name }) => name).join(",") === "mh_list_model_profiles,mh_set_model_profile,mh_switch_model_profile,mh_delete_model_profile",
+    "model profiles must register the four namespaced tools in stable order",
+  );
+  assert(commands.map(({ id }) => id).join(",") === "mh-model-profile", "model profiles must register /mh-model-profile");
+  assert(testing.positiveInteger("272000") === 272000 && testing.positiveInteger("272000x") === undefined, "model profile integer validation must be strict");
+  assert(testing.parseCommandArgs(["switch", "GPT-6", "Sol", "--agent"]).scope === "agent", "model profile command parser must preserve scope flags");
+  assert(testing.parseCommandArgs(["switch", "GPT-6", "Sol"]).positional.join(" ") === "GPT-6 Sol", "model profile command parser must preserve multi-word labels");
+  const stateOverride = process.env.MAHIRO_MODEL_PROFILES_STATE_PATH;
+  const memoryDir = process.env.MEMORY_DIR;
+  delete process.env.MAHIRO_MODEL_PROFILES_STATE_PATH;
+  delete process.env.MEMORY_DIR;
+  const agentAPath = testing.getProfilesPath({ agent: { id: "agent-a" } });
+  const agentBPath = testing.getProfilesPath({ agent: { id: "agent-b" } });
+  assert(agentAPath !== agentBPath && agentAPath.includes("mahiro-model-profiles"), "fallback profile state must remain agent-scoped");
+  let missingIdentityBlocked = false;
+  try { testing.getProfilesPath({}); } catch { missingIdentityBlocked = true; }
+  assert(missingIdentityBlocked, "profile state must refuse an unscoped global fallback");
+  if (stateOverride === undefined) delete process.env.MAHIRO_MODEL_PROFILES_STATE_PATH;
+  else process.env.MAHIRO_MODEL_PROFILES_STATE_PATH = stateOverride;
+  if (memoryDir === undefined) delete process.env.MEMORY_DIR;
+  else process.env.MEMORY_DIR = memoryDir;
+
+  const context = {
+    memfs: { memoryDir: "/tmp/mahiro-model-profiles-test" },
+    model: { id: "openai-codex/gpt-6-sol", reasoningEffort: "high" },
+    contextWindow: { size: 272000 },
+    agent: { id: "agent-model-profiles" },
+    conversation: { id: "conversation-model-profiles" },
+  };
+  const setTool = tools.find(({ name }) => name === "mh_set_model_profile");
+  const listTool = tools.find(({ name }) => name === "mh_list_model_profiles");
+  const switchTool = tools.find(({ name }) => name === "mh_switch_model_profile");
+  const deleteTool = tools.find(({ name }) => name === "mh_delete_model_profile");
+
+  const setResult = setTool.run({ ...context, args: { model: "openai-codex/gpt-6-sol", context_window: 272000, reasoning_effort: "high", label: "GPT-6 Sol" } });
+  assert(setResult.status === "success", "model profile tool must save a valid profile");
+  const listed = JSON.parse(listTool.run(context).output);
+  assert(listed.profiles["openai-codex/gpt-6-sol"].label === "GPT-6 Sol", "model profile list must expose saved labels");
+
+  let updatePayload = null;
+  const switched = await switchTool.run({
+    ...context,
+    args: { model: "GPT-6 Sol", scope: "conversation" },
+    conversation: {
+      ...context.conversation,
+      updateLlmConfig: async (payload) => { updatePayload = payload; },
+    },
+  });
+  assert(switched.status === "success", "model profile switch must resolve labels");
+  assert(updatePayload?.model === "openai-codex/gpt-6-sol" && updatePayload?.contextWindow === 272000 && updatePayload?.reasoningEffort === "high" && updatePayload?.scope === "conversation", "model profile switch must apply saved settings in one update");
+  const invalidOverride = await switchTool.run({
+    ...context,
+    args: { model: "GPT-6 Sol", context_window: 0 },
+    conversation: { ...context.conversation, updateLlmConfig: async () => {} },
+  });
+  assert(invalidOverride.status === "error", "invalid explicit context window overrides must be rejected");
+
+  const commandList = await commands[0].run({ ...context, args: "list" });
+  assert(commandList.success !== false && commandList.output.includes("GPT-6 Sol"), "model profile command must list saved profiles");
+  const deleted = deleteTool.run({ ...context, args: { model: "GPT-6 Sol" } });
+  assert(deleted.status === "success" && Object.keys(testing.readProfiles(context).profiles).length === 0, "model profile delete must resolve labels and remove the profile");
+
+  const disabledPath = process.env.MAHIRO_MODEL_PROFILES_DISABLE_PATH;
+  writeFileSync(disabledPath, "disabled\n", { mode: 0o600 });
+  let disabledRegistrations = 0;
+  const disabledDisposer = activate({
+    capabilities: { tools: true, commands: true },
+    tools: { register() { disabledRegistrations += 1; return () => {}; } },
+    commands: { register() { disabledRegistrations += 1; return () => {}; } },
+  });
+  assert(disabledDisposer === undefined && disabledRegistrations === 0, "model profiles disable sentinel must produce zero registrations");
+  rmSync(disabledPath, { force: true });
+
+  let abortedCleanupCount = 0;
+  const abortedDisposer = activate({
+    signal: { aborted: true },
+    capabilities: { tools: true, commands: true },
+    tools: { register() { return () => { abortedCleanupCount += 1; }; } },
+    commands: { register() { return () => { abortedCleanupCount += 1; }; } },
+  });
+  assert(typeof abortedDisposer === "function", "model profiles must return cleanup during engine-aborted reload");
+  abortedDisposer();
+  assert(abortedCleanupCount === 0, "engine-aborted model profile cleanup must skip redundant registry unregisters");
+
+  if (typeof disposer === "function") disposer();
+  assert(cleanup.join(",") === "command:mh-model-profile,tool:mh_delete_model_profile,tool:mh_switch_model_profile,tool:mh_set_model_profile,tool:mh_list_model_profiles", "model profile cleanup must run in reverse registration order");
 }
 
 function checkMahiroTimestampRegistration(activate, testing) {
@@ -2049,6 +2163,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
 
   const expectedPackageEntries = [
     "./mods/mahiro-user-timestamps.ts",
+    "./mods/mahiro-model-profiles.ts",
     "./mods/mahiro-herdr-lifecycle.ts",
     "./mods/mahiro-goal.ts",
     "./mods/mahiro-code-evidence.ts",
@@ -2063,9 +2178,9 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-finish-voice.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.10.2", "Package version must be 0.10.2");
-  assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact thirteen-entry order");
-  assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact thirteen-entry package");
+  assert(packageJson.version === "0.11.0", "Package version must be 0.11.0");
+  assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact fourteen-entry order");
+  assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact fourteen-entry package");
 
   const missingDiagnostics = [];
   const missing = await activate({ capabilities: {}, diagnostics: { report: (item) => missingDiagnostics.push(item) } });
@@ -3148,6 +3263,9 @@ const previousHerdrDisablePath = process.env.MAHIRO_HERDR_DISABLE_PATH;
 const previousTimestampDisablePath = process.env.MAHIRO_USER_TIMESTAMPS_DISABLE_PATH;
 const previousGoalDisablePath = process.env.MAHIRO_GOAL_DISABLE_PATH;
 const previousCodeEvidenceStatePath = process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH;
+const previousModelProfilesStatePath = process.env.MAHIRO_MODEL_PROFILES_STATE_PATH;
+const previousModelProfilesTesting = process.env.MAHIRO_MODEL_PROFILES_TESTING;
+const previousModelProfilesDisablePath = process.env.MAHIRO_MODEL_PROFILES_DISABLE_PATH;
 const previousCodeEvidenceTesting = process.env.MAHIRO_CODE_EVIDENCE_TESTING;
 const previousCodeEvidenceDisablePath = process.env.MAHIRO_CODE_EVIDENCE_DISABLE_PATH;
 const previousUxWorkflowStatePath = process.env.MAHIRO_UX_WORKFLOW_STATE_PATH;
@@ -3169,6 +3287,9 @@ const previousMcpDisablePath = process.env.MAHIRO_MCP_PROXY_DISABLE_PATH;
 process.env.MAHIRO_GOAL_STATE_PATH = join(testRoot, "state.json");
 process.env.MAHIRO_GOAL_TESTING = "1";
 process.env.MAHIRO_TIMESTAMPS_TESTING = "1";
+process.env.MAHIRO_MODEL_PROFILES_STATE_PATH = join(testRoot, "model-profiles.json");
+process.env.MAHIRO_MODEL_PROFILES_TESTING = "1";
+process.env.MAHIRO_MODEL_PROFILES_DISABLE_PATH = join(testRoot, "mahiro-model-profiles.disabled");
 process.env.MAHIRO_HERDR_TESTING = "1";
 process.env.MAHIRO_HERDR_FORCE_ENABLE = "1";
 process.env.MAHIRO_HERDR_DISABLE_PATH = join(testRoot, "mahiro-herdr-lifecycle.disabled");
@@ -3222,6 +3343,10 @@ try {
     testingSurfaces.get("mods/mahiro-goal.ts"),
     timestampHandler,
   );
+  await checkMahiroModelProfilesRegistration(
+    activations.get("mods/mahiro-model-profiles.ts"),
+    testingSurfaces.get("mods/mahiro-model-profiles.ts"),
+  );
   await checkMahiroCodeEvidenceRegistration(
     activations.get("mods/mahiro-code-evidence.ts"),
     testingSurfaces.get("mods/mahiro-code-evidence.ts"),
@@ -3258,6 +3383,12 @@ try {
   else process.env.MAHIRO_GOAL_STATE_PATH = previousStatePath;
   if (previousGoalTesting === undefined) delete process.env.MAHIRO_GOAL_TESTING;
   else process.env.MAHIRO_GOAL_TESTING = previousGoalTesting;
+  if (previousModelProfilesStatePath === undefined) delete process.env.MAHIRO_MODEL_PROFILES_STATE_PATH;
+  else process.env.MAHIRO_MODEL_PROFILES_STATE_PATH = previousModelProfilesStatePath;
+  if (previousModelProfilesTesting === undefined) delete process.env.MAHIRO_MODEL_PROFILES_TESTING;
+  else process.env.MAHIRO_MODEL_PROFILES_TESTING = previousModelProfilesTesting;
+  if (previousModelProfilesDisablePath === undefined) delete process.env.MAHIRO_MODEL_PROFILES_DISABLE_PATH;
+  else process.env.MAHIRO_MODEL_PROFILES_DISABLE_PATH = previousModelProfilesDisablePath;
   if (previousTimestampTesting === undefined) delete process.env.MAHIRO_TIMESTAMPS_TESTING;
   else process.env.MAHIRO_TIMESTAMPS_TESTING = previousTimestampTesting;
   if (previousHerdrTesting === undefined) delete process.env.MAHIRO_HERDR_TESTING;

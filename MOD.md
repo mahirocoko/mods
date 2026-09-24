@@ -1,21 +1,21 @@
 ---
 name: "@mahirocoko/letta-mods"
-description: "Mahiro's private user timestamps, Herdr lifecycle, structured workflow goal, bounded code evidence, UX coordination, Code Map guidance, execution coordination, RTK control, compact statusline, lazy MCP proxy, secret-read and commit attribution guards, and bounded voice bundle for Letta Code."
+description: "Mahiro's private user timestamps, model profiles, Herdr lifecycle, structured workflow goal, bounded code evidence, UX coordination, Code Map guidance, execution coordination, RTK control, compact statusline, lazy MCP proxy, secret-read and commit attribution guards, and bounded voice bundle for Letta Code."
 ---
 
 # Mahiro Letta Mods semantics
 
-The ten switchable entries check their fixed local disable sentinels before reporting
+The eleven switchable entries check their fixed local disable sentinels before reporting
 diagnostics or registering commands, tools, permissions, events, or panels.
 The three migrated hooks are automatic-only and have no per-entry switches.
 `pnpm mods:entry status|disable|enable [entry]` owns those mode-`0600` sentinels
-for the ten switchable entry names. Toggling an entry never edits the managed
+for the eleven switchable entry names. Toggling an entry never edits the managed
 package registry or deletes its durable state; active sessions require
 `/reload`.
 
 ## Package boundary
 
-This package activates thirteen independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, sockets, and persistent MCP connections.
+This package activates fourteen independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, sockets, and persistent MCP connections.
 
 Installed package files are runtime copies. Edit this repository, validate it, reinstall/update the managed package, and run `/reload` rather than editing files below `~/.letta/mods/packages/`.
 
@@ -387,7 +387,7 @@ With both `commands` and `ui.panels`, `/mh-usage [status [page]|close|off|codex 
 
 Codex reads the existing `CODEX_HOME` (default `~/.codex`) login and calls the read-only WHAM usage endpoint. P/S labels use each actual primary/secondary duration, not an assumed 5h/week pair. Optional named `additional_rate_limits` and `code_review_rate_limit` windows are also retained independently. Details show credits and reset-credit counts only when present in the usage envelope, otherwise explicitly unavailable; no separate reset-credit endpoint or currency conversion is used. In v0.10.0, Mods ownership of Agy quota production and presentation was retired because Agy CLI 1.2.2+ no longer exposes the local CSRF contract (`RetrieveUserQuotaSummary` over loopback HTTP); Agy quota presentation now requires an external/Agy-native producer to publish to the public sidebar cache protocol (`~/.letta/mods/mahiro-usage/agy.json`). Mods no longer discovers Agy processes, parses Agy buckets, or writes `agy.json`. No authentication is refreshed and no credentials are touched.
 
-Fetches happen outside render with an eight-second provider deadline, two-minute success cache, five-minute failure backoff, and a disk lock (`codex.lock`) shared across sessions. Failed, old, or reset-expired values are explicitly stale; absent values are unavailable. Codex auth-file metadata changes invalidate its cache. When `HERDR_ENV=1` and the regular bounded Mahiro Herdr Sidebar configuration snapshot exists, the controller keeps the normalized Codex cache warm even if its statusline row is off; presentation still follows the explicit statusline settings. After at least one cache write in that update cycle, it invokes the companion's public bounded refresh action once so honest short metadata TTLs do not disappear during idle panes or long turns. Failure leaves the valid cache intact for the next cache write or pane event. Settings changes propagate to other sessions on the fifteen-second tick. Disposal aborts in-flight work and suppresses late UI/cache writes. The exact bundle registration budget is now 45; this static check is not active-host reload or visual acceptance.
+Fetches happen outside render with an eight-second provider deadline, two-minute success cache, five-minute failure backoff, and a disk lock (`codex.lock`) shared across sessions. Failed, old, or reset-expired values are explicitly stale; absent values are unavailable. Codex auth-file metadata changes invalidate its cache. When `HERDR_ENV=1` and the regular bounded Mahiro Herdr Sidebar configuration snapshot exists, the controller keeps the normalized Codex cache warm even if its statusline row is off; presentation still follows the explicit statusline settings. After at least one cache write in that update cycle, it invokes the companion's public bounded refresh action once so honest short metadata TTLs do not disappear during idle panes or long turns. Failure leaves the valid cache intact for the next cache write or pane event. Settings changes propagate to other sessions on the fifteen-second tick. Disposal aborts in-flight work and suppresses late UI/cache writes. The exact bundle registration budget is now 50; this static check is not active-host reload or visual acceptance.
 
 ## Lazy MCP proxy
 

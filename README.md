@@ -11,6 +11,7 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | Entry | Surface | Purpose |
 | --- | --- | --- |
 | `mods/mahiro-user-timestamps.ts` | `turn_start` | Adds safe local/IANA timestamp metadata and one visible block to each real user turn without timestamping synthetic workflow reminders. |
+| `mods/mahiro-model-profiles.ts` | `/mh-model-profile`, `mh_*_model_profile` tools | Keeps per-model context-window and reasoning-effort preferences in agent-scoped MemFS and applies them together on model switch. |
 | `mods/mahiro-herdr-lifecycle.ts` | lifecycle/turn/tool/LLM events + bounded child-process observation | Reports one truthful Letta pane state plus bounded child-task, model, provider, and context metadata to the owning Herdr pane over its local socket. |
 | `mods/mahiro-goal.ts` | `/mh-goal`, busy-safe `/mh-goal-status`, `mh_get_goal`, `mh_create_goal`, `mh_update_goal`, `turn_start` | Structured movable conversation goal with bounded operating rules, DoD criteria, evidence, blockers, revision guards, and human verification gates. |
 | `mods/mahiro-code-evidence.ts` | `/mh-evidence`, `mh_code_evidence` (`get` / `collect` / `record`) | Bounded read-only Git evidence with separate staged/unstaged/untracked/base lanes, stale-proof external records, conservative verdicts, and explicit Goal handoff. |
