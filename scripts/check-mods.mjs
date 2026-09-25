@@ -17,11 +17,11 @@ const entries = [
   "mods/mahiro-ux-workflow.ts",
   "mods/mahiro-code-map.ts",
   "mods/mahiro-execution-run.ts",
+  "mods/mahiro-commit-attribution-guard.js",
   "mods/rtk-control.ts",
   "mods/statusline.tsx",
   "mods/mahiro-mcp-proxy.js",
   "mods/mahiro-secret-read-guard.js",
-  "mods/mahiro-commit-attribution-guard.js",
   "mods/mahiro-finish-voice.js",
 ];
 
@@ -213,7 +213,7 @@ async function checkRegistrationBudget(activations) {
     ["mods/statusline.tsx", 10],
     ["mods/mahiro-mcp-proxy.js", 4],
     ["mods/mahiro-secret-read-guard.js", 1],
-    ["mods/mahiro-commit-attribution-guard.js", 1],
+    ["mods/mahiro-commit-attribution-guard.js", 2],
     ["mods/mahiro-finish-voice.js", 1],
   ]);
   const actualByEntry = new Map();
@@ -2170,11 +2170,11 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-ux-workflow.ts",
     "./mods/mahiro-code-map.ts",
     "./mods/mahiro-execution-run.ts",
+    "./mods/mahiro-commit-attribution-guard.js",
     "./mods/rtk-control.ts",
     "./mods/statusline.tsx",
     "./mods/mahiro-mcp-proxy.js",
     "./mods/mahiro-secret-read-guard.js",
-    "./mods/mahiro-commit-attribution-guard.js",
     "./mods/mahiro-finish-voice.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));

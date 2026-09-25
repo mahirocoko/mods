@@ -60,7 +60,7 @@ pnpm mods:update
 | ดูสถานะ workspace, Git, context และ activity | Compact Statusline |
 | ค้นและเรียก MCP tools แบบมี approval boundary | Lazy MCP Proxy |
 | กันการอ่านไฟล์ลับผ่าน Letta Code | [Mahiro Secret-Read Guard](../MOD.md#mahiro-secret-read-guard) |
-| กัน Letta attribution ใน commit | [Commit Attribution Guard](../README.md#commit-and-voice-hook-migration) |
+| เอา Letta attribution ออกจาก commit อัตโนมัติ | [Commit Attribution Guard](../README.md#commit-and-voice-hook-migration) |
 | เสียงเมื่อจบ turn | Finish Voice (`turn_end`) |
 
 ## Slash command กับ model tool ต่างกันยังไง
@@ -69,6 +69,14 @@ pnpm mods:update
 - **Model tool** มีไว้ให้ agent ใช้ระหว่างทำงาน เช่น `mh_code_evidence` action `collect` หรือ `mh_execution_run` operation `update`
 
 ปกติไม่ต้องพิมพ์ JSON ของ model tool เอง บอกสิ่งที่ต้องการกับ agent ได้เลย แล้วให้ agent เรียก tool พร้อม revision และ scope ที่ถูกต้อง
+
+## Commit Attribution Guard
+
+Guard นี้ทำงานอัตโนมัติกับคำสั่งที่ขึ้นต้นด้วย `git commit` โดยตรงผ่าน Bash/Shell tool ถ้าทุก attribution อยู่ใน literal quoted `-m` / `--message` ที่ระบุได้ชัด ตัว modจะลบเฉพาะ `Generated with [Letta Code]` และ `Co-Authored-By: Letta Code` แบบ exact ก่อน execution แล้วตรวจคำสั่งสุดท้ายซ้ำอีกครั้ง คำสั่งแบบ `cd … && git commit` หรือ `git add … && git commit` รวมถึงรูปแบบกำกวม, shell comment, heredoc/message file, `$(`/backticks/arithmetic/process substitution และข้อความเดียวกันที่อยู่นอก commit message จะ deny แทนการเดาและ rewrite
+
+คำสั่งเดิมยังเป็นผู้ทำ commit จึงรักษา cwd, command chain, Git hooks, signing, approval และผลลัพธ์ตามจริงไว้ครบ ตัว modไม่ spawn Git เองและไม่สร้าง commit ลับ ถ้า host ไม่มี tool-event transform จะกลับไปใช้ deny-only แบบเดิม ส่วน `git -C`, alias, message file ผ่าน `-F` และรูปแบบนอก matcher เดิมไม่อยู่ในขอบเขต
+
+Package โหลด Guard ก่อน RTK Control โดยตั้งใจ เพื่อให้ลบ attribution จาก raw `git commit` ก่อน RTK rewrite และ execution recheck ยังรู้จัก wrapper `rtk git commit` ถ้ามี attribution เหลือหรือถูกเติมกลับจะ deny
 
 ---
 

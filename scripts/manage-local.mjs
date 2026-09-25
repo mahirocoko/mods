@@ -45,11 +45,11 @@ const entries = [
   "./mods/mahiro-ux-workflow.ts",
   "./mods/mahiro-code-map.ts",
   "./mods/mahiro-execution-run.ts",
+  "./mods/mahiro-commit-attribution-guard.js",
   "./mods/rtk-control.ts",
   "./mods/statusline.tsx",
   "./mods/mahiro-mcp-proxy.js",
   "./mods/mahiro-secret-read-guard.js",
-  "./mods/mahiro-commit-attribution-guard.js",
   "./mods/mahiro-finish-voice.js",
 ];
 const directEntries = ["rtk-control.ts", "statusline.tsx"];

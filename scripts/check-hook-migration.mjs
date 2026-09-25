@@ -12,7 +12,7 @@ delete process.env.LETTA_CODE_AGENT_ROLE;
 try {
   const guard = await import("../mods/mahiro-commit-attribution-guard.js");
   const finish = await import("../mods/mahiro-finish-voice.js");
-  const { check, FORBIDDEN } = guard.__testing;
+  const { check, transform, FORBIDDEN } = guard.__testing;
   // Synthetic invocations only: no git process, repository, old hook, or secret reads.
   for (const phase of ["approval", "execution"]) {
     for (const trailer of FORBIDDEN) {
@@ -29,6 +29,45 @@ try {
       ]) assert.equal(check({ toolName: "Bash", phase, args: { command } }), undefined);
     }
   }
+  const attributed = `git commit -m 'fix: keep subject\n\n${FORBIDDEN.join("\n\n")}' && git status --short`;
+  assert.equal(check({ toolName: "exec_command", phase: "approval", args: { cmd: attributed } }, { canTransform: true }), undefined);
+  assert.equal(check({ toolName: "exec_command", phase: "execution", args: { cmd: attributed } }, { canTransform: true })?.decision, "deny");
+  const rewritten = transform({ toolName: "exec_command", args: { cmd: attributed, description: "commit" } });
+  assert.equal(rewritten.args.description, "commit");
+  assert(rewritten.args.cmd.includes("fix: keep subject"));
+  assert(rewritten.args.cmd.startsWith("git commit"));
+  assert(rewritten.args.cmd.endsWith("&& git status --short"));
+  for (const trailer of FORBIDDEN) assert(!rewritten.args.cmd.includes(trailer));
+  assert.equal(check({ toolName: "exec_command", phase: "execution", args: rewritten.args }, { canTransform: true }), undefined);
+  const wrappedAttributed = `rtk git commit -m '${FORBIDDEN[0]}'`;
+  assert.equal(transform({ toolName: "exec_command", args: { cmd: wrappedAttributed } }), undefined);
+  assert.equal(check({ toolName: "exec_command", phase: "approval", args: { cmd: wrappedAttributed } }, { canTransform: true })?.decision, "deny");
+  assert.equal(check({ toolName: "exec_command", phase: "execution", args: { cmd: `rtk ${rewritten.args.cmd}` } }, { canTransform: true }), undefined);
+  const argvRewrite = transform({ toolName: "Bash", args: { command: ["git", "commit", "-m", `fix: array\n${FORBIDDEN[0]}`] } });
+  assert.deepEqual(argvRewrite.args.command.slice(0, 3), ["git", "commit", "-m"]);
+  assert.equal(argvRewrite.args.command[3], "fix: array\n");
+  assert.equal(transform({ toolName: "Bash", args: { command: "git commit -m 'fix: clean'" } }), undefined);
+  assert.equal(transform({ toolName: "Bash", args: { command: `rg '${FORBIDDEN[0]}'` } }), undefined);
+  for (const ambiguous of [
+    `git commit -m 'fix: clean' && printf '%s' '${FORBIDDEN[0]}'`,
+    `printf '%s' 'log; git commit -m ${FORBIDDEN[0]}'`,
+    `printf x <<EOF\ngit commit -m '${FORBIDDEN[0]}'\nEOF`,
+    `git commit -m "subject $(printf %s '${FORBIDDEN[0]}')"`,
+    `git commit -m "subject \`printf %s '${FORBIDDEN[0]}'\`"`,
+    `echo $((git commit -m '${FORBIDDEN[0]}'))`,
+    `cd repo && git commit -m '${FORBIDDEN[0]}'`,
+    `git add file.txt && git commit -m '${FORBIDDEN[0]}'`,
+    `git commit -m 'clean' # -m '${FORBIDDEN[0]}'`,
+    `git commit -m 'clean' > >(printf -m '${FORBIDDEN[0]}')`,
+  ]) {
+    assert.equal(transform({ toolName: "Bash", args: { command: ambiguous } }), undefined);
+    assert.equal(check({ toolName: "Bash", phase: "approval", args: { command: ambiguous } }, { canTransform: true })?.decision, "deny");
+  }
+  const nonCommit = `git commit-not-real -m '${FORBIDDEN[0]}'`;
+  assert.equal(transform({ toolName: "Bash", args: { command: nonCommit } }), undefined);
+  assert.equal(check({ toolName: "Bash", phase: "approval", args: { command: nonCommit } }, { canTransform: true }), undefined);
+  const messageEquals = transform({ toolName: "Bash", args: { command: `git commit --message='fix: equals\n${FORBIDDEN[1]}'` } });
+  assert.equal(messageEquals.args.command, "git commit --message='fix: equals\n'");
   assert.equal(check({ toolName: "Read", args: { file_path: "ordinary.txt" } }), undefined);
   assert.equal(check({ toolName: "Bash" }), undefined);
 
@@ -41,6 +80,35 @@ try {
     if (aborted) controller.abort();
     dispose();
     assert.equal(removed, aborted ? 0 : 1);
+  }
+
+  for (const aborted of [false, true]) {
+    const controller = new AbortController();
+    let removed = 0, overlay, onToolStart;
+    const dispose = guard.default({
+      signal: controller.signal,
+      capabilities: { permissions: true, events: { tools: true } },
+      permissions: { register(value) { overlay = value; return () => removed++; } },
+      events: { on(name, callback) { assert.equal(name, "tool_start"); onToolStart = callback; return () => removed++; } },
+    });
+    assert.equal(overlay.check({ toolName: "exec_command", phase: "approval", args: { cmd: attributed } }), undefined);
+    const effective = onToolStart({ toolName: "exec_command", args: { cmd: attributed } });
+    assert.equal(overlay.check({ toolName: "exec_command", phase: "execution", args: effective.args }), undefined);
+    assert.equal(overlay.check({ toolName: "exec_command", phase: "execution", args: { cmd: attributed } })?.decision, "deny");
+    if (aborted) controller.abort();
+    dispose();
+    assert.equal(removed, aborted ? 0 : 2);
+  }
+
+  {
+    let removed = 0;
+    assert.throws(() => guard.default({
+      signal: new AbortController().signal,
+      capabilities: { permissions: true, events: { tools: true } },
+      permissions: { register() { return () => removed++; } },
+      events: { on() { throw new Error("tool event registration failed"); } },
+    }), /tool event registration failed/);
+    assert.equal(removed, 1, "failed tool-event registration must remove the permission overlay");
   }
 
   for (const [module, kind] of [[finish, "finish"]]) {
@@ -135,7 +203,7 @@ try {
   assert.equal(warnings, 1);
   const unsupported = createVoice({ platform: "linux", report: () => {}, runner: () => assert.fail("non-macOS spawn") });
   await unsupported.play(); unsupported.dispose();
-  console.log("Hook migration checks passed: synthetic commit policy, public registrations, silent audio args/cleanup/abort/cooldown, subagent gates and automatic-only finish voice.");
+  console.log("Hook migration checks passed: synthetic commit sanitization/fail-closed policy, public registrations, silent audio args/cleanup/abort/cooldown, subagent gates and automatic-only finish voice.");
 } finally {
   if (previousRole === undefined) delete process.env.LETTA_CODE_AGENT_ROLE;
   else process.env.LETTA_CODE_AGENT_ROLE = previousRole;

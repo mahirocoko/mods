@@ -22,14 +22,15 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/statusline.tsx` | `/mh-usage`, order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, active background subagents, conversation activity, context, MemFS, RTK, model, reasoning, and backend state; it prefers the public lifecycle context and falls back to bounded descendant-process observation when the host context misses a live child. With quota enabled, the default status/identity row is followed by the Codex row (two rows total). With Codex quota disabled, whole-segment default overflow remains bounded to two rows. Thai/grapheme widths preserve the right group across padded host renders. |
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
 | `mods/mahiro-secret-read-guard.js` | permission overlay | Letta-only secret-read/environment guard with the existing portable CCC security gate, checked at approval and final-argument execution. |
-| `mods/mahiro-commit-attribution-guard.js` | permission overlay | Preserves the old inline commit attribution guard. |
+| `mods/mahiro-commit-attribution-guard.js` | permission overlay + `tool_start` | Removes the two exact Letta attribution strings only from unambiguous literal message arguments in direct `git commit` commands, then fail-closed rechecks final arguments. |
 | `mods/mahiro-finish-voice.js` | `turn_end` | Bounded macOS completion cue, excluding known subagent processes. |
 
 Agent Halo is not duplicated here. Its canonical mod remains in the separate [`agent-halo`](https://github.com/mahirocoko/agent-halo) repository and is installed by that project.
 
 ## Commit and voice hook migration
 
-- `commit-attribution`: automatic public permission overlay at approval and final-argument execution. Preserves the old inline `git commit` matcher and its two exact Letta attribution strings; it is not a complete Git/shell parser and does not inspect `-F` files, aliases, or `git -C` commits.
+- `commit-attribution`: automatic public permission overlay plus bounded `tool_start` rewrite. On hosts with tool events, normal approval remains in force; exact Letta attribution strings are removed only when a string command begins directly with `git commit` and every occurrence belongs to a literal quoted `-m` / `--message` value (or its argv-like message argument). Prefix chains, ambiguous forms, shell comments, heredocs, `$(`/backticks/arithmetic/process substitutions, or matching text elsewhere in the command chain are denied rather than modified. Execution rechecks final arguments before the same shell tool runs. It never spawns Git or hides a side-effect commit. Without tool events it remains deny-only. The preserved lexical matcher is not a complete Git/shell parser and does not inspect `-F` files, aliases, or `git -C` commits.
+- The guard is intentionally declared before `rtk-control` so direct commit messages are sanitized before optional RTK rewriting. Execution recheck recognizes RTK's exact `rtk git commit` wrapper and denies any surviving/reintroduced attribution.
 - `finish-voice`: speaks “ลาเต้ ทำงานเสร็จแล้วค่ะ” on public `turn_end` with `stopReason: "end_turn"`. Requires a host that actually supports/emits `turn_end`; the older event recipe does not list it. No `llm_end` approximation. Errors, cancellations, approval pauses, and other stop reasons stay silent.
 
 Finish voice preserves Kanya, rate 300, volume 0.4 (the old configured values), use `say` then `afplay`, and remove unique private temporary audio directories. macOS only; one active cue per entry, a 3-second cooldown, 10-second process deadlines, and a 20-second overall deadline. Reload/disposal aborts playback. Known `LETTA_CODE_AGENT_ROLE=subagent` processes stay silent; the public event has no parent-role field for other host paths. No cross-process deduplication, Halo relay, RTK rewriting, or transcript logging is added. Another mod may continue a completed turn after the finish event; this is a turn cue, not a whole-workflow completion guarantee.
@@ -39,7 +40,7 @@ pnpm check:hooks
 pnpm mods:entry status
 ```
 
-The three migrated hooks are automatic-only, with no per-entry switches or disable environment overrides. After review, run `pnpm mods:install` from this checkout, then `/reload` in the active session. Installation does not remove legacy hooks: retire only verified replacements. Preserve Halo ownership separately. Tests use synthetic commands and a silent injected audio runner, never an actual commit or audible playback.
+The three migrated hooks are automatic-only, with no per-entry switches or disable environment overrides. After review, run `pnpm mods:install` from this checkout, then `/reload` in the active session. Installation does not remove legacy hooks: retire only verified replacements. Preserve Halo ownership separately. Commit-guard tests use synthetic command transforms only—never an actual commit—and voice tests use a silent injected runner.
 
 ## Secret-read guard migration
 

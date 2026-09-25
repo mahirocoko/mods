@@ -1306,3 +1306,60 @@ Closeout checks passed: `pnpm check`, `pnpm pack --dry-run`, and
 `pnpm mods:status` reported all ten source entries matching and no migration
 needed. Current three-row/paginated-panel statusline source/installed SHA-256:
 `93fa7068b68e36606ed7c676b9d43e7f08f8038ee250df7ee14caa831b7083a7`.
+
+## Commit attribution auto-sanitize — 2026-09-25
+
+The automatic commit-attribution entry now combines its permission overlay with
+one bounded `tool_start` transform when the host exposes tool events. Approval
+retains normal host policy. The transform removes only the two exact Letta
+attribution strings when a string command begins directly with `git commit` and
+every occurrence lies inside an unambiguous literal quoted `-m` / `--message`
+value (or its argv-like message argument), preserving the original command/cmd
+shape, subject/body, cwd, suffix chain, hooks, signing, and result ownership.
+Prefix chains, ambiguous forms, dynamic shell constructs, and occurrences
+elsewhere in the chain are denied rather than rewritten.
+Execution rechecks final arguments and denies when a transform is absent, fails,
+or is overwritten. Hosts without tool events retain the previous deny-only
+behavior. The mod never spawns Git itself. Manifest order places the guard before
+RTK Control, and final-argument matching recognizes RTK's `rtk git commit`
+wrapper so optional rewrite-rtk mode cannot bypass the attribution boundary.
+
+Synthetic regressions cover command and cmd inputs, strings and argv-like
+arrays, a direct commit with a status suffix, approval versus execution phases,
+clean/non-commit no-ops, post-transform acceptance, unsanitized final-argument
+denial, attributed text in a later `printf`, a quoted/non-executed fake commit,
+heredoc-body fake commit text, the non-command token `git commit-not-real`,
+`$()` / backtick / arithmetic substitutions, unsupported `cd` and `git add`
+prefix chains, shell-comment options, process substitutions, capability
+fallback, normal cleanup, aborted cleanup, and event-registration failure
+rollback. The added event registration raises the verified bundle total from 49
+to the existing 50-registration ceiling.
+
+Multiple source-only iterations passed `pnpm check` and `pnpm pack --dry-run`;
+each fresh verifier counterexample above was added before the direct-command-only
+boundary replaced broad shell parsing. A bounded version also passed a live
+positive commit and two negative cross-segment/quoted-fake probes. However, the
+first direct-only live probe then exposed a separate integration failure: active
+RTK mode was `rewrite-rtk`, RTK's earlier `tool_start` changed the raw command to
+`rtk git commit`, and the guard no longer recognized it. The disposable commit
+therefore retained both attribution lines. Its evidence was inspected and the
+temporary repository removed; it is a failed probe, not acceptance evidence.
+
+The final fix moves the guard before RTK in every canonical entry list and adds
+exact RTK-wrapper final-argument coverage. Focused checks, manifest validation,
+the full 14-entry suite, and `pnpm pack --dry-run` passed. The first pack attempt
+hit one unrelated Herdr lifecycle timing assertion; the exact full-suite rerun
+and subsequent pack both passed without source changes to that subsystem.
+`pnpm mods:update` installed the reordered bundle, `pnpm mods:status` reported
+all entries matching with no migration needed, and the final guard source/
+installed SHA-256 is
+`4953f8442ce3bab498bfd2845a8028f5e3fe2cd70d9649fe47e27a381a96ab7d`.
+
+After reload with RTK state still explicitly set to `rewrite-rtk`, a fresh
+disposable repository probe sent a direct attributed `git commit`. It produced
+exactly one commit, preserved the requested subject, and stored no `Letta Code`
+text. A separate disposable probe then sent an explicitly unsanitized
+`rtk git commit`; the permission overlay denied it and the repository remained
+at zero commits. Both temporary repositories were removed. This establishes the
+live raw-guard → RTK rewrite → final-argument recheck path for the current bytes.
+No source repository commit, push, tag, or release occurred.
