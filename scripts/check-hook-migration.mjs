@@ -29,7 +29,8 @@ try {
       ]) assert.equal(check({ toolName: "Bash", phase, args: { command } }), undefined);
     }
   }
-  const attributed = `git commit -m 'fix: keep subject\n\n${FORBIDDEN.join("\n\n")}' && git status --short`;
+  const generatedBy = `👾 ${FORBIDDEN[0]}`;
+  const attributed = `git commit -m 'fix: keep subject\n\n${[generatedBy, FORBIDDEN[1]].join("\n\n")}' && git status --short`;
   assert.equal(check({ toolName: "exec_command", phase: "approval", args: { cmd: attributed } }, { canTransform: true }), undefined);
   assert.equal(check({ toolName: "exec_command", phase: "execution", args: { cmd: attributed } }, { canTransform: true })?.decision, "deny");
   const rewritten = transform({ toolName: "exec_command", args: { cmd: attributed, description: "commit" } });
@@ -38,12 +39,15 @@ try {
   assert(rewritten.args.cmd.startsWith("git commit"));
   assert(rewritten.args.cmd.endsWith("&& git status --short"));
   for (const trailer of FORBIDDEN) assert(!rewritten.args.cmd.includes(trailer));
+  assert(!rewritten.args.cmd.includes("👾"));
   assert.equal(check({ toolName: "exec_command", phase: "execution", args: rewritten.args }, { canTransform: true }), undefined);
+  const legacyBareRewrite = transform({ toolName: "Bash", args: { command: `git commit -m 'fix: legacy bare\n\n${FORBIDDEN[0]}'` } });
+  assert.equal(legacyBareRewrite.args.command, "git commit -m 'fix: legacy bare\n\n'");
   const wrappedAttributed = `rtk git commit -m '${FORBIDDEN[0]}'`;
   assert.equal(transform({ toolName: "exec_command", args: { cmd: wrappedAttributed } }), undefined);
   assert.equal(check({ toolName: "exec_command", phase: "approval", args: { cmd: wrappedAttributed } }, { canTransform: true })?.decision, "deny");
   assert.equal(check({ toolName: "exec_command", phase: "execution", args: { cmd: `rtk ${rewritten.args.cmd}` } }, { canTransform: true }), undefined);
-  const argvRewrite = transform({ toolName: "Bash", args: { command: ["git", "commit", "-m", `fix: array\n${FORBIDDEN[0]}`] } });
+  const argvRewrite = transform({ toolName: "Bash", args: { command: ["git", "commit", "-m", `fix: array\n${generatedBy}`] } });
   assert.deepEqual(argvRewrite.args.command.slice(0, 3), ["git", "commit", "-m"]);
   assert.equal(argvRewrite.args.command[3], "fix: array\n");
   assert.equal(transform({ toolName: "Bash", args: { command: "git commit -m 'fix: clean'" } }), undefined);

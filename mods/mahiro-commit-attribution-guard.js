@@ -2,6 +2,7 @@ const FORBIDDEN = [
   "Generated with [Letta Code](https://letta.com)",
   "Co-Authored-By: Letta Code <noreply@letta.com>",
 ];
+const REMOVALS = [`👾 ${FORBIDDEN[0]}`, ...FORBIDDEN];
 
 const SHELL_TOOLS = new Set(["Bash", "bash", "Shell", "shell", "ShellCommand", "shell_command", "exec_command"]);
 const INLINE_COMMIT = /(^|[;&|()\n]\s*)(?:rtk\s+)?git\s+commit(?=\s|$)/;
@@ -192,7 +193,7 @@ function sanitizeString(command) {
   let result = command;
   for (const span of [...spans].sort((left, right) => right.start - left.start)) {
     const value = result.slice(span.start, span.end);
-    const sanitized = FORBIDDEN.reduce((current, pattern) => current.replaceAll(pattern, ""), value);
+    const sanitized = REMOVALS.reduce((current, pattern) => current.replaceAll(pattern, ""), value);
     result = result.slice(0, span.start) + sanitized + result.slice(span.end);
   }
   return result === command ? undefined : result;
@@ -213,7 +214,7 @@ function sanitizeArray(value) {
   if (!attributedIndexes.length || attributedIndexes.some((index) => !messageIndexes.has(index))) return;
   const result = value.map((part, index) => {
     if (!messageIndexes.has(index) || typeof part !== "string") return part;
-    return FORBIDDEN.reduce((current, pattern) => current.replaceAll(pattern, ""), part);
+    return REMOVALS.reduce((current, pattern) => current.replaceAll(pattern, ""), part);
   });
   return commandText(result) === commandText(value) ? undefined : result;
 }

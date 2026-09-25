@@ -1363,3 +1363,23 @@ text. A separate disposable probe then sent an explicitly unsanitized
 at zero commits. Both temporary repositories were removed. This establishes the
 live raw-guard → RTK rewrite → final-argument recheck path for the current bytes.
 No source repository commit, push, tag, or release occurred.
+
+A later real `git-commit` subagent probe exposed one narrower stored-message
+defect that the original live fixture had missed: the harness input uses
+`👾 Generated with [Letta Code]`, while the sanitizer removed only the text
+beginning at `Generated`. The commit succeeded but retained an orphan `👾` line.
+The focused string and argv regressions now use the exact harness trailer and
+require the marker to disappear with the generated-by line; the legacy
+marker-less form remains covered separately. This later evidence supersedes the
+earlier claim that absence of `Letta Code` text alone proved a clean stored body.
+
+After reinstall and reload, a fresh specialized `git-commit` agent completed
+the full flow itself. It ran preflight/staging separately, issued a direct
+attributed commit call, and stored commit
+`23ade749491a2e5d61095a67ff431e0902421705` with the exact body
+`test: verify final agent commit flow` followed only by Git's terminal blank
+line. Independent readback confirmed one commit, a clean worktree, and no Letta
+text, co-author trailer, generated-by text, or orphan `👾` marker. The disposable
+repository was removed and nothing was pushed. This is the current end-to-end
+acceptance evidence for Skill → specialized Agent → permission approval →
+`tool_start` sanitation → RTK rewrite → Git → stored-message verification.

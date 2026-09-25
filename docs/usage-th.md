@@ -72,7 +72,7 @@ pnpm mods:update
 
 ## Commit Attribution Guard
 
-Guard นี้ทำงานอัตโนมัติกับคำสั่งที่ขึ้นต้นด้วย `git commit` โดยตรงผ่าน Bash/Shell tool ถ้าทุก attribution อยู่ใน literal quoted `-m` / `--message` ที่ระบุได้ชัด ตัว modจะลบเฉพาะ `Generated with [Letta Code]` และ `Co-Authored-By: Letta Code` แบบ exact ก่อน execution แล้วตรวจคำสั่งสุดท้ายซ้ำอีกครั้ง คำสั่งแบบ `cd … && git commit` หรือ `git add … && git commit` รวมถึงรูปแบบกำกวม, shell comment, heredoc/message file, `$(`/backticks/arithmetic/process substitution และข้อความเดียวกันที่อยู่นอก commit message จะ deny แทนการเดาและ rewrite
+Guard นี้ทำงานอัตโนมัติกับคำสั่งที่ขึ้นต้นด้วย `git commit` โดยตรงผ่าน Bash/Shell tool ถ้าทุก attribution อยู่ใน literal quoted `-m` / `--message` ที่ระบุได้ชัด ตัว modจะลบทั้งบรรทัด `👾 Generated with [Letta Code]` รวม marker, รูปแบบเก่าที่ไม่มี marker และ `Co-Authored-By: Letta Code` แบบ exact ก่อน execution แล้วตรวจคำสั่งสุดท้ายซ้ำอีกครั้ง จึงไม่เหลือ emoji `👾` โดด ๆ ใน stored message คำสั่งแบบ `cd … && git commit` หรือ `git add … && git commit` รวมถึงรูปแบบกำกวม, shell comment, heredoc/message file, `$(`/backticks/arithmetic/process substitution และข้อความเดียวกันที่อยู่นอก commit message จะ deny แทนการเดาและ rewrite
 
 คำสั่งเดิมยังเป็นผู้ทำ commit จึงรักษา cwd, command chain, Git hooks, signing, approval และผลลัพธ์ตามจริงไว้ครบ ตัว modไม่ spawn Git เองและไม่สร้าง commit ลับ ถ้า host ไม่มี tool-event transform จะกลับไปใช้ deny-only แบบเดิม ส่วน `git -C`, alias, message file ผ่าน `-F` และรูปแบบนอก matcher เดิมไม่อยู่ในขอบเขต
 
