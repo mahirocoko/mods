@@ -70,26 +70,46 @@ No filesystem contents are opened to classify a path.
 
 CCC index/grep/MCP/refresh and recognized indirections keep the existing gate:
 resolve the tool workdir/cwd inside Git, reject shell `cd` in gated commands,
-require regular non-symlink helper/scanner files and safe optional policy and
-allowlist controls, then run synchronized V2 settings `--check`, filename-only
-preflight `--check-settings`, and strict receipt `check` with Gitleaks 8.30.1 and
-SHA-256 `ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f`.
-The existing home-local CCC helper/scanner paths remain authoritative. This mod
-does not scan, refresh receipts, fix settings, or index on its own; helper checks
-may read their policy/receipt and source-freshness inputs. Helpers suppress all
-output; failure, drift, findings, stale receipt, missing scanner, or timeout
-blocks. No CCC gate is silently replaced by a filename-only check.
+and require four regular non-symlink helpers from the Letta global skill root
+`~/.letta/skills/ccc/scripts/`: `sync-project-excludes.py`, `preflight.py`,
+`ensure-gitleaks.py`, and `strict-gitleaks-scan.py`. Optional policy and
+allowlist controls must be absent or regular non-symlink files. The gate then
+runs synchronized V2 settings `--check` and filename-only preflight
+`--check-settings` before `ensure-gitleaks.py check --json`. That helper owns
+the platform, archive, binary pin, and managed scanner path. A successful check
+must carry the pin schema, status, action, target, an absolute regular
+non-symlink executable path, and binary SHA-256. The mod passes that path and
+hash only to strict receipt `check`.
+
+The only provisioning exception is an exact metadata-only `missing-binary`
+error from that check. The mod may call `ensure --json` once, then repeat the
+full sequence from settings `--check` through strict receipt `check` exactly
+once. It does not ensure a second time. Invalid, symlink, non-regular,
+non-executable, wrong-hash, unreadable, permission, malformed, oversized, or
+unsupported scanner state denies with no repair. The mod does not scan, refresh
+a receipt, fix project settings, index, execute the scanner as its own
+verification, consult PATH for the scanner, or downgrade to filename-only.
+Helper stdout is bounded and stderr is discarded; denial reasons stay stable
+and omit paths, commands, URLs, and tool input.
+
+One monotonic 485-second budget covers the initial checks, the optional
+download, and the complete retry. Stage caps are 30 seconds for settings,
+preflight, and pin check, 120 seconds for the single ensure, and 180 seconds
+for strict receipt check. Git root resolution keeps a separate 5-second cap.
+The outer checker allows 500 seconds so cancellation still covers that budget.
+Each approval and execution repeats the gate; no stale approval can authorize
+a later execution. Host-specific permission deadlines may be shorter and need
+real-host verification.
 
 The fixed policy runs via `/usr/bin/python3 -I -c` with tool input on stdin,
 never an agent-provided shell command. Requires Python 3.9+. Inputs are capped
-at 1 MiB, output at 4 KiB, and total time at 250 seconds (existing CCC stages
-retain 5/30/30/180-second limits). Each phase repeats checks; no stale approval
-can authorize a later execution. Host-specific permission deadlines may be
-shorter and need real-host verification. Nonzero exit, malformed response,
+at 1 MiB and checker output at 4 KiB. Nonzero exit, malformed response,
 missing interpreter, invalid phase/input/cwd, timeout, or abort returns a generic
 deny. Cancellation and cleanup kill the dedicated checker process group,
 including active CCC children. Normal cleanup unregisters; engine-aborted
-cleanup skips the redundant registry publish. No persistent state is written.
+cleanup skips the redundant registry publish. During an actual missing-binary
+repair, `ensure-gitleaks.py` may write only the private pinned scanner cache,
+its lock, and its temporary files. The mod writes no state of its own.
 
 This guard is automatic-only, without a per-entry switch or disable environment override.
 Missing permission

@@ -21,7 +21,7 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/rtk-control.ts` | `/rtk`, `tool_start` | Opt-in RTK status, savings, suggestions, and command rewriting. Default mode is Off. |
 | `mods/statusline.tsx` | `/mh-usage`, order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, active background subagents, conversation activity, context, MemFS, RTK, model, reasoning, and backend state; it prefers the public lifecycle context and falls back to bounded descendant-process observation when the host context misses a live child. With quota enabled, the default status/identity row is followed by the Codex row (two rows total). With Codex quota disabled, whole-segment default overflow remains bounded to two rows. Thai/grapheme widths preserve the right group across padded host renders. |
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
-| `mods/mahiro-secret-read-guard.js` | permission overlay | Letta-only secret-read/environment guard with the existing portable CCC security gate, checked at approval and final-argument execution. |
+| `mods/mahiro-secret-read-guard.js` | permission overlay | Letta-only secret-read/environment guard. CCC index/grep/MCP/refresh uses `~/.letta/skills/ccc`, with one missing-binary scanner repair and a full recheck, at approval and final-argument execution. |
 | `mods/mahiro-commit-attribution-guard.js` | permission overlay + `tool_start` | Removes the two exact Letta attribution strings only from unambiguous literal message arguments in direct `git commit` commands, then fail-closed rechecks final arguments. |
 | `mods/mahiro-finish-voice.js` | `turn_end` | Bounded macOS completion cue, excluding known subagent processes. |
 
@@ -55,15 +55,22 @@ files, ordinary developer JSON/YAML/TOML/XML/TXT files, safe SSH
 metadata/public keys, narrow shell metadata checks, `set -e`/`set -eu`, `env`
 with a command, and heredoc data retain the existing exceptions. Real dotenv,
 credential/key/provider paths, environment dumps, and CCC file access without
-portable settings plus a fresh pinned strict receipt remain blocked. See
+portable settings plus a fresh strict receipt remain blocked. A guarded CCC
+operation may provision one genuinely missing pinned scanner through the
+installed Letta skill helper `~/.letta/skills/ccc/scripts/ensure-gitleaks.py`,
+then rerun the full settings, preflight, pin-check, and strict-receipt gate
+once. It does not repair settings, scan, refresh a receipt, or index. See
 [the full policy and limits](MOD.md#mahiro-secret-read-guard).
 
-Requires `/usr/bin/python3` (Python 3.9+) and the existing CCC helpers/scanner
-for CCC-gated operations. The single mod embeds its policy; it never imports
-the installed hook. Missing Python, check timeout, malformed input/output,
-process failure, or cancellation denies the call. A missing permissions
-capability instead reports an **inactive guard** diagnostic: a mod cannot
-secure a host that does not load permission overlays.
+Requires `/usr/bin/python3` (Python 3.9+) and those four canonical CCC helpers
+for CCC-gated operations. The helper owns the scanner pin and managed path.
+The single mod embeds its policy; it never imports the installed hook. Missing
+Python, check timeout, malformed input/output, process failure, or cancellation
+denies the call. A missing permissions capability instead reports an **inactive
+guard** diagnostic: a mod cannot secure a host that does not load permission
+overlays. Persistent writes are limited to the private pinned scanner cache,
+its lock, and its temporary files, and only while that missing-binary repair
+actually runs.
 
 Migration is not completed by source tests or installation. Keep the current
 hook enabled until separately authorized fixture-only Main and subagent

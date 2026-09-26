@@ -1,6 +1,6 @@
 {
   "name": "@mahirocoko/letta-mods",
-  "version": "0.11.2",
+  "version": "0.11.3",
   "private": true,
   "description": "Mahiro's private workflow, model profiles, Herdr lifecycle, execution coordination, Code Map, UX coordination, code evidence, timestamps, RTK, statusline, MCP, secret-read and commit attribution guards, and bounded voice mods for Letta Code.",
   "license": "UNLICENSED",
