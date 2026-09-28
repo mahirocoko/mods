@@ -21,7 +21,7 @@ const MAX_REFERENCE_ITEMS = 8;
 const MAX_REFERENCE_CHARS = 120;
 
 const INTENTS = ["semantic", "exact", "outline"] as const;
-const NAVIGATION_SOURCES = ["ccc", "exact", "outline", "other"] as const;
+const NAVIGATION_SOURCES = ["filename", "exact", "outline", "other"] as const;
 type Intent = typeof INTENTS[number];
 type NavigationSource = typeof NAVIGATION_SOURCES[number];
 
@@ -176,8 +176,8 @@ function compactList(values: string[], itemMax: number): string {
 function routeFor(intent: Intent): { name: string; action: string } {
   if (intent === "semantic") {
     return {
-      name: "ccc",
-      action: "Use ccc for conceptual discovery. Refresh its index outside this mod only when stale, then verify selected matches with targeted reads/checks.",
+      name: "bounded source navigation",
+      action: "No semantic engine is provided. Start with filename/path hints and exact text search, then inspect the smallest likely owner-local sources and verify with targeted reads/checks.",
     };
   }
   if (intent === "exact") {
@@ -260,7 +260,7 @@ const PARAMETERS = {
   type: "object",
   required: ["intent", "query"],
   properties: {
-    intent: { type: "string", enum: INTENTS, description: "semantic → ccc; exact → exact search; outline → bounded external outline guidance." },
+    intent: { type: "string", enum: INTENTS, description: "semantic → filename/exact search and bounded source reads (no semantic engine); exact → exact search; outline → bounded external outline guidance." },
     query: { type: "string", maxLength: MAX_QUERY_CHARS },
     workspace: { type: "string", maxLength: MAX_WORKSPACE_CHARS, description: "Optional caller-supplied target workspace metadata; Code Map never reads or resolves it." },
     path_hints: { type: "array", maxItems: MAX_PATH_HINTS, items: { type: "string", maxLength: MAX_PATH_CHARS } },
@@ -295,7 +295,7 @@ export default function activate(letta: any) {
   }
   const dispose = letta.tools.register({
     name: "mh_code_map",
-    description: "Return bounded, side-effect-free repository navigation guidance: semantic discovery routes to ccc, exact lookup to exact search, and outlines to external bounded guidance. Caller-supplied results are navigation metadata, never verification.",
+    description: "Return bounded, side-effect-free repository navigation guidance: conceptual discovery uses filename/exact search and bounded source reads (no semantic engine), exact lookup uses exact search, and outlines to external bounded guidance. Caller-supplied results are navigation metadata, never verification.",
     parameters: PARAMETERS,
     parallelSafe: true,
     run(ctx: any) {

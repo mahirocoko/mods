@@ -76,8 +76,9 @@ The Goal schema reserves these ownership boundaries:
    iterations, and human approval only for a `Ready` review. It performs none of
    the research/design/implementation/check work itself and never changes Goal.
 4. **Code Map** — active Phase 4. Stateless `mh_code_map` guidance routes
-   semantic/conceptual discovery to `ccc`, exact symbol/path/string lookup to
-   exact search, and outline requests to bounded external outline guidance.
+   conceptual (`semantic`) discovery to filename/path hints, exact text search,
+   and bounded source reads without a semantic engine; exact symbol/path/string
+   lookup to exact search, and outline requests to bounded external outline guidance.
    Large reads require explicit bounded opt-in, but the result is advisory and
    never permission enforcement or a security boundary. Caller search results
    and Goal/Code Evidence references remain navigation/coordination metadata,

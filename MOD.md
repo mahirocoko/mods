@@ -43,7 +43,7 @@ Allowed policy results return `undefined`, never blanket `allow`. Denials do
 not include paths, raw commands, helper stderr, or input values.
 
 The entry embeds the existing local Python hook policy to preserve Python
-`shlex`, path-name, heredoc, and CCC contracts without a runtime dependency on
+`shlex`, path-name, and heredoc contracts without a runtime dependency on
 the old hook file. Read/ReadFile/read_file and Bash/ShellCommand/shell_command/
 exec_command aliases (including dotted tool namespaces) are recognized. Other
 tools retain the recursive direct-path fallback. Exact `.env.example`,
@@ -68,48 +68,19 @@ alias expansion, heredoc substitutions, and arbitrary network/remote-tool reads
 are not comprehensively resolved. Developer files can still contain secrets.
 No filesystem contents are opened to classify a path.
 
-CCC index/grep/MCP/refresh and recognized indirections keep the existing gate:
-resolve the tool workdir/cwd inside Git, reject shell `cd` in gated commands,
-and require four regular non-symlink helpers from the Letta global skill root
-`~/.letta/skills/ccc/scripts/`: `sync-project-excludes.py`, `preflight.py`,
-`ensure-gitleaks.py`, and `strict-gitleaks-scan.py`. Optional policy and
-allowlist controls must be absent or regular non-symlink files. The gate then
-runs synchronized V2 settings `--check` and filename-only preflight
-`--check-settings` before `ensure-gitleaks.py check --json`. That helper owns
-the platform, archive, binary pin, and managed scanner path. A successful check
-must carry the pin schema, status, action, target, an absolute regular
-non-symlink executable path, and binary SHA-256. The mod passes that path and
-hash only to strict receipt `check`.
-
-The only provisioning exception is an exact metadata-only `missing-binary`
-error from that check. The mod may call `ensure --json` once, then repeat the
-full sequence from settings `--check` through strict receipt `check` exactly
-once. It does not ensure a second time. Invalid, symlink, non-regular,
-non-executable, wrong-hash, unreadable, permission, malformed, oversized, or
-unsupported scanner state denies with no repair. The mod does not scan, refresh
-a receipt, fix project settings, index, execute the scanner as its own
-verification, consult PATH for the scanner, or downgrade to filename-only.
-Helper stdout is bounded and stderr is discarded; denial reasons stay stable
-and omit paths, commands, URLs, and tool input.
-
-One monotonic 485-second budget covers the initial checks, the optional
-download, and the complete retry. Stage caps are 30 seconds for settings,
-preflight, and pin check, 120 seconds for the single ensure, and 180 seconds
-for strict receipt check. Git root resolution keeps a separate 5-second cap.
-The outer checker allows 500 seconds so cancellation still covers that budget.
-Each approval and execution repeats the gate; no stale approval can authorize
-a later execution. Host-specific permission deadlines may be shorter and need
-real-host verification.
+The guard does not index repositories, run project preflight, provision a scanner,
+or validate search receipts. It evaluates only the current tool arguments in
+each phase; no stale approval can authorize a later execution. Search and
+indexing operations are not independently gated by this overlay unless their
+arguments trigger the generic sensitive-path or environment-dump checks.
 
 The fixed policy runs via `/usr/bin/python3 -I -c` with tool input on stdin,
 never an agent-provided shell command. Requires Python 3.9+. Inputs are capped
 at 1 MiB and checker output at 4 KiB. Nonzero exit, malformed response,
 missing interpreter, invalid phase/input/cwd, timeout, or abort returns a generic
 deny. Cancellation and cleanup kill the dedicated checker process group,
-including active CCC children. Normal cleanup unregisters; engine-aborted
-cleanup skips the redundant registry publish. During an actual missing-binary
-repair, `ensure-gitleaks.py` may write only the private pinned scanner cache,
-its lock, and its temporary files. The mod writes no state of its own.
+on cancellation. Normal cleanup unregisters; engine-aborted cleanup skips
+the redundant registry publish. The mod writes no state of its own.
 
 This guard is automatic-only, without a per-entry switch or disable environment override.
 Missing permission
@@ -321,8 +292,9 @@ or mutates another workflow mod's state.
 
 `mods/mahiro-code-map.ts` registers one stateless, parallel-safe model tool:
 `mh_code_map`. It accepts a closed bounded schema and returns no more than 3,000
-characters. Semantic intent points to `ccc`; exact intent points to exact
-search; outline intent points to an existing external outline/symbol surface or
+characters. Conceptual (`semantic`) intent points to filename/path hints, exact
+text search, and bounded source reads, not a semantic engine; exact intent points
+to exact search; outline intent points to an existing external outline/symbol surface or
 small targeted reads. The mod itself never reads, scans, parses, indexes, or
 generates source structure. An optional target workspace is caller-supplied
 metadata only; the mod never resolves or reads it.

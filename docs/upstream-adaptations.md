@@ -232,9 +232,10 @@ Upstream pattern reference:
 ### Adapt
 
 - Replace read enforcement with one stateless `mh_code_map` guidance tool.
-- Route semantic/conceptual discovery to `ccc`, exact symbol/path/string lookup
-  to exact search, and outline requests to an existing trusted external
-  outline/symbol surface or small targeted reads.
+- Route conceptual (`semantic`) discovery to filename/path hints, exact text
+  search, and bounded source reads without claiming a semantic engine; route
+  exact symbol/path/string lookup to exact search, and outline requests to an
+  existing trusted external outline/symbol surface or small targeted reads.
 - Accept optional caller-supplied navigation entries, but label them navigation
   metadata rather than verification evidence.
 - Accept an optional target workspace as caller-supplied metadata so cross-repo
@@ -252,7 +253,7 @@ Upstream pattern reference:
   source excerpts, filesystem caches, or subprocesses of any kind.
 - Permission overlays, Read-family interception, deny/force/anti-bypass
   behavior, or presenting large-read limits as authorization/security.
-- Running `ccc`, exact search, indexing, outline generation, tests, or other
+- Running exact search, indexing, outline generation, tests, or other
   verification from inside the mod.
 - Mutating source, Git, indexes, Goal, Code Evidence, or another mod's state.
 
@@ -316,7 +317,7 @@ Upstream pattern references:
   security-boundary claim.
 - Spawning/controlling executors, choosing model/provider/effort, submitting
   prompts, retrying work, or inferring process/session liveness.
-- Reading/searching/editing source; running `ccc`, Git, tests, browser, or native
+- Reading/searching/editing source; running Git, tests, browser, or native
   checks; storing raw prompts/transcripts/diffs/logs/secrets.
 - Treating lane reports, checks, changed paths, worktrees, or sessions as
   verification evidence; mutating or completing another workflow owner.

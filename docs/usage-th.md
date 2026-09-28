@@ -367,7 +367,7 @@ Agent ใช้ `mh_create_ux_workflow` และ `mh_update_ux_workflow` เก
 
 Intent มีสามแบบ:
 
-- `semantic` — หาแนวคิดหรือ flow ที่ไม่รู้ชื่อ symbol ชัด ๆ แล้ว route ไป `ccc`
+- `semantic` — หาแนวคิดหรือ flow ที่ไม่รู้ชื่อ symbol ชัด ๆ โดยเริ่มจากชื่อไฟล์/path และค้นข้อความตรงตัว ก่อนอ่าน source เฉพาะจุด (ไม่มี semantic engine)
 - `exact` — หา path, symbol หรือข้อความตรงตัว แล้ว route ไป exact search เช่น `rg`
 - `outline` — ขอรายการ symbol/โครงสร้างจาก outline tool ที่มีอยู่ หรือแนะนำ targeted read ขนาดเล็ก
 

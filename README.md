@@ -16,12 +16,12 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/mahiro-goal.ts` | `/mh-goal`, busy-safe `/mh-goal-status`, `mh_get_goal`, `mh_create_goal`, `mh_update_goal`, `turn_start` | Structured movable conversation goal with bounded operating rules, DoD criteria, evidence, blockers, revision guards, and human verification gates. |
 | `mods/mahiro-code-evidence.ts` | `/mh-evidence`, `mh_code_evidence` (`get` / `collect` / `record`) | Bounded read-only Git evidence with separate staged/unstaged/untracked/base lanes, stale-proof external records, conservative verdicts, and explicit Goal handoff. |
 | `mods/mahiro-ux-workflow.ts` | `/mh-ux`, `mh_get_ux_workflow`, `mh_create_ux_workflow`, `mh_update_ux_workflow` | Revisioned UX coordination from frame through review, with an explicit design-owner brief, human direction/review gates, bounded handoff/review evidence, and no Goal mutation. |
-| `mods/mahiro-code-map.ts` | `mh_code_map` | Stateless bounded guidance that routes conceptual discovery to `ccc`, exact symbols/paths/strings to exact search, and outline requests to external bounded outline tooling without reading or indexing source. |
+| `mods/mahiro-code-map.ts` | `mh_code_map` | Stateless bounded guidance for filename/exact search and targeted source reads without an embedded search engine. |
 | `mods/mahiro-execution-run.ts` | `/mh-run`, `mh_execution_run` (`get`, `create`, `update`) | Optional executor-neutral coordination for complex main-agent, Letta-subagent, Direct-CLI, human, or other work, with declared target ownership, bounded reports, and a Code Evidence intake handoff. |
 | `mods/rtk-control.ts` | `/rtk`, `tool_start` | Opt-in RTK status, savings, suggestions, and command rewriting. Default mode is Off. |
 | `mods/statusline.tsx` | `/mh-usage`, order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, active background subagents, conversation activity, context, MemFS, RTK, model, reasoning, and backend state; it prefers the public lifecycle context and falls back to bounded descendant-process observation when the host context misses a live child. With quota enabled, the default status/identity row is followed by the Codex row (two rows total). With Codex quota disabled, whole-segment default overflow remains bounded to two rows. Thai/grapheme widths preserve the right group across padded host renders. |
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
-| `mods/mahiro-secret-read-guard.js` | permission overlay | Letta-only secret-read/environment guard. CCC index/grep/MCP/refresh uses `~/.letta/skills/ccc`, with one missing-binary scanner repair and a full recheck, at approval and final-argument execution. |
+| `mods/mahiro-secret-read-guard.js` | permission overlay | Letta-only secret-read/environment guard at approval and final-argument execution. |
 | `mods/mahiro-commit-attribution-guard.js` | permission overlay + `tool_start` | Removes the two exact Letta attribution strings only from unambiguous literal message arguments in direct `git commit` commands, then fail-closed rechecks final arguments. |
 | `mods/mahiro-finish-voice.js` | `turn_end` | Bounded macOS completion cue, excluding known subagent processes. |
 
@@ -54,30 +54,22 @@ Case-normalized exact `.env.example`, `.env.sample`, and `.env.template`
 files, ordinary developer JSON/YAML/TOML/XML/TXT files, safe SSH
 metadata/public keys, narrow shell metadata checks, `set -e`/`set -eu`, `env`
 with a command, and heredoc data retain the existing exceptions. Real dotenv,
-credential/key/provider paths, environment dumps, and CCC file access without
-portable settings plus a fresh strict receipt remain blocked. A guarded CCC
-operation may provision one genuinely missing pinned scanner through the
-installed Letta skill helper `~/.letta/skills/ccc/scripts/ensure-gitleaks.py`,
-then rerun the full settings, preflight, pin-check, and strict-receipt gate
-once. It does not repair settings, scan, refresh a receipt, or index. See
+credential/key/provider paths, and environment dumps remain blocked. Search
+and indexing commands receive no special gate beyond those generic checks. See
 [the full policy and limits](MOD.md#mahiro-secret-read-guard).
 
-Requires `/usr/bin/python3` (Python 3.9+) and those four canonical CCC helpers
-for CCC-gated operations. The helper owns the scanner pin and managed path.
-The single mod embeds its policy; it never imports the installed hook. Missing
-Python, check timeout, malformed input/output, process failure, or cancellation
-denies the call. A missing permissions capability instead reports an **inactive
-guard** diagnostic: a mod cannot secure a host that does not load permission
-overlays. Persistent writes are limited to the private pinned scanner cache,
-its lock, and its temporary files, and only while that missing-binary repair
-actually runs.
+Requires `/usr/bin/python3` (Python 3.9+). The single mod embeds its policy;
+it never imports the installed hook or scanner helpers. Missing Python, check
+timeout, malformed input/output, process failure, or cancellation denies the
+call. A missing permissions capability instead reports an **inactive guard**
+diagnostic: a mod cannot secure a host that does not load permission overlays.
+The mod writes no persistent state.
 
 Migration is not completed by source tests or installation. Keep the current
 hook enabled until separately authorized fixture-only Main and subagent
 runtime probes establish that this overlay actually loads and denies on each
 surface. Then remove only the old hook dispatch under separate authorization;
-this package does not edit hook settings. Duplicate guards may perform duplicate
-CCC checks during overlap. No live coverage is implied by mocked callbacks.
+this package does not edit hook settings. No live coverage is implied by mocked callbacks.
 
 From this checkout, after review:
 
@@ -225,7 +217,7 @@ metadata, and optional path/language hints plus navigation entries already
 found by another tool. Code Map never resolves or reads the supplied workspace.
 It returns at most 3,000 characters of deterministic guidance:
 
-- semantic/conceptual discovery routes to `ccc`
+- conceptual (`semantic`) discovery uses filename/path hints, exact text search, and bounded source reads; no semantic engine is provided
 - exact symbol/path/string lookup routes to `rg` or another exact search
 - outline requests route to an existing trusted outline/symbol surface outside
   the mod; Code Map does not generate outlines

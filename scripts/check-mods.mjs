@@ -2178,7 +2178,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-finish-voice.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-assert(packageJson.version === "0.11.3", "Package version must be 0.11.3");
+  assert(packageJson.version === "0.11.4", "Package version must be 0.11.4");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact fourteen-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact fourteen-entry package");
 
@@ -2503,11 +2503,11 @@ function checkMahiroCodeMapRegistration(activate, testing) {
     workspace: "/tmp/target-repository",
     path_hints: ["src/auth"],
     language_hints: ["typescript"],
-    navigation_entries: [{ source: "ccc", path: "src/auth/service.ts", line_start: 20, line_end: 60, symbol: "authenticate", summary: "Likely owner" }],
+    navigation_entries: [{ source: "filename", path: "src/auth/service.ts", line_start: 20, line_end: 60, symbol: "authenticate", summary: "Likely owner" }],
     goal_criterion_refs: ["criterion-02"],
     code_evidence_refs: ["evidence-revision-3"],
   });
-  assert(semantic.includes("Route: ccc") && semantic.includes("navigation metadata, not verification evidence"), "semantic Code Map guidance must route to ccc without claiming proof");
+  assert(semantic.includes("Route: bounded source navigation") && semantic.includes("No semantic engine is provided") && semantic.includes("navigation metadata, not verification evidence"), "conceptual Code Map guidance must use bounded source navigation without claiming a semantic engine or proof");
   assert(semantic.includes("Workspace: /tmp/target-repository (caller-supplied metadata)"), "Code Map must support an explicit metadata-only target workspace when the host cwd differs");
   assert(semantic.includes("criterion-02") && semantic.includes("caller-supplied metadata only"), "Goal and Code Evidence references must remain caller-supplied metadata");
   assert(semantic.includes("targeted default (2 files × 6000 chars/file)"), "large reads must stay off by default with narrow guidance");
@@ -2520,7 +2520,7 @@ function checkMahiroCodeMapRegistration(activate, testing) {
   assert(largeRead.includes("explicit large-read request recorded (8 files × 14000 chars/file") && largeRead.includes("Advisory only—not permission or a security boundary"), "large-read guidance must require explicit bounded opt-in and disclaim enforcement");
 
   const maximumEntries = Array.from({ length: 40 }, (_, index) => ({
-    source: index % 2 === 0 ? "ccc" : "exact",
+    source: index % 2 === 0 ? "filename" : "exact",
     path: `src/very-long-owner-path-${index}-${"x".repeat(180)}.ts`,
     line_start: index + 1,
     line_end: index + 20,

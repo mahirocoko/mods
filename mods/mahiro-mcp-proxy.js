@@ -868,7 +868,7 @@ function formatSetup(cwd) {
     JSON.stringify({
       settings: { timeoutMs: 30000 },
       mcpServers: {
-        "cocoindex-code": { command: "ccc", args: ["mcp"], cwd: cwd || process.cwd() },
+        "example-server": { command: "/path/to/server", args: [], cwd: cwd || process.cwd() },
       },
     }, null, 2),
     "",

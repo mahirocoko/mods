@@ -69,8 +69,8 @@ Finish voice uses `mods/mahiro-voice-runtime.js` for bounded local audio;
 that helper is packaged but is not a manifest entry.
 
 `mahiro-code-map.ts` is intentionally stateless and independent. It owns only a
-bounded routing/read-guidance contract; `ccc`, exact search, outline tools, file
-reads, and verification remain external operations. It does not share a core or
+bounded routing/read-guidance contract; filename and exact search, outline tools,
+file reads, and verification remain external operations. No semantic engine is provided. It does not share a core or
 state with Goal, Code Evidence, or UX Workflow.
 
 `mahiro-execution-run.ts` owns optional execution coordination between planning
