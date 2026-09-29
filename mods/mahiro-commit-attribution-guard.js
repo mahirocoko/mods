@@ -1,3 +1,6 @@
+import { lstatSync, realpathSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
+
 const FORBIDDEN = [
   "Generated with [Letta Code](https://letta.com)",
   "Co-Authored-By: Letta Code <noreply@letta.com>",
@@ -94,6 +97,42 @@ function commandSegmentEnd(command, start) {
     else if (";&|)\n".includes(char)) return cursor;
   }
   return command.length;
+}
+
+function hasUnquotedRedirect(command) {
+  let quote = null;
+  for (let cursor = 0; cursor < command.length; cursor += 1) {
+    const char = command[cursor];
+    if (quote === "'") {
+      if (char === "'") quote = null;
+      continue;
+    }
+    if (quote === '"') {
+      if (char === "\\") cursor += 1;
+      else if (char === '"') quote = null;
+      continue;
+    }
+    if (char === "\\") cursor += 1;
+    else if (char === "'" || char === '"') quote = char;
+    else if (char === "<" || char === ">") return true;
+  }
+  return false;
+}
+
+function hasShellExpansion(command) {
+  let quote = null;
+  for (let cursor = 0; cursor < command.length; cursor += 1) {
+    const char = command[cursor];
+    if (quote === "'") {
+      if (char === "'") quote = null;
+      continue;
+    }
+    if (char === "\\") return true;
+    if (char === "'" && quote === null) quote = "'";
+    else if (char === '"') quote = quote === '"' ? null : '"';
+    else if (char === "$" || char === "`" || (quote === null && /[?*{}\[\]~]/.test(char))) return true;
+  }
+  return quote !== null;
 }
 
 function shellTokens(command, start, end) {
@@ -219,6 +258,49 @@ function sanitizeArray(value) {
   return commandText(result) === commandText(value) ? undefined : result;
 }
 
+// Only a direct commit in this agent's actual MemFS Git root is outside the
+// product-repository attribution policy. Unsupported shell shapes retain the
+// existing sanitizer/denial behavior rather than inheriting an exemption.
+function isMemfsCommit(event, ctx) {
+  const toolName = event?.toolName?.split(".").at(-1);
+  if (!SHELL_TOOLS.has(toolName) || ctx?.memfs?.enabled !== true) return false;
+  if (!event.agentId || event.agentId !== ctx.agent?.id) return false;
+  const memoryDir = ctx.memfs.memoryDir;
+  if (typeof memoryDir !== "string" || !isAbsolute(memoryDir)) return false;
+  const entry = commandEntry(event);
+  const command = entry?.[1];
+  if (typeof command !== "string" || !/^git\s+commit(?=\s|$)/.test(command)) return false;
+  if (commandSegmentEnd(command, 0) !== command.length
+    || hasUnquotedHeredoc(command) || hasUnquotedComment(command)
+    || hasDynamicShell(command) || hasUnquotedRedirect(command) || hasShellExpansion(command)) return false;
+  if (/(?:^|\s)--(?:git-dir|work-tree|config-env)(?:=|\s|$)/.test(command)) return false;
+
+  const args = event.args;
+  if (args.shell !== undefined || args.env !== undefined) return false;
+  if (args.secretEnv !== undefined && (typeof args.secretEnv !== "object" || args.secretEnv === null)) return false;
+  const hasGitOverride = (env) => Object.keys(env).some((key) => key.startsWith("GIT_") && key !== "GIT_PAGER");
+  if (hasGitOverride(args.secretEnv ?? {}) || hasGitOverride(process.env)) return false;
+
+  const hasWorkdir = Object.hasOwn(args, "workdir");
+  if (hasWorkdir && (toolName !== "exec_command" || typeof args.workdir !== "string" || !isAbsolute(args.workdir))) return false;
+  const eventCwd = event.cwd ?? event.workingDirectory;
+  const target = hasWorkdir ? args.workdir : eventCwd ?? ctx.cwd;
+  if (typeof target !== "string" || !isAbsolute(target)) return false;
+  try {
+    const root = lstatSync(memoryDir);
+    const git = lstatSync(join(memoryDir, ".git"));
+    if (!root.isDirectory() || root.isSymbolicLink() || !git.isDirectory() || git.isSymbolicLink()) return false;
+    const canonicalRoot = realpathSync(memoryDir);
+    if (realpathSync(target) !== canonicalRoot) return false;
+    if (!hasWorkdir && event.cwd && event.workingDirectory
+      && realpathSync(event.cwd) !== realpathSync(event.workingDirectory)) return false;
+    if (!hasWorkdir && eventCwd && ctx.cwd && realpathSync(ctx.cwd) !== realpathSync(eventCwd)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function inspect(event) {
   const toolName = event?.toolName?.split(".").at(-1);
   if (!SHELL_TOOLS.has(toolName)) return;
@@ -237,18 +319,20 @@ function sanitizeValue(value) {
   if (typeof value === "string") return sanitizeString(value);
 }
 
-function transform(event) {
+function transform(event, ctx) {
   const match = inspect(event);
   if (!match) return;
+  if (isMemfsCommit(event, ctx)) return;
   const value = sanitizeValue(match.value);
   if (value === undefined || commandText(value) === commandText(match.value)) return;
   return { args: { ...event.args, [match.key]: value } };
 }
 
 // Deliberately preserves the hook's lexical scope, not a shell/git parser.
-function check(event, { canTransform = false } = {}) {
+function check(event, { canTransform = false, ctx } = {}) {
   const match = inspect(event);
   if (!match) return;
+  if (isMemfsCommit(event, ctx)) return;
   if (canTransform && event.phase === "approval" && transform(event)) return;
   return {
     decision: "deny",
@@ -271,12 +355,12 @@ export default function activate(letta) {
     description: canTransform
       ? "Strip exact Letta attribution strings from inline git commits before execution and deny any remainder."
       : "Deny the legacy hook's inline git commit attribution patterns at approval and execution.",
-    check: (event) => check(event, { canTransform }),
+    check: (event, ctx) => check(event, { canTransform, ctx }),
   });
   disposers.push(permissionDispose);
   if (canTransform) {
     try {
-      disposers.push(letta.events.on("tool_start", transform));
+      disposers.push(letta.events.on("tool_start", (event, ctx) => transform(event, ctx)));
     } catch (error) {
       if (!letta.signal?.aborted) permissionDispose();
       throw error;
@@ -288,4 +372,4 @@ export default function activate(letta) {
   };
 }
 
-export const __testing = { check, transform, sanitizeValue, FORBIDDEN };
+export const __testing = { check, transform, isMemfsCommit, sanitizeValue, FORBIDDEN };

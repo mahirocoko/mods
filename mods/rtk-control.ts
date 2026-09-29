@@ -377,6 +377,7 @@ const getCommandArgKey = (args: Record<string, unknown>): "cmd" | "command" | nu
 };
 
 const hasShellMetacharacters = (command: string): boolean => /[;&|`<>$]/.test(command);
+const isDirectGitCommit = (command: string): boolean => /^git\s+commit(?=\s|$)/.test(command);
 
 const isSafeRewriteCandidate = (command: string): { ok: boolean; reason?: string } => {
   const trimmed = command.trim();
@@ -408,6 +409,9 @@ const handleToolStart = (event: IToolStartEvent, ctx: { cwd?: string } = {}): { 
   if (!argKey) return;
 
   const original = String(event.args[argKey] ?? "").trim();
+  // Keep commits byte-for-byte raw in every mode; a full-mode RTK wrapper
+  // changes the command shape before the commit guard's final recheck.
+  if (isDirectGitCommit(original)) return;
   const isFullRtkMode = state.mode === "rewrite-rtk";
 
   if (!isFullRtkMode) {
@@ -691,3 +695,5 @@ export default function activate(letta: any) {
     for (const dispose of disposers.reverse()) dispose();
   };
 }
+
+export const __testing = { isDirectGitCommit };

@@ -458,7 +458,10 @@ function checkMcpPermissionGuard(activate) {
   if (typeof guardedDisposer === "function") guardedDisposer();
 }
 
-function checkRtkRegistration(activate) {
+function checkRtkRegistration(activate, testing) {
+  assert(testing.isDirectGitCommit("git commit -m 'memory\n\nfooter'"), "direct commits must bypass every RTK mode");
+  assert(!testing.isDirectGitCommit("rtk git commit -m 'subject'"), "explicit RTK commands are not rewritten here");
+  assert(!testing.isDirectGitCommit("git commitment -m 'subject'"), "commit must be a complete token");
   const commands = [];
   const events = [];
   const disposer = activate({
@@ -2178,7 +2181,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-finish-voice.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.11.4", "Package version must be 0.11.4");
+  assert(packageJson.version === "0.11.5", "Package version must be 0.11.5");
   assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact fourteen-entry order");
   assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact fourteen-entry package");
 
@@ -3367,7 +3370,7 @@ try {
     testRoot,
   );
   checkMcpPermissionGuard(activations.get("mods/mahiro-mcp-proxy.js"));
-  checkRtkRegistration(activations.get("mods/rtk-control.ts"));
+  checkRtkRegistration(activations.get("mods/rtk-control.ts"), testingSurfaces.get("mods/rtk-control.ts"));
   await checkStatuslineRegistration(
     activations.get("mods/statusline.tsx"),
     testingSurfaces.get("mods/statusline.tsx"),

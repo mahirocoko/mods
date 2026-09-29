@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -12,7 +12,7 @@ delete process.env.LETTA_CODE_AGENT_ROLE;
 try {
   const guard = await import("../mods/mahiro-commit-attribution-guard.js");
   const finish = await import("../mods/mahiro-finish-voice.js");
-  const { check, transform, FORBIDDEN } = guard.__testing;
+  const { check, transform, isMemfsCommit, FORBIDDEN } = guard.__testing;
   // Synthetic invocations only: no git process, repository, old hook, or secret reads.
   for (const phase of ["approval", "execution"]) {
     for (const trailer of FORBIDDEN) {
@@ -75,6 +75,79 @@ try {
   assert.equal(check({ toolName: "Read", args: { file_path: "ordinary.txt" } }), undefined);
   assert.equal(check({ toolName: "Bash" }), undefined);
 
+  const memoryDir = join(root, "agent-memory");
+  const ordinaryDir = join(root, "product-repo");
+  await mkdir(join(memoryDir, ".git"), { recursive: true });
+  await mkdir(ordinaryDir);
+  const agentId = "agent-local-test";
+  const memoryCtx = { agent: { id: agentId }, memfs: { enabled: true, memoryDir }, cwd: memoryDir };
+  const directMemory = { agentId, toolName: "exec_command", cwd: memoryDir, args: { cmd: `git commit -m 'memory: preserve\n\n${generatedBy}\n\n${FORBIDDEN[1]}'` } };
+  assert.equal(isMemfsCommit(directMemory, memoryCtx), true);
+  assert.equal(isMemfsCommit({ ...directMemory, args: { ...directMemory.args, secretEnv: { GIT_PAGER: "cat" } } }, memoryCtx), true);
+  const priorGitIndex = process.env.GIT_INDEX_FILE;
+  try {
+    process.env.GIT_INDEX_FILE = join(ordinaryDir, "index");
+    assert.equal(isMemfsCommit(directMemory, memoryCtx), false, "inherited Git overrides must withhold the exemption");
+    assert.equal(check({ ...directMemory, phase: "execution" }, { canTransform: true, ctx: memoryCtx })?.decision, "deny");
+  } finally {
+    if (priorGitIndex === undefined) delete process.env.GIT_INDEX_FILE;
+    else process.env.GIT_INDEX_FILE = priorGitIndex;
+  }
+  assert.equal(transform(directMemory, memoryCtx), undefined, "MemFS message must remain byte-for-byte intact");
+  for (const phase of ["approval", "execution"]) {
+    assert.equal(check({ ...directMemory, phase }, { canTransform: true, ctx: memoryCtx }), undefined);
+    assert.equal(check({ ...directMemory, phase }, { canTransform: false, ctx: memoryCtx }), undefined);
+  }
+  assert.equal(isMemfsCommit(directMemory,
+    { agent: { id: null }, memfs: { enabled: false, memoryDir: null }, cwd: memoryDir }), false);
+  const bashMemory = { agentId, toolName: "Bash", args: { command: directMemory.args.cmd } };
+  assert.equal(isMemfsCommit(bashMemory, memoryCtx), true, "Bash inherits the scoped callback cwd");
+  assert.equal(transform(bashMemory, memoryCtx), undefined);
+  const fromOrdinaryCwd = { ...directMemory, cwd: ordinaryDir, args: { ...directMemory.args, workdir: memoryDir } };
+  const ordinaryCtx = { ...memoryCtx, cwd: ordinaryDir };
+  assert.equal(isMemfsCommit(fromOrdinaryCwd, ordinaryCtx), true, "explicit absolute workdir owns execution");
+  const outsideOverride = { ...directMemory, args: { ...directMemory.args, workdir: ordinaryDir } };
+  assert.equal(isMemfsCommit(outsideOverride, memoryCtx), false);
+  assert.equal(check({ ...outsideOverride, phase: "execution" }, { canTransform: true, ctx: memoryCtx })?.decision, "deny");
+  assert(transform(outsideOverride, memoryCtx)?.args.cmd.includes("memory: preserve"));
+
+  const alias = join(root, "memory-alias");
+  await symlink(memoryDir, alias);
+  assert.equal(isMemfsCommit({ ...directMemory, args: { ...directMemory.args, workdir: alias } }, memoryCtx), true);
+  const escaped = join(root, "escaped-memory");
+  await mkdir(join(ordinaryDir, ".git"));
+  await symlink(ordinaryDir, escaped);
+  const gitfileRoot = join(root, "memory-gitfile");
+  await mkdir(gitfileRoot);
+  await writeFile(join(gitfileRoot, ".git"), "gitdir: elsewhere\n");
+  for (const [event, ctx] of [
+    [{ ...directMemory, agentId: "agent-local-other" }, memoryCtx],
+    [directMemory, { ...memoryCtx, memfs: { ...memoryCtx.memfs, enabled: false } }],
+    [directMemory, { ...memoryCtx, memfs: { ...memoryCtx.memfs, memoryDir: escaped } }],
+    [directMemory, { ...memoryCtx, memfs: { ...memoryCtx.memfs, memoryDir: gitfileRoot } }],
+    [directMemory, { ...memoryCtx, memfs: { ...memoryCtx.memfs, memoryDir: join(root, "missing") } }],
+    [{ ...directMemory, cwd: join(memoryDir, "nested") }, { ...memoryCtx, cwd: join(memoryDir, "nested") }],
+    [{ ...directMemory, cwd: memoryDir }, { ...memoryCtx, cwd: ordinaryDir }],
+    [{ ...directMemory, workingDirectory: ordinaryDir }, memoryCtx],
+    [{ ...directMemory, args: { ...directMemory.args, workdir: "../agent-memory" } }, memoryCtx],
+    [{ ...directMemory, args: { ...directMemory.args, workdir: null } }, memoryCtx],
+    [{ ...directMemory, args: { ...directMemory.args, shell: "/bin/sh" } }, memoryCtx],
+    [{ ...directMemory, args: { ...directMemory.args, secretEnv: { GIT_DIR: ordinaryDir } } }, memoryCtx],
+    [{ ...directMemory, args: { ...directMemory.args, secretEnv: { GIT_OBJECT_DIRECTORY: ordinaryDir } } }, memoryCtx],
+    [{ ...directMemory, args: { ...directMemory.args, secretEnv: { GIT_INDEX_FILE: join(ordinaryDir, "index") } } }, memoryCtx],
+    [{ ...directMemory, args: { cmd: `${directMemory.args.cmd} > output.log` } }, memoryCtx],
+    [{ ...directMemory, args: { cmd: `git commit -m '${FORBIDDEN[0]}` } }, memoryCtx],
+    [{ ...directMemory, args: { cmd: `git commit -m "${FORBIDDEN[0]}` } }, memoryCtx],
+    [{ ...directMemory, args: { cmd: `${directMemory.args.cmd} $GIT_REDIRECT` } }, memoryCtx],
+    [{ ...directMemory, args: { cmd: `${directMemory.args.cmd} && git status --short` } }, memoryCtx],
+    [{ ...directMemory, args: { cmd: `cd '${ordinaryDir}' && ${directMemory.args.cmd}` } }, memoryCtx],
+    [{ ...directMemory, args: { cmd: ["git", "commit", "-m", FORBIDDEN[0]] } }, memoryCtx],
+  ]) {
+    assert.equal(isMemfsCommit(event, ctx), false);
+    assert.equal(check({ ...event, phase: "execution" }, { canTransform: true, ctx })?.decision, "deny");
+  }
+  assert.equal(isMemfsCommit(directMemory), false, "missing callback context is never an exemption");
+
   for (const aborted of [false, true]) {
     const controller = new AbortController();
     let removed = 0;
@@ -99,6 +172,8 @@ try {
     const effective = onToolStart({ toolName: "exec_command", args: { cmd: attributed } });
     assert.equal(overlay.check({ toolName: "exec_command", phase: "execution", args: effective.args }), undefined);
     assert.equal(overlay.check({ toolName: "exec_command", phase: "execution", args: { cmd: attributed } })?.decision, "deny");
+    assert.equal(onToolStart(directMemory, memoryCtx), undefined);
+    assert.equal(overlay.check({ ...directMemory, phase: "execution" }, memoryCtx), undefined);
     if (aborted) controller.abort();
     dispose();
     assert.equal(removed, aborted ? 0 : 2);

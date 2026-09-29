@@ -1383,3 +1383,43 @@ text, co-author trailer, generated-by text, or orphan `👾` marker. The disposa
 repository was removed and nothing was pushed. This is the current end-to-end
 acceptance evidence for Skill → specialized Agent → permission approval →
 `tool_start` sanitation → RTK rewrite → Git → stored-message verification.
+
+## MemFS commit exclusion candidate — 2026-09-28
+
+Mahiro requested that memory-repository commits not be intercepted by the
+product-repository attribution guard. The canonical guard now makes a bounded
+exception only when public callback context positively identifies the current
+agent's enabled MemFS, the effective tool workdir resolves to that exact Git
+root, and the command is one direct literal `git commit`. It returns no opinion
+in both tool-start and permission phases; ordinary host approval, hooks, and
+Git still own execution. Missing or conflicting identity, workdir escape,
+shell chains, redirects, symlinked repository roots, missing `.git`, and Git
+environment redirection retain the pre-existing guard behavior.
+
+`pnpm check:hooks` covers positive MemFS identity at approval, execution and
+tool-start; explicit workdir selection from a different conversation cwd;
+ordinary-workdir override from MemFS; symlink alias to the same root; and
+negative identity, context, shell, array, redirect and filesystem fixtures.
+Those fixtures are synthetic proof; the local live-host proof is recorded below.
+`pnpm check` passed, `pnpm mods:update` installed the current package, and
+`pnpm mods:status` reported every entry matching with no migration needed.
+
+Two earlier memory commits after reload were **denied**; neither created a
+commit. The first hypothesis blamed a
+generic permission fallback without agent/MemFS context. Subsequent read-only
+Cursor/Opus 5.5 consultation and Main's runtime/source replay refuted that
+for the TUI: its scoped context has agent/MemFS ownership, while RTK's active
+`rewrite-rtk` mode wraps the direct command as `rtk git commit` (even when
+`rtk rewrite` returns a nonzero status with usable stdout). Synthetic replay
+confirmed the raw command passes the MemFS proof, the RTK wrapper changes the
+command shape, and the final guard correctly denies that wrapper. The
+uninstalled generic-path fallback and boolean-only diagnostic were removed;
+the fix instead makes RTK leave direct `git commit` raw in every mode.
+
+On 2026-09-29, after `/reload` succeeded, a real direct commit of this agent's
+MemFS rule succeeded as `6661889`. The stored message retained both exact Letta
+attribution lines, and `git show` identified only `system/human/prefs/workflow.md`
+in the commit; the unrelated model-profile edit remained unstaged and uncommitted.
+This proves the exception works in this active local TUI with `rewrite-rtk`,
+not in other hosts or unsupported command shapes. At this proof checkpoint,
+before packaging v0.11.5, no Mods source commit, push, or release had occurred.
