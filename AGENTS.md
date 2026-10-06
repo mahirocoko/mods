@@ -13,6 +13,7 @@ Installed files under `~/.letta/mods/` are runtime copies and state, not authori
 - Keep runtime dependencies pinned exactly.
 - Keep each mod in one focused file under `mods/` until real reuse requires a larger boundary.
 - Use public Letta mod APIs only; do not import Letta Code internals.
+- The companion's canonical plugin ID/config directory is `mahiro-herdr`; statusline refresh and snapshot detection must use it, with `MAHIRO_HERDR_SNAPSHOT` as the explicit snapshot override. Shared `mahiro_sidebar_*` display tokens remain a presentation contract, not the retired plugin identity.
 - Guard optional registrations with the matching `letta.capabilities` surface.
 - The eleven switchable entries must honor their fixed per-entry disable sentinels before diagnostics or registrations; no force flag may bypass them. The three migrated hooks (secret reads, commit attribution, finish voice) are automatic-only: no per-entry switches or manual commands. Keep `scripts/manage-entries.mjs`, its tests, source paths, and user docs aligned when entries change.
 - Return cleanup disposers for commands, tools, events, permissions, timers, processes, and panels.

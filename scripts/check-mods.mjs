@@ -3283,9 +3283,12 @@ const previousRtkDisablePath = process.env.MAHIRO_RTK_CONTROL_DISABLE_PATH;
 const previousStatuslineDisablePath = process.env.MAHIRO_STATUSLINE_DISABLE_PATH;
 const previousStatuslineTesting = process.env.MAHIRO_STATUSLINE_TESTING;
 const previousUsageDir = process.env.MAHIRO_STATUSLINE_USAGE_DIR;
-const previousSidebarSnapshot = process.env.MAHIRO_HERDR_SIDEBAR_SNAPSHOT;
+const previousSidebarSnapshot = process.env.MAHIRO_HERDR_SNAPSHOT;
+const migratedHerdrConsumerSource = await readFile(join(repositoryRoot, "mods/statusline.tsx"), "utf8");
+assert(!migratedHerdrConsumerSource.includes("mahiro-herdr-sidebar") && !migratedHerdrConsumerSource.includes("MAHIRO_HERDR_SIDEBAR_SNAPSHOT"), "Herdr consumer must not call the retired plugin or detect its old snapshot");
+assert(/"--plugin",\s*"mahiro-herdr"/.test(migratedHerdrConsumerSource) && /"config",\s*"mahiro-herdr",\s*"config-snapshots.json"/.test(migratedHerdrConsumerSource), "Herdr refresh and snapshot owners must share the canonical identity");
 process.env.MAHIRO_STATUSLINE_USAGE_DIR = join(testRoot, "usage");
-process.env.MAHIRO_HERDR_SIDEBAR_SNAPSHOT = join(testRoot, "missing-herdr-sidebar-snapshot.json");
+process.env.MAHIRO_HERDR_SNAPSHOT = join(testRoot, "missing-herdr-snapshot.json");
 const previousMcpDisablePath = process.env.MAHIRO_MCP_PROXY_DISABLE_PATH;
 process.env.MAHIRO_GOAL_STATE_PATH = join(testRoot, "state.json");
 process.env.MAHIRO_GOAL_TESTING = "1";
@@ -3380,8 +3383,8 @@ try {
 } finally {
   if (previousUsageDir === undefined) delete process.env.MAHIRO_STATUSLINE_USAGE_DIR;
   else process.env.MAHIRO_STATUSLINE_USAGE_DIR = previousUsageDir;
-  if (previousSidebarSnapshot === undefined) delete process.env.MAHIRO_HERDR_SIDEBAR_SNAPSHOT;
-  else process.env.MAHIRO_HERDR_SIDEBAR_SNAPSHOT = previousSidebarSnapshot;
+  if (previousSidebarSnapshot === undefined) delete process.env.MAHIRO_HERDR_SNAPSHOT;
+  else process.env.MAHIRO_HERDR_SNAPSHOT = previousSidebarSnapshot;
   if (previousStatePath === undefined) delete process.env.MAHIRO_GOAL_STATE_PATH;
   else process.env.MAHIRO_GOAL_STATE_PATH = previousStatePath;
   if (previousGoalTesting === undefined) delete process.env.MAHIRO_GOAL_TESTING;

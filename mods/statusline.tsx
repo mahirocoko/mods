@@ -703,7 +703,7 @@ async function getProcessSubagents(rootPid: number): Promise<Array<{ id: string;
 }
 
 export const __testing = process.env.MAHIRO_STATUSLINE_TESTING === "1"
-  ? Object.freeze({ parseSubagentProcesses, parseQuota, quotaSegments, parseUsageSettings, createUsageController, herdrSidebarUsageConsumerActive, fetchQuota, renderStatusline, renderUsagePanel, paintQuotaText, visibleWidth, truncateAnsi, emptyGitStatus })
+  ? Object.freeze({ parseSubagentProcesses, parseQuota, quotaSegments, parseUsageSettings, createUsageController, herdrUsageConsumerActive, fetchQuota, renderStatusline, renderUsagePanel, paintQuotaText, visibleWidth, truncateAnsi, emptyGitStatus })
   : null;
 
 function emptyGitStatus(): GitStatus {
@@ -1194,14 +1194,27 @@ const USAGE_METER_FILLED = "▰";
 const USAGE_METER_EMPTY = "▱";
 const usageDefaults = (): UsageSettings => ({ codex: false, style: "bar" });
 
-function herdrSidebarUsageConsumerActive(): boolean {
+function herdrUsageConsumerActive(): boolean {
   if (process.env.HERDR_ENV !== "1") return false;
   const configRoot = process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config");
-  const snapshotPath = process.env.MAHIRO_HERDR_SIDEBAR_SNAPSHOT
-    ?? join(configRoot, "herdr", "plugins", "config", "mahiro-herdr-sidebar", "config-snapshots.json");
+  const snapshotPath =
+    process.env.MAHIRO_HERDR_SNAPSHOT ??
+    join(
+      configRoot,
+      "herdr",
+      "plugins",
+      "config",
+      "mahiro-herdr",
+      "config-snapshots.json",
+    );
   try {
     const details = lstatSync(snapshotPath);
-    return details.isFile() && !details.isSymbolicLink() && details.size > 0 && details.size <= 64 * 1024;
+    return (
+      details.isFile() &&
+      !details.isSymbolicLink() &&
+      details.size > 0 &&
+      details.size <= 64 * 1024
+    );
   } catch {
     return false;
   }
@@ -1415,9 +1428,9 @@ async function fetchQuota(signal: AbortSignal): Promise<QuotaResult> {
   return parseQuota(await json("https://chatgpt.com/backend-api/wham/usage", { headers }));
 }
 
-async function refreshHerdrSidebar(signal: AbortSignal): Promise<void> {
+async function refreshHerdr(signal: AbortSignal): Promise<void> {
   await execFileAsync(process.env.HERDR_BIN_PATH ?? "herdr", [
-    "plugin", "action", "invoke", "refresh", "--plugin", "mahiro-herdr-sidebar",
+    "plugin", "action", "invoke", "refresh", "--plugin", "mahiro-herdr",
   ], {
     encoding: "utf8",
     timeout: 3_000,
@@ -1441,8 +1454,8 @@ function readUsageSnapshot(): UsageSnapshot | undefined {
 function createUsageController(
   publish: (segments: StatusSegment[]) => void,
   load = fetchQuota,
-  sidebarConsumer = herdrSidebarUsageConsumerActive,
-  notifySidebar = refreshHerdrSidebar,
+  sidebarConsumer = herdrUsageConsumerActive,
+  notifySidebar = refreshHerdr,
 ) {
   let settings = usageDefaults();
   let disposed = false;
