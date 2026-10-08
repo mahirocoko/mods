@@ -39,20 +39,32 @@ All three migrated hooks are automatic-only: no per-entry switches, disable envi
 
 ## Mahiro Secret-Read Guard
 
-`mods/mahiro-secret-read-guard.js` owns one public `permissions.register`
-overlay, `mahiro-secret-read-guard`, with no `isEnabled` predicate, model tool,
-slash command, argument transform, or approval cache. It evaluates `event.args`
-anew in both `approval` and `execution`, including post-transform arguments.
-Allowed policy results return `undefined`, never blanket `allow`. Denials do
-not include paths, raw commands, helper stderr, or input values.
+`mods/mahiro-secret-read-guard.js` registers one public `permissions.register`
+overlay, `mahiro-secret-read-guard`, and three narrow `tools.register` tools:
+`mh_npm_config`, `mh_env_config`, and `mh_pypi_config`, when the tools capability is present. The permission overlay
+has no `isEnabled` predicate, slash command, argument transform, or approval
+cache. It evaluates `event.args` anew in both `approval` and `execution`,
+including post-transform arguments. Allowed policy results return `undefined`,
+never blanket `allow`. Denials do not include paths, raw commands, helper stderr,
+or input values.
 
-The entry embeds the existing local Python hook policy to preserve Python
-`shlex`, path-name, and heredoc contracts without a runtime dependency on
-the old hook file. Read/ReadFile/read_file and Bash/ShellCommand/shell_command/
-exec_command aliases (including dotted tool namespaces) are recognized. Other
-tools retain the recursive direct-path fallback. Exact `.env.example`,
-`.env.sample`, and `.env.template` files remain a case-normalized early
-filename exception, including inside otherwise sensitive directories.
+The entry embeds the Python/shlex policy to preserve Python `shlex`, path-name,
+and heredoc contracts without a runtime dependency on an external hook file.
+Tool argument roles are classified to prevent role conflation:
+- Read aliases (`Read`, `ReadFile`, `read_file`, `view_file`, including dotted namespaces)
+  inspect actual target fields (`file_path`, `filePath`, `path`, `filename`, `file`,
+  and string arrays `files`, `paths`, `file_paths`). They do not inspect `description`,
+  `explanation`, `content`, `patch`, or `query` strings. Malformed or missing target inputs fail closed.
+- Search tools (`Grep`, `search`, `ripgrep`, etc.) inspect target directory and file
+  operands, not search pattern or query strings.
+- Filename-discovery tools (`Glob`, `list_files`) discover filenames and metadata without reading contents.
+- Write-only tools (`write_to_file`, `create_file`) are not classified as reads.
+  `ApplyPatch` inspects Update/Delete target headers, not diff prose; `Edit`
+  inspects target paths, not replacement or instruction content.
+- Bounded fallback for arbitrary unknown tools recursively inspects target path fields rather than every string.
+
+Exact `.env.example`, `.env.sample`, and `.env.template` files remain a case-normalized
+early filename exception, including inside otherwise sensitive directories.
 JSON/YAML/YML/TOML/XML/TXT are not blanket denied. Sensitive names include real
 `.env` variants, `.npmrc`, `.pypirc`, auth/credentials files, SSH private-key
 names and unknown SSH files, identity, key/PEM/P12/PFX suffixes, credentials./
@@ -60,35 +72,100 @@ secret./secrets. prefixes, and local-backend provider-directory paths. SSH
 config, known_hosts variants, authorized_keys, and `.pub` retain their narrow
 exceptions unless another sensitive-name rule applies.
 
-Shell checks retain narrow `ls`/`stat`/`test`/`[`/`find` metadata exceptions,
-read-like command detection, `find -exec` reads, environment-dump checks, safe
-shell flags, `env` command wrappers, and heredoc-body stripping. The migration
-also recognizes shell separators before stripping punctuation, including
-unspaced separators, so a preceding metadata command cannot exempt a subsequent
-read, and recognizes `[` before punctuation stripping to honor the hook's
-explicit metadata allow-list intent. As in the hook, this is an accidental-read heuristic, **not a sandbox**:
-symlink targets, arbitrary globs/variables, encoded/interpreter-generated paths,
-alias expansion, heredoc substitutions, and arbitrary network/remote-tool reads
-are not comprehensively resolved. Developer files can still contain secrets.
-No filesystem contents are opened to classify a path.
+Shell checks retain narrow `ls`/`stat`/`test`/`[` metadata exceptions,
+read-like command detection, `find -exec` and `find -execdir` reads, environment-dump checks,
+safe shell flags, and heredoc processing:
+- Plain search patterns and normal `rg` and `grep` options (including `-n`, `-i`, `-F`, `-C <val>`,
+  `-A <val>`, `-B <val>`, and `-e`/`--regexp`) are recognized as search patterns; file and pattern-file
+  (`-f`/`--file`, `--ignore-file`) operands remain guarded. `--` ends option parsing.
+- The same search pattern rule applies to the exact `rtk rg` projection emitted by
+  the RTK tool-start owner, including an absolute path to the RTK executable.
+  RTK options before `rg` and other subcommands are not given this search exception.
+  The verified immediate `rtk ls` and `rtk find` projections retain metadata
+  classification only; input redirections, chains and find-exec reads remain checked.
+- Statement boundaries include newlines `\n` and single-`&` background operators alongside `;`, `&&`, `||`, `|`;
+  escaped line continuations remain in the same statement. Known `env`, `nice`,
+  `timeout`, and `stdbuf` wrappers are inspected without treating their inner program as data.
+- Metadata chaining (`find -exec`, `find -execdir`), command substitutions (`$(...)` and backticks),
+  unquoted expanding heredocs, and shell interpreter `-c`/`-lc` subcommands are recursively inspected.
+- Nonexecuting quoted heredoc data, literal output (`echo`, `printf`), help/version flags (`--help`, `--version`),
+  comments (`#`), and benign Python `set(...)` calls are preserved as data.
+  Single quotes suppress substitutions in ordinary shell text, but do not suppress
+  expansion inside an unquoted heredoc. Input redirections are inspected.
+  Nested execution beyond the bounded depth or unsupported lexical syntax is
+  denied as an analysis limit, not misreported as a discovered secret.
+  `printenv` permits only named noncredential variables PATH, HOME, PWD, SHELL,
+  LANG and TERM; other variable requests and whole-environment dumps remain denied.
 
-The guard does not index repositories, run project preflight, provision a scanner,
-or validate search receipts. It evaluates only the current tool arguments in
-each phase; no stale approval can authorize a later execution. Search and
-indexing operations are not independently gated by this overlay unless their
-arguments trigger the generic sensitive-path or environment-dump checks.
+### Filtered npm config inspection (`mh_npm_config`)
+
+To allow routine npm registry, linker, and strict-ssl inspection without exposing embedded credentials,
+the mod registers the narrow `mh_npm_config` tool:
+- Schema: accepts optional `path` with `additionalProperties: false`. Basename is restricted to exact `.npmrc`.
+- Permission overlay: content-blind validation that verifies only the tool name and path argument contract.
+  The classifier performs no filesystem read during permission checking.
+- Content reading and filtering: `run(ctx)` requires scoped cwd/args and opens
+  one no-follow, nonblocking descriptor, checks its regular-file type, and reads
+  at most 64 KiB plus one overflow byte in bounded chunks (maximum 500 lines).
+  It rejects invalid UTF-8, changed-file snapshots, and final-component symlinks.
+  Cancellation/disposal is checked before and after each bounded read, closes
+  the descriptor, and prevents retained callbacks from reading after disposal.
+- Strict allowlist output: parses and outputs only typed boolean settings (`strict-ssl`, `save-exact`,
+  `package-lock`, `fund`, `audit`, `ignore-scripts`, etc.), numbers (`fetch-retries`, timeouts),
+  enumerated settings (`node-linker`, `loglevel`), and safe registry origins (`registry`, `@scope:registry`).
+- Registry URLs have credentials (`user:pass`), paths, queries, and hashes stripped to prevent leaking token-bearing URL segments.
+- Auth keys (`_authToken`, `_auth`, `_password`, `username`, `email`), comments, multiline continuations,
+  and unrecognized settings are strictly filtered and reported only as redacted counts and reason categories.
+- Environment placeholders are not expanded; values outside the strict allowlist
+  are omitted with redaction reasons. Matching quoted INI values are supported.
+- Raw `.npmrc` file reads and shell commands accessing `.npmrc` remain denied.
+
+### Filtered dotenv inspection (`mh_env_config`)
+
+To allow routine `.env` key discovery and placeholder inspection without exposing actual credentials,
+the mod registers the narrow `mh_env_config` tool:
+- Schema: accepts optional `path` with `additionalProperties: false`. Basename is restricted to `.env` or case-insensitive `.env.<suffix>` where `<suffix>` is ASCII letters, digits, `_`, `.`, or `-` (bounded to 64 chars). Default path is `.env` in `ctx.cwd`.
+- Permission overlay: content-blind validation verifying tool name and path argument contract at both approval and execution phases.
+- Reader: shares internal descriptor helper `readConfigFileLines` with `O_RDONLY | O_NOFOLLOW | O_NONBLOCK`, regular-file check, 64 KiB + 1 overflow byte cap, 500 lines cap, UTF-8/NUL byte validation, snapshot recheck, signal cancellation, and descriptor closure in `finally`.
+- Key and placeholder output: returns `{ status: "success", keys: [{ name, present, placeholder_like }], lines_parsed }`. Keys are validated as safe ASCII identifiers (`^[a-zA-Z_][a-zA-Z0-9_]*$`, bounded to 128 chars). Supports comments, optional `export` prefix, empty and quoted scalar values, CRLF, and BOM. Last-assignment precedence applies.
+- Security guarantees: values are NEVER returned—not in output, error messages, snippets, lengths, or hashes. Variables, subprocess environments, and JS/shell/dotenv code are never expanded or evaluated. Values remain hidden even for seemingly public settings (e.g. `PORT`, `URL`). Literal and placeholder classifications are heuristics, not guaranteed safe/real-secret detection. Key names are approved metadata. Unsupported multiline continuations, unclosed quotes, or malformed lines fail closed generically with zero value leakage. Output is capped at 32 KiB.
+- Raw `.env*` file reads and shell commands accessing `.env*` remain denied.
+
+### Filtered PyPI config inspection (`mh_pypi_config`)
+
+To allow inspecting configured PyPI repository profiles and origins without exposing tokens or passwords,
+the mod registers the narrow `mh_pypi_config` tool:
+- Schema: accepts optional `path` with `additionalProperties: false`. Basename is restricted to exact `.pypirc` only. Default path is `.pypirc` in `ctx.cwd`.
+- Permission overlay: content-blind validation verifying tool name and path argument contract at both approval and execution phases.
+- Reader: shares internal descriptor helper `readConfigFileLines`.
+- Section and repository parsing: format-specific INI parser supporting standard `[distutils]` `index-servers` section with indented multiline server names and inline lists, as well as repository profile sections. Returns `{ status: "success", index_servers: string[], repositories: { [profile]: { repository?: string } }, lines_parsed, redacted_count, redacted_reasons }`. Profile names are validated as safe ASCII (`^[a-zA-Z0-9_.-]+$`, bounded to 64 chars) and stored in a Map so inherited/prototype names cannot mutate builtins. Repository assignments use last-assignment precedence; index-server names are a deduplicated accumulated list.
+- URL and credential filtering: each profile's `repository` returns origin only (`protocol://host[:port]`), with HTTP and HTTPS schemes only. Usernames, passwords, tokens, paths, query parameters, and hashes are stripped. Credential keys (`username`, `password`, `token`) and unknown keys are completely omitted, with fixed redaction counts/reasons.
+- Security guarantees: does not synthesize missing runtime defaults or expand interpolation/env placeholders. Malformed or unsupported structures fail closed generically. Re-reading a file with changed contents remains safely filtered without cached content or approvals. Output is capped at 32 KiB.
+- Raw `.pypirc` file reads and shell accesses remain denied.
+
+For all three tools, `ctx.cwd` owns relative path resolution; an explicit absolute
+or parent-relative path selecting the required basename is allowed. This is not
+cwd confinement. The shared reader uses asynchronous descriptor stat and 4 KiB
+chunks; final-component symlinks are refused, not every symlinked ancestor.
+
+As in the hook, this is an accidental-read heuristic, **not a sandbox**:
+symlink targets, arbitrary globs/variables, encoded/interpreter-generated paths,
+alias expansion, and arbitrary network/remote-tool reads are not comprehensively resolved.
+Developer files can still contain secrets.
+Ambiguous source names (`secret.ts`, credential fixtures), public PEM files and
+other config names remain conservative filename denials; this pass does not
+declare those files universally harmless or expand template exceptions.
 
 The fixed policy runs via `/usr/bin/python3 -I -c` with tool input on stdin,
 never an agent-provided shell command. Requires Python 3.9+. Inputs are capped
 at 1 MiB and checker output at 4 KiB. Nonzero exit, malformed response,
 missing interpreter, invalid phase/input/cwd, timeout, or abort returns a generic
-deny. Cancellation and cleanup kill the dedicated checker process group,
-on cancellation. Normal cleanup unregisters; engine-aborted cleanup skips
-the redundant registry publish. The mod writes no state of its own.
+deny. Cancellation and cleanup kill the dedicated checker process group.
+Normal cleanup unregisters; engine-aborted cleanup skips the redundant registry publish.
+The mod writes no state of its own.
 
 This guard is automatic-only, without a per-entry switch or disable environment override.
-Missing permission
-capability reports an inactive-guard diagnostic rather than pretending to
+Missing permission capability reports an inactive-guard diagnostic rather than pretending to
 protect unsupported hosts. Disabling mods globally, failed loading, or a
 surface that never invokes overlays means there is no mod enforcement.
 

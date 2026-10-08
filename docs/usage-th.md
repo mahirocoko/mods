@@ -59,7 +59,7 @@ pnpm mods:update
 | ดูหรือเปิดการ rewrite คำสั่งผ่าน RTK | RTK Control |
 | ดูสถานะ workspace, Git, context และ activity | Compact Statusline |
 | ค้นและเรียก MCP tools แบบมี approval boundary | Lazy MCP Proxy |
-| กันการอ่านไฟล์ลับผ่าน Letta Code | [Mahiro Secret-Read Guard](../MOD.md#mahiro-secret-read-guard) |
+| กันการอ่านไฟล์ลับผ่าน Letta Code และตรวจ .npmrc แบบปลอดภัย | [Mahiro Secret-Read Guard](../MOD.md#mahiro-secret-read-guard) (`mh_npm_config`) |
 | เอา Letta attribution ออกจาก commit อัตโนมัติ | [Commit Attribution Guard](../README.md#commit-and-voice-hook-migration) |
 | เสียงเมื่อจบ turn | Finish Voice (`turn_end`) |
 
@@ -77,6 +77,17 @@ Guard นี้ทำงานอัตโนมัติกับคำสั�
 คำสั่งเดิมยังเป็นผู้ทำ commit จึงรักษา cwd, command chain, Git hooks, signing, approval และผลลัพธ์ตามจริงไว้ครบ ตัว modไม่ spawn Git เองและไม่สร้าง commit ลับ ถ้า host ไม่มี tool-event transform จะกลับไปใช้ deny-only แบบเดิม ส่วน `git -C`, alias, message file ผ่าน `-F` และรูปแบบนอก matcher เดิมไม่อยู่ในขอบเขต
 
 Package โหลด Guard ก่อน RTK Control โดยตั้งใจ เพื่อให้ลบ attribution จาก raw `git commit` ก่อน RTK rewrite และ execution recheck ยังรู้จัก wrapper `rtk git commit` ถ้ามี attribution เหลือหรือถูกเติมกลับจะ deny
+
+---
+
+## Mahiro Secret-Read Guard & Filtered Config Inspection (npm, env, PyPI)
+
+Guard นี้ทำหน้าที่เป็น permission overlay ตรวจสอบการอ่านไฟล์และการรันคำสั่งเชลล์ผ่าน Letta Code ทั้งในขั้น approval และ execution recheck:
+- **Role-aware Tool Arguments**: ตรวจเฉพาะ field ที่เป็น target path จริง (`file_path`, `path`, `filePath`, `filename`, `files`) โดยไม่ตรวจ content/payload/query ใน field อื่น, อนุญาต tool ค้นหาชื่อไฟล์ (เช่น `glob`, `file_search`) เพราะไม่ได้อ่านเนื้อหาไฟล์, และอนุญาต write-only/apply-patch ส่วน `edit` ตรวจสอบ target path ตามปกติ
+- **Bounded Shell Analysis**: รู้จัก pattern การค้นหาและ option ทั่วไปของ `rg`/`grep` (`-n`, `-i`, `-F`, `-C`, `-e`, `-f`) รวมถึงรูปทรง `rtk rg` แยก statement boundary ชัดเจน (`\n`, `&`, `;`, `&&`, `||`) ตรวจจับ command substitution (`$(...)`, backticks) และ heredoc ที่ expand ค่าได้ ขณะที่บล็อกการอ่าน `.env`, `.pypirc`, credentials, SSH keys ลับ, environment dump และ raw config files อย่างเข้มงวด
+- **mh_npm_config**: เปิดให้ agent ตรวจสอบ config ของ `.npmrc` (เช่น registry, pnpm linker, strict-ssl, save-exact) ผ่าน model tool เฉพาะที่มี schema ปลอดภัย โดย policy ปฏิเสธ raw read แต่ยอมรับ tool นี้ และตัว tool อ่านไฟล์แบบมีขอบเขต คัดกรองเฉพาะ allowlist ที่ปลอดภัย (boolean, number, enum, และ origin registry URL ที่ตัด userinfo/path/query/hash ออกแล้ว) โดยปิดกั้น auth token, password, comment และ raw unvalidated lines ทั้งหมด
+- **mh_env_config**: เปิดให้ agent ตรวจสอบรายชื่อ key และสถานะ placeholder ใน `.env` (หรือ `.env.<suffix>`) ได้อย่างปลอดภัย โดย**ไม่ส่งค่า value กลับมาเด็ดขาด** (รวมถึง error, snippet, hash หรือความยาว) ค่า value ทั้งหมดถูกปิดกั้นอย่างสมบูรณ์แม้แต่ค่าทั่วไปอย่าง PORT/URL และล้มเหลวแบบ generic error หากรูปแบบไฟล์ไม่ถูกต้อง
+- **mh_pypi_config**: เปิดให้ agent ตรวจสอบ repository profile และ origin-only URL จาก `.pypirc` (รองรับ multiline `index-servers` ของ standard distutils) โดยตัด username, password, token และ unknown keys ทิ้งทั้งหมด พร้อมรายงานเฉพาะหมวดหมู่การ redact และไม่จำลองค่า default หรือ expand ตัวแปรใดๆ
 
 ---
 

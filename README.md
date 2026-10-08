@@ -21,7 +21,7 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/rtk-control.ts` | `/rtk`, `tool_start` | Opt-in RTK status, savings, suggestions, and command rewriting. Default mode is Off. |
 | `mods/statusline.tsx` | `/mh-usage`, order-0 panel, lifecycle/turn/tool/LLM/compact events | Compact statusline for workspace, Git, active background subagents, conversation activity, context, MemFS, RTK, model, reasoning, and backend state; it prefers the public lifecycle context and falls back to bounded descendant-process observation when the host context misses a live child. With quota enabled, the default status/identity row is followed by the Codex row (two rows total). With Codex quota disabled, whole-segment default overflow remains bounded to two rows. Thai/grapheme widths preserve the right group across padded host renders. |
 | `mods/mahiro-mcp-proxy.js` | `/mcp-proxy`, `mcp_proxy`, `mcp_proxy_live`, permission overlay | Lazy cached MCP discovery plus separately gated live reconnect/call/disconnect operations. |
-| `mods/mahiro-secret-read-guard.js` | permission overlay | Letta-only secret-read/environment guard at approval and final-argument execution. |
+| `mods/mahiro-secret-read-guard.js` | permission overlay, `mh_npm_config`, `mh_env_config`, `mh_pypi_config` | Letta-only secret-read/environment guard at approval and final-argument execution, with strictly filtered `.npmrc`, `.env`, and `.pypirc` configuration inspection. |
 | `mods/mahiro-commit-attribution-guard.js` | permission overlay + `tool_start` | Removes exact Letta attribution from supported non-MemFS commits and rechecks final arguments; a positively identified direct commit in the current agent's MemFS Git root is outside this guard. |
 | `mods/mahiro-finish-voice.js` | `turn_end` | Bounded macOS completion cue, excluding known subagent processes. |
 
@@ -51,12 +51,29 @@ policy through the public permission API, not through `tool_start` or an
 normal calls; both approval and execution inspect their own arguments. Other
 permission policies still apply. This entry adds no attribution rule.
 
+The guard employs role-aware tool argument and shell command inspection:
+- **Tool argument roles**: Reads check actual target path fields (`file_path`,
+  `path`, `filePath`, `filename`, and supported file lists) while data payloads
+  (`description`, `content`, `patch`, `query`) are ignored. Filename discovery
+  tools (`glob`, `list_files`) do not read file contents and are permitted.
+  Write-only tools do not count as reads; `apply_patch` checks Update/Delete
+  target headers rather than diff text, while `edit` checks its target file path.
+- **Shell command analysis**: Recognizes search patterns and common options
+  (`-n`, `-i`, `-F`, `-C`, `-e`, `-f`) in `rg`, `grep`, and `rtk rg`. Statement
+  boundaries (`\n`, `&`, `;`, `&&`, `||`) and escaped line continuations, `find -execdir`, command
+  substitutions (`$(...)`, backticks), and unquoted heredocs are parsed to block
+  hidden reads while preserving literal output and benign Python `set(...)` calls.
+- **Filtered configuration inspection (`.npmrc`, `.env`, `.pypirc`)**: Exposes narrow `mh_npm_config`, `mh_env_config`, and `mh_pypi_config` tools under the public `tools` capability. The permission policy remains content-blind and recognizes only these exact tools with their strict path/basename contracts (`.npmrc`, `.env`/`.env.<suffix>`, `.pypirc`). Raw reading or shell cat of these files remains denied. All tools share an internal no-follow, nonblocking descriptor reader with strict size/line limits (64 KiB, 500 lines), UTF-8 checks, snapshot rechecks, and cancellation/disposal cleanup. Output payloads are strictly bounded (32 KiB cap).
+  - `mh_npm_config`: returns an allowlisted summary (boolean, number, enum, and origin-only registry URLs) while stripping auth tokens, passwords, URL userinfo/paths, and raw unvalidated lines.
+  - `mh_env_config`: returns parsed key metadata and value presence (`name`, `present`, `placeholder_like`) while NEVER returning values, value snippets, lengths, or hashes.
+  - `mh_pypi_config`: parses standard `[distutils]` and repository profiles, returning origin-only HTTP(S) repository URLs while stripping usernames, passwords, tokens, and unknown keys with explicit redaction counters.
+  Unsupported syntax/depth denies as an analysis limit; this remains a bounded heuristic, not an arbitrary shell/interpreter sandbox.
+
 Case-normalized exact `.env.example`, `.env.sample`, and `.env.template`
 files, ordinary developer JSON/YAML/TOML/XML/TXT files, safe SSH
 metadata/public keys, narrow shell metadata checks, `set -e`/`set -eu`, `env`
 with a command, and heredoc data retain the existing exceptions. Real dotenv,
-credential/key/provider paths, and environment dumps remain blocked. Search
-and indexing commands receive no special gate beyond those generic checks. See
+credential/key/provider paths, and environment dumps remain blocked. See
 [the full policy and limits](MOD.md#mahiro-secret-read-guard).
 
 Requires `/usr/bin/python3` (Python 3.9+). The single mod embeds its policy;
