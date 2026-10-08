@@ -521,6 +521,8 @@ Mahiro ใช้คำสั่งเหล่านี้เพื่อดู�
 
 ใช้เมื่อต้องค้นหรือเรียก MCP tools โดยไม่เอา remote tools ทั้งหมดมา register ตรง ๆ ใน Letta ตัว proxy แยก cached read ออกจาก live process/network action ชัดเจน
 
+ใช้ `mcp_proxy({ action: "skill_bundle", skill: "studying-codrops", step: "source-acquisition" })` เพื่ออ่านคู่มือของขั้นที่เลือกพร้อม schemas จาก cache ในครั้งเดียว ไม่โหลด parent skill ให้ ไม่เรียก tools ไม่ reconnect และไม่เปลี่ยน permission เดิม ถ้า cache ขาดหรือ stale จะรายงานให้เห็น รายละเอียด binding และข้อจำกัดอยู่ใน [MOD.md](../MOD.md#optional-skill-step-bundle) ทดสอบการอ่าน cache ผ่าน installed host แล้ว แต่ยังไม่ใช่หลักฐานว่า browser/live MCP ทำงานหรือประหยัด tokens
+
 เริ่มจากดู config และ cache:
 
 ```text

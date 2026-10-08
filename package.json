@@ -1,6 +1,6 @@
 {
   "name": "@mahirocoko/letta-mods",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "private": true,
   "description": "Mahiro's private workflow, model profiles, Herdr lifecycle, execution coordination, Code Map, UX coordination, code evidence, timestamps, RTK, statusline, MCP, secret-read and commit attribution guards, and bounded voice mods for Letta Code.",
   "license": "UNLICENSED",
@@ -10,8 +10,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "node --check scripts/manage-local.mjs && node --check scripts/manage-entries.mjs && node scripts/check-entry-manager.mjs && node scripts/validate-manifest.mjs && node scripts/check-secret-read-guard.mjs && node scripts/check-hook-migration.mjs && node scripts/check-mods.mjs",
+    "check": "node --check scripts/manage-local.mjs && node --check scripts/manage-entries.mjs && node scripts/check-entry-manager.mjs && node scripts/validate-manifest.mjs && node scripts/check-secret-read-guard.mjs && node scripts/check-hook-migration.mjs && node scripts/check-mods.mjs && node scripts/check-skill-bundle.mjs",
     "check:hooks": "node scripts/check-hook-migration.mjs",
+    "check:skill-bundle": "node scripts/check-skill-bundle.mjs",
     "check:secret-reads": "node scripts/check-secret-read-guard.mjs",
     "prepack": "pnpm check",
     "mods:status": "node scripts/manage-local.mjs status",

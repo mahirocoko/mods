@@ -493,7 +493,7 @@ Fetches happen outside render with an eight-second provider deadline, two-minute
 `mods/mahiro-mcp-proxy.js` exposes:
 
 - `/mcp-proxy` for explicit human operations
-- `mcp_proxy` for bounded cached/read-only status, setup, list, tools, search, and describe operations
+- `mcp_proxy` for bounded cached/read-only status, setup, list, tools, search, describe, and optional `skill_bundle` operations
 - `mcp_proxy_live` for reconnect, call, and disconnect operations
 - a permission overlay that separates cached reads from live process/network actions
 
@@ -502,6 +502,39 @@ Global config is `~/.letta/mcp.json`; project overrides may use nearest `.mcp.js
 Live actions ask for approval by default. Project config cannot silently trust itself: project `settings.liveApproval: "auto"` is honored only when the current cwd is inside a root listed by global `settings.trustedLiveApprovalRoots`. Global `settings.liveApproval: "auto"` remains an explicit user-level override, while project `liveApproval: "ask"` may tighten it. If the permissions capability is unavailable, the model-callable live tool is not registered. Bearer token values must not be printed or cached.
 
 The proxy supports persistent stdio connections and SDK-backed Streamable HTTP/SSE transports. OAuth, MCP resources, and direct registration of every remote MCP tool remain out of scope.
+
+### Optional skill-step bundle
+
+`mcp_proxy({ action: "skill_bundle", skill: "studying-codrops", step: "source-acquisition" })`
+loads the selected Markdown reference and at most four explicitly named cached
+tool schemas in one response. It does not load the parent skill, execute tools,
+reconnect, add provider tools or enforce skill-before-tool gating. Read the parent
+skill first; existing live permission policy is unchanged.
+
+Lookup precedence is current workspace `skills/`, current workspace `.agents/skills/`,
+then `~/.letta/skills/`. Each skill owns `mcp-bindings.json` with `version: 1`,
+its `skill` identifier and `steps`; each step names `instructions` under
+`references/` and a `tools` array of `{ server, tool }` original MCP names.
+Bindings are an optional Mahiro extension, not part of the Agent Skills standard.
+Other hosts can read the reference and discover schemas through their normal route.
+
+The first matching manifest owns the result; invalid bindings do not silently
+fall back. Real paths must remain within the skill root/directory. Files are
+limited to 12000 bytes each and the total JSON response to 40000 characters;
+oversized responses fail instead of returning truncated schemas. Missing, stale,
+unconfigured or unmatched tools set `ok: false` and are never auto-refreshed.
+Cache validity checks configuration identity, not current server reachability.
+The inherited stdio fingerprint checks environment key names, not value changes.
+Containment is structural, not secret-content filtering or a filesystem sandbox:
+trusted instruction Markdown and cached descriptions/schemas are returned verbatim.
+Do not put credentials into these sources.
+
+Run `pnpm check:skill-bundle` for isolated fixture checks. To exercise the actual
+cross-repository binding, pass the source skill directory as the argument to
+`node scripts/check-skill-bundle.mjs`. Fixture comparisons do not establish live
+model token savings or latency. Installed-host and current-session cached disclosure
+were separately exercised; server reachability, browser actions and other adapters
+remain outside that proof.
 
 Live tool arguments are sent to the selected configured process or remote service. Returned content becomes Letta tool output and may be recorded in the conversation transcript; never place credentials directly in tool arguments.
 
