@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
+import { X509Certificate } from "node:crypto";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { basename, isAbsolute, resolve } from "node:path";
 
 // The permission classifier is content-blind; only the explicit filtered npm,
-// dotenv, and PyPI tools read configuration. No installed-hook import, shell
+// dotenv, PyPI, and certificate tools read their files. No installed-hook import, shell
 // execution or logs.
 const POLICY = String.raw`
 import json, os, re, shlex, sys
@@ -18,6 +19,9 @@ READ_COMMAND_BASENAMES = {'awk', 'base64', 'bat', 'cat', 'grep', 'head', 'hexdum
     'less', 'more', 'openssl', 'rg', 'sed', 'strings', 'tail', 'xxd'}
 SAFE_METADATA_COMMAND_BASENAMES = {'[', 'find', 'ls', 'stat', 'test'}
 LITERAL_OUTPUT_COMMANDS = {'echo', 'printf'}
+SOURCE_NAME_EXTENSIONS = {'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs'}
+CREDENTIAL_DATA_NAME_PARTS = {'json', 'yaml', 'yml', 'toml', 'ini', 'conf', 'cfg',
+    'env', 'txt', 'key', 'pem', 'p12', 'pfx'}
 
 def basename(value):
     normalized = value.replace('\\', '/').rstrip('/')
@@ -36,9 +40,14 @@ def is_sensitive_path(value):
             return True
     if any(fragment in lower_path for fragment in ('/.letta/lc-local-backend/providers/', '/lc-local-backend/providers/')):
         return True
+    # This only narrows the ambiguous prefix rule. Exact names, key suffixes
+    # and protected directories retain priority; it does not inspect contents.
+    parts = name.split('.')
+    prefix_source = (parts[-1] in SOURCE_NAME_EXTENSIONS
+        and not any(part in CREDENTIAL_DATA_NAME_PARTS for part in parts[1:-1]))
     return (name == '.env' or name.startswith('.env.') or name in SENSITIVE_BASENAMES
         or name.lower().endswith(('.key', '.pem', '.p12', '.pfx'))
-        or name.lower().startswith(('credentials.', 'secret.', 'secrets.')))
+        or (name.startswith(('credentials.', 'secret.', 'secrets.')) and not prefix_source))
 
 def extract_substitutions(text, shell_quotes=True):
     subs = []
@@ -602,6 +611,19 @@ def check(tool_name, tool_input):
         if 'path' in tool_input:
             if not isinstance(path_val, str) or '\0' in path_val or basename(path_val) != '.pypirc':
                 return 'mh_pypi_config path must be an exact .pypirc'
+        return None
+
+    if tool_name == 'mh_certificate_info':
+        for k in tool_input:
+            if k != 'path':
+                return 'mh_certificate_info accepts no additional properties'
+        if 'path' not in tool_input:
+            return 'mh_certificate_info path is required'
+        path_val = tool_input['path']
+        if not isinstance(path_val, str) or '\0' in path_val or not path_val:
+            return 'mh_certificate_info path must be a nonempty string'
+        if not path_val.lower().endswith('.pem'):
+            return 'mh_certificate_info path must end in .pem'
         return None
 
     if tool_name in {'read', 'readfile', 'read_file', 'view_file'}:
@@ -1363,6 +1385,128 @@ async function runPypiConfig(ctx) {
   return result;
 }
 
+const MAX_CERTIFICATE_BLOCKS = 16;
+
+async function runCertificateInfo(ctx) {
+  if (ctx?.signal?.aborted) return { status: "error", error: "Operation aborted." };
+  if (!ctx || typeof ctx.cwd !== "string" || !isAbsolute(ctx.cwd)
+    || !ctx.args || typeof ctx.args !== "object" || Array.isArray(ctx.args)
+    || Object.keys(ctx.args).some((key) => key !== "path")) {
+    return { status: "error", error: "Valid scoped cwd and certificate arguments are required." };
+  }
+  const rawPath = ctx?.args?.path;
+  if (typeof rawPath !== "string") {
+    return { status: "error", error: "Argument path must be a string." };
+  }
+  if (!rawPath) {
+    return { status: "error", error: "Argument path must be nonempty." };
+  }
+  if (rawPath.includes("\0")) {
+    return { status: "error", error: "Argument path contains invalid characters." };
+  }
+  const targetPath = resolve(ctx.cwd, rawPath);
+  const targetBasename = basename(targetPath).toLowerCase();
+  if (!targetBasename.endsWith(".pem")) {
+    return { status: "error", error: "Target file basename must end in .pem." };
+  }
+
+  const readRes = await readConfigFileLines(targetPath, ctx?.signal);
+  if (readRes.status !== "success") return readRes;
+  const lines = readRes.lines;
+
+  if (lines.length > 0 && lines[0].charCodeAt(0) === 0xFEFF) {
+    lines[0] = lines[0].slice(1);
+  }
+
+  const certificates = [];
+  let inBlock = false;
+  let currentBase64Lines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!inBlock) {
+      if (!trimmed) continue;
+      if (trimmed === "-----BEGIN CERTIFICATE-----") {
+        if (certificates.length >= MAX_CERTIFICATE_BLOCKS) {
+          return { status: "error", error: "Certificate chain exceeds maximum supported limit (16 certificates)." };
+        }
+        inBlock = true;
+        currentBase64Lines = [];
+        continue;
+      }
+      return { status: "error", error: "Invalid certificate format." };
+    } else {
+      if (trimmed === "-----END CERTIFICATE-----") {
+        if (currentBase64Lines.length === 0) {
+          return { status: "error", error: "Invalid certificate format." };
+        }
+        const b64 = currentBase64Lines.join("");
+        if (!/^[A-Za-z0-9+/]+={0,2}$/.test(b64) || b64.length % 4 !== 0) {
+          return { status: "error", error: "Invalid certificate format." };
+        }
+        let der;
+        try {
+          der = Buffer.from(b64, "base64");
+        } catch {
+          return { status: "error", error: "Invalid certificate format." };
+        }
+        if (der.toString("base64") !== b64) {
+          return { status: "error", error: "Invalid certificate format." };
+        }
+        let cert;
+        try {
+          cert = new X509Certificate(der);
+        } catch {
+          return { status: "error", error: "Invalid certificate format." };
+        }
+        if (!cert.raw || !der.equals(cert.raw)) {
+          return { status: "error", error: "Invalid certificate format." };
+        }
+        certificates.push({
+          subject: cert.subject,
+          issuer: cert.issuer,
+          valid_from: cert.validFrom,
+          valid_to: cert.validTo,
+          fingerprint256: cert.fingerprint256,
+          serial_number: cert.serialNumber.toUpperCase(),
+        });
+        inBlock = false;
+        currentBase64Lines = [];
+        continue;
+      }
+
+      if (!trimmed || !/^[A-Za-z0-9+/]+=*$/.test(trimmed)) {
+        return { status: "error", error: "Invalid certificate format." };
+      }
+      currentBase64Lines.push(trimmed);
+    }
+  }
+
+  if (inBlock) {
+    return { status: "error", error: "Invalid certificate format." };
+  }
+
+  if (certificates.length === 0) {
+    return { status: "error", error: "No certificates found in target file." };
+  }
+
+  const result = {
+    status: "success",
+    certificates,
+    certificate_count: certificates.length,
+  };
+
+  if (Buffer.byteLength(JSON.stringify(result)) > MAX_PAYLOAD_BYTES) {
+    return { status: "error", error: "Output exceeds maximum supported size (32KB)." };
+  }
+
+  if (ctx?.signal?.aborted) return { status: "error", error: "Operation aborted." };
+
+  return result;
+}
+
 const NPM_CONFIG_TOOL = {
   name: "mh_npm_config",
   description: "Inspect workspace .npmrc configuration with auth and sensitive tokens strictly filtered out.",
@@ -1417,6 +1561,25 @@ const PYPI_CONFIG_TOOL = {
   run: (ctx) => runPypiConfig(ctx),
 };
 
+const CERTIFICATE_INFO_TOOL = {
+  name: "mh_certificate_info",
+  description: "Inspect public X.509 certificate metadata from a .pem file safely without exposing raw PEM or private keys.",
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path to .pem certificate file. Basename must end in .pem (case-insensitive).",
+      },
+    },
+    required: ["path"],
+    additionalProperties: false,
+  },
+  requiresApproval: false,
+  parallelSafe: true,
+  run: (ctx) => runCertificateInfo(ctx),
+};
+
 export default function activate(letta) {
   if (letta.signal?.aborted) return;
   const hasPermissions = Boolean(letta.capabilities?.permissions && typeof letta.permissions?.register === "function");
@@ -1449,6 +1612,7 @@ export default function activate(letta) {
       { tool: NPM_CONFIG_TOOL, run: runNpmConfig },
       { tool: ENV_CONFIG_TOOL, run: runEnvConfig },
       { tool: PYPI_CONFIG_TOOL, run: runPypiConfig },
+      { tool: CERTIFICATE_INFO_TOOL, run: runCertificateInfo },
     ];
     try {
       for (const { tool, run } of toolEntries) {
@@ -1490,4 +1654,6 @@ export const __testing = {
   runEnvConfig,
   PYPI_CONFIG_TOOL,
   runPypiConfig,
+  CERTIFICATE_INFO_TOOL,
+  runCertificateInfo,
 };

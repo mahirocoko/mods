@@ -59,7 +59,7 @@ pnpm mods:update
 | ดูหรือเปิดการ rewrite คำสั่งผ่าน RTK | RTK Control |
 | ดูสถานะ workspace, Git, context และ activity | Compact Statusline |
 | ค้นและเรียก MCP tools แบบมี approval boundary | Lazy MCP Proxy |
-| กันการอ่านไฟล์ลับผ่าน Letta Code และตรวจ .npmrc แบบปลอดภัย | [Mahiro Secret-Read Guard](../MOD.md#mahiro-secret-read-guard) (`mh_npm_config`) |
+| กันการอ่านไฟล์ลับผ่าน Letta Code และตรวจ config / public cert แบบปลอดภัย | [Mahiro Secret-Read Guard](../MOD.md#mahiro-secret-read-guard) (`mh_npm_config`, `mh_certificate_info`) |
 | เอา Letta attribution ออกจาก commit อัตโนมัติ | [Commit Attribution Guard](../README.md#commit-and-voice-hook-migration) |
 | เสียงเมื่อจบ turn | Finish Voice (`turn_end`) |
 
@@ -80,7 +80,7 @@ Package โหลด Guard ก่อน RTK Control โดยตั้งใจ 
 
 ---
 
-## Mahiro Secret-Read Guard & Filtered Config Inspection (npm, env, PyPI)
+## Mahiro Secret-Read Guard & Filtered Config/Cert Inspection (npm, env, PyPI, PEM cert)
 
 Guard นี้ทำหน้าที่เป็น permission overlay ตรวจสอบการอ่านไฟล์และการรันคำสั่งเชลล์ผ่าน Letta Code ทั้งในขั้น approval และ execution recheck:
 - **Role-aware Tool Arguments**: ตรวจเฉพาะ field ที่เป็น target path จริง (`file_path`, `path`, `filePath`, `filename`, `files`) โดยไม่ตรวจ content/payload/query ใน field อื่น, อนุญาต tool ค้นหาชื่อไฟล์ (เช่น `glob`, `file_search`) เพราะไม่ได้อ่านเนื้อหาไฟล์, และอนุญาต write-only/apply-patch ส่วน `edit` ตรวจสอบ target path ตามปกติ
@@ -88,6 +88,7 @@ Guard นี้ทำหน้าที่เป็น permission overlay ตร
 - **mh_npm_config**: เปิดให้ agent ตรวจสอบ config ของ `.npmrc` (เช่น registry, pnpm linker, strict-ssl, save-exact) ผ่าน model tool เฉพาะที่มี schema ปลอดภัย โดย policy ปฏิเสธ raw read แต่ยอมรับ tool นี้ และตัว tool อ่านไฟล์แบบมีขอบเขต คัดกรองเฉพาะ allowlist ที่ปลอดภัย (boolean, number, enum, และ origin registry URL ที่ตัด userinfo/path/query/hash ออกแล้ว) โดยปิดกั้น auth token, password, comment และ raw unvalidated lines ทั้งหมด
 - **mh_env_config**: เปิดให้ agent ตรวจสอบรายชื่อ key และสถานะ placeholder ใน `.env` (หรือ `.env.<suffix>`) ได้อย่างปลอดภัย โดย**ไม่ส่งค่า value กลับมาเด็ดขาด** (รวมถึง error, snippet, hash หรือความยาว) ค่า value ทั้งหมดถูกปิดกั้นอย่างสมบูรณ์แม้แต่ค่าทั่วไปอย่าง PORT/URL และล้มเหลวแบบ generic error หากรูปแบบไฟล์ไม่ถูกต้อง
 - **mh_pypi_config**: เปิดให้ agent ตรวจสอบ repository profile และ origin-only URL จาก `.pypirc` (รองรับ multiline `index-servers` ของ standard distutils) โดยตัด username, password, token และ unknown keys ทิ้งทั้งหมด พร้อมรายงานเฉพาะหมวดหมู่การ redact และไม่จำลองค่า default หรือ expand ตัวแปรใดๆ
+- **mh_certificate_info**: เปิดให้ agent ตรวจสอบ metadata สาธารณะของ X.509 certificate จากไฟล์นามสกุล `.pem` (ไม่เกิน 16 บล็อก `CERTIFICATE`) โดยใช้ parser ในตัวของ Node.js (`node:crypto` `X509Certificate`) และตรวจสอบ framing ทั้งไฟล์อย่างเข้มงวด รวมทั้งความถูกต้องของ DER bytes (`der.equals(cert.raw)`) หากพบ private key, unsupported block (`CERTIFICATE REQUEST`, `PUBLIC KEY`), ข้อความแปลกปลอมนอกบล็อก หรือ base64/DER ที่ไม่สมบูรณ์ จะปฏิเสธทั้งไฟล์ทันทีด้วย generic error โดยไม่ส่งคืน raw PEM/DER, คีย์ลับ หรือ metadata บางส่วน คืนเฉพาะ field ข้อมูลสาธารณะ (`subject`, `issuer`, `valid_from`, `valid_to`, `fingerprint256`, `serial_number`) และ `certificate_count` (การ parse สำเร็จไม่ได้แปลว่า certificate นั้นเชื่อถือได้ในระดับ TLS/trust chain)
 
 ---
 

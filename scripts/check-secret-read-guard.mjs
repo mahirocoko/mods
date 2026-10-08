@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { X509Certificate } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +12,9 @@ const ssh = "." + "ssh";
 const credentials = "credential" + "s.json";
 const allowed = ["package.json", "settings.json", "config.yaml", "config.yml", "pyproject.toml", "pom.xml", "notes.txt", "src/index.ts", `${dotenv}.example`, `${dotenv}.sample`, `${dotenv}.template`, `nested/${dotenv.toUpperCase()}.EXAMPLE`, `nested/${dotenv}.sample`, `nested/${dotenv}.template`, `${ssh}/config`, `${ssh}/known_hosts`, `${ssh}/known_hosts.old`, `${ssh}/authorized_keys`, `${ssh}/work.pub`];
 const blocked = [dotenv, `${dotenv}.local`, `nested/${dotenv}.production`, dotenv.toUpperCase(), `${dotenv.toUpperCase()}.local`, `nested/${dotenv}.Production`, `${dotenv}.sample.local`, `${dotenv}.template.local`, npmAuth, "." + "pypirc", "auth.json", credentials, "credentials.dev.json", "secret.txt", "secrets.yaml", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "id_xmss", "identity", "server.KEY", "server.pem", "server.p12", "server.pfx", `${ssh}/work_deploy`, `${ssh}/github`];
+// Only the ambiguous basename prefix changes; these are synthetic names.
+allowed.push("src/secret.ts", "src/secrets.test.ts", "src/credentials.service.ts", "src/Secret.TSX", "src/secrets.d.ts", "src/credentials.cjs", "src/secret.mjs", "src/secrets.jsx", "src/secret.js");
+blocked.push(`${dotenv}.secret.ts`, `${ssh}/secret.ts`, "nested/lc-local-backend/providers/secret.ts", "tests/credentials.fixture.json", "secret.key.ts", "credentials.json.ts", "secrets.pem.test.js", "secret.yaml.ts", "secret.py", "secret.ts.backup");
 const root = mkdtempSync(join(tmpdir(), "mahiro-secret-read-fixture-"));
 for (const file of [...allowed, ...blocked]) {
   const path = join(root, file);
@@ -34,6 +39,8 @@ const {
     runEnvConfig,
     PYPI_CONFIG_TOOL,
     runPypiConfig,
+    CERTIFICATE_INFO_TOOL,
+    runCertificateInfo,
   },
 } = await import("../mods/mahiro-secret-read-guard.js");
 const event = (toolName, args, phase = "approval") => ({ toolName, args, phase, cwd: root, workingDirectory: root, permissionMode: "bypassPermissions", agentId: "fixture", conversationId: "fixture", toolCallId: "fixture" });
@@ -128,6 +135,19 @@ try {
   await expect(event("mh_pypi_config", { path: 123 }), true);
   await expect(event("mh_pypi_config", { path: "" }), true);
 
+  // Outcome C schema validation in checker: narrow mh_certificate_info recognized
+  await expect(event("mh_certificate_info", { path: "server.pem" }), false);
+  await expect(event("mh_certificate_info", { path: join(root, "server.pem") }), false);
+  await expect(event("mh_certificate_info", { path: "server.PEM" }), false);
+  await expect(event("mh_certificate_info", { path: "other.txt" }), true);
+  await expect(event("mh_certificate_info", { path: "server.crt" }), true);
+  await expect(event("mh_certificate_info", { path: "server.key" }), true);
+  await expect(event("mh_certificate_info", { path: "server.p12" }), true);
+  await expect(event("mh_certificate_info", { path: "server.pem", extra: "invalid" }), true);
+  await expect(event("mh_certificate_info", { path: 123 }), true);
+  await expect(event("mh_certificate_info", { path: "" }), true);
+  await expect(event("mh_certificate_info", {}), true);
+
   // Outcome B: Bounded shell roles
   for (const command of [
     "cat package.json config.yaml pyproject.toml notes.txt", "set -e", "set -eu", "set -euo pipefail",
@@ -193,6 +213,10 @@ try {
     await expect(event("mh_npm_config", { path: null }, phase), true);
     await expect(event("mh_env_config", { path: null }, phase), true);
     await expect(event("mh_pypi_config", { path: null }, phase), true);
+    await expect(event("mh_certificate_info", { path: null }, phase), true);
+    await expect(event("mh_certificate_info", { path: "server.pem" }, phase), false);
+    await expect(event("mh_certificate_info", { path: "server.crt" }, phase), true);
+    await expect(event("mh_certificate_info", {}, phase), true);
     await expect(event("Grep", { path: 42, pattern: "safe" }, phase), true);
     await expect(event("apply_patch", { input: `*** Begin Patch\n*** Update File: ${dotenv}\n@@\n-a\n+b\n*** End Patch` }, phase), true);
     await expect(event("apply_patch", { input: `*** Begin Patch\n*** Update File: src/index.ts\n@@\n-a\n+${dotenv}\n*** End Patch` }, phase), false);
@@ -643,6 +667,209 @@ repository = https://second.pypi.org
   assert.equal(cleanPypiRes.redacted_count, 0);
   assert.deepEqual(cleanPypiRes.index_servers, ["clean"]);
 
+  // Outcome C: mh_certificate_info tool execution & strict allowlist filtering
+  assert(CERTIFICATE_INFO_TOOL && typeof CERTIFICATE_INFO_TOOL.run === "function", "mh_certificate_info tool must be defined");
+  const certDir = join(root, "cert-fixtures");
+  mkdirSync(certDir, { recursive: true });
+
+  // Generate real parseable standalone test-only public certificates locally
+  // Signing key is sent EXCLUSIVELY to /dev/null - never persisted, logged, or read.
+  const testCertPath1 = join(certDir, "cert1.pem");
+  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "/dev/null", "-subj", "/CN=test-cert-host-1", "-out", testCertPath1, "-days", "30"]);
+
+  const testCertPath2 = join(certDir, "cert2.pem");
+  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "/dev/null", "-subj", "/CN=test-cert-host-2", "-out", testCertPath2, "-days", "30"]);
+
+  const testCertPath3 = join(certDir, "cert3.pem");
+  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "/dev/null", "-subj", "/CN=test-cert-host-3", "-out", testCertPath3, "-days", "30"]);
+
+  const cert1Pem = readFileSync(testCertPath1, "utf8").trim();
+  const cert2Pem = readFileSync(testCertPath2, "utf8").trim();
+  const cert3Pem = readFileSync(testCertPath3, "utf8").trim();
+
+  // 1. Single valid certificate metadata parity vs Node native X509Certificate
+  const cert1Res = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/cert1.pem" } });
+  assert.equal(cert1Res.status, "success");
+  assert.equal(cert1Res.certificate_count, 1);
+  assert.equal(cert1Res.certificates.length, 1);
+
+  const nativeCert1 = new X509Certificate(readFileSync(testCertPath1));
+  const parsed1 = cert1Res.certificates[0];
+  assert.equal(parsed1.subject, nativeCert1.subject);
+  assert.equal(parsed1.issuer, nativeCert1.issuer);
+  assert.equal(parsed1.valid_from, nativeCert1.validFrom);
+  assert.equal(parsed1.valid_to, nativeCert1.validTo);
+  assert.equal(parsed1.fingerprint256, nativeCert1.fingerprint256);
+  assert.equal(parsed1.serial_number, nativeCert1.serialNumber.toUpperCase());
+  assert.deepEqual(Object.keys(parsed1).sort(), ["subject", "issuer", "valid_from", "valid_to", "fingerprint256", "serial_number"].sort());
+
+  // STRICT PRIVACY & ATTRIBUTION: No raw PEM, raw DER, publicKey, or private key in output
+  const cert1Json = JSON.stringify(cert1Res);
+  assert(!cert1Json.includes("BEGIN CERTIFICATE"), "Output must not include PEM framing");
+  assert(!cert1Json.includes("END CERTIFICATE"), "Output must not include PEM framing");
+  assert(!cert1Json.includes("publicKey"), "Output must not export publicKey");
+  assert(!cert1Json.includes("raw"), "Output must not export raw DER buffer");
+
+  // 2. Multi-certificate chain and preserved order
+  const chainPath = join(certDir, "chain.pem");
+  writeFileSync(chainPath, `${cert1Pem}\n\n${cert2Pem}\n\n${cert3Pem}\n`);
+  const chainRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/chain.pem" } });
+  assert.equal(chainRes.status, "success");
+  assert.equal(chainRes.certificate_count, 3);
+  assert.equal(chainRes.certificates.length, 3);
+  assert.equal(chainRes.certificates[0].subject, "CN=test-cert-host-1");
+  assert.equal(chainRes.certificates[1].subject, "CN=test-cert-host-2");
+  assert.equal(chainRes.certificates[2].subject, "CN=test-cert-host-3");
+
+  // 3. Exactly 16 certificates accepted, 17 certificates rejected
+  const sixteenPath = join(certDir, "sixteen.pem");
+  writeFileSync(sixteenPath, Array(16).fill(cert1Pem).join("\n") + "\n");
+  const sixteenRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/sixteen.pem" } });
+  assert.equal(sixteenRes.status, "success");
+  assert.equal(sixteenRes.certificate_count, 16);
+
+  const seventeenPath = join(certDir, "seventeen.pem");
+  writeFileSync(seventeenPath, Array(17).fill(cert1Pem).join("\n") + "\n");
+  const seventeenRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/seventeen.pem" } });
+  assert.equal(seventeenRes.status, "error");
+  assert(seventeenRes.error.includes("limit"));
+  assert.equal(typeof seventeenRes.certificates, "undefined");
+
+  // 4. Valid certificate + synthetic inert private key (both orders fail closed, no partial metadata)
+  const synthKeyMarker = "SYNTHETIC_TEST_KEY_MARKER_998877";
+  const synthFakeKey = `-----BEGIN PRIVATE KEY-----\n${Buffer.from(synthKeyMarker).toString("base64")}\n-----END PRIVATE KEY-----\n`;
+
+  // Order 1: valid cert followed by fake key
+  const certThenKeyPath = join(certDir, "cert-then-key.pem");
+  writeFileSync(certThenKeyPath, `${cert1Pem}\n${synthFakeKey}`);
+  const certThenKeyRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/cert-then-key.pem" } });
+  assert.equal(certThenKeyRes.status, "error");
+  assert(!JSON.stringify(certThenKeyRes).includes(synthKeyMarker), "Private key marker must not leak in error");
+  assert(!JSON.stringify(certThenKeyRes).includes("CN=test-cert-host-1"), "No partial certificate metadata on error");
+  assert.equal(typeof certThenKeyRes.certificates, "undefined");
+
+  // Order 2: fake key followed by valid cert
+  const keyThenCertPath = join(certDir, "key-then-cert.pem");
+  writeFileSync(keyThenCertPath, `${synthFakeKey}\n${cert1Pem}\n`);
+  const keyThenCertRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/key-then-cert.pem" } });
+  assert.equal(keyThenCertRes.status, "error");
+  assert(!JSON.stringify(keyThenCertRes).includes(synthKeyMarker), "Private key marker must not leak in error");
+  assert(!JSON.stringify(keyThenCertRes).includes("CN=test-cert-host-1"), "No partial certificate metadata on error");
+  assert.equal(typeof keyThenCertRes.certificates, "undefined");
+
+  // 5. Valid certificate followed by malformed certificate (fails closed, no partial metadata)
+  const certThenBadPath = join(certDir, "cert-then-bad.pem");
+  writeFileSync(certThenBadPath, `${cert1Pem}\n-----BEGIN CERTIFICATE-----\nINVALID_BASE64_NOT_DER!\n-----END CERTIFICATE-----\n`);
+  const certThenBadRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/cert-then-bad.pem" } });
+  assert.equal(certThenBadRes.status, "error");
+  assert(!JSON.stringify(certThenBadRes).includes("CN=test-cert-host-1"), "No partial certificate metadata on error");
+  assert.equal(typeof certThenBadRes.certificates, "undefined");
+
+  // 6. Garbage prefix, suffix, and inter-block nonwhitespace
+  const prefixBadPath = join(certDir, "prefix-bad.pem");
+  writeFileSync(prefixBadPath, `MALICIOUS_PREFIX_DATA\n${cert1Pem}\n`);
+  const prefixBadRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/prefix-bad.pem" } });
+  assert.equal(prefixBadRes.status, "error");
+
+  const suffixBadPath = join(certDir, "suffix-bad.pem");
+  writeFileSync(suffixBadPath, `${cert1Pem}\nTRAILING_GARBAGE_DATA\n`);
+  const suffixBadRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/suffix-bad.pem" } });
+  assert.equal(suffixBadRes.status, "error");
+
+  const interBadPath = join(certDir, "inter-bad.pem");
+  writeFileSync(interBadPath, `${cert1Pem}\nINTERMEDIATE_EXTRA_DATA\n${cert2Pem}\n`);
+  const interBadRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/inter-bad.pem" } });
+  assert.equal(interBadRes.status, "error");
+
+  // 7. Unsupported PEM block labels
+  for (const label of ["CERTIFICATE REQUEST", "TRUSTED CERTIFICATE", "PUBLIC KEY", "ENCRYPTED PRIVATE KEY", "RSA PRIVATE KEY"]) {
+    const unsuppPath = join(certDir, "unsupp.pem");
+    writeFileSync(unsuppPath, `-----BEGIN ${label}-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END ${label}-----\n`);
+    const unsuppRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/unsupp.pem" } });
+    assert.equal(unsuppRes.status, "error");
+  }
+
+  // 8. Base64 / DER decoded trailing garbage & non-canonical base64
+  const cert1Lines = cert1Pem.split("\n");
+  const cert1B64 = cert1Lines.slice(1, -1).map((l) => l.trim()).join("");
+  const cert1Der = Buffer.from(cert1B64, "base64");
+  const trailingDer = Buffer.concat([cert1Der, Buffer.from("EXTRA_GARBAGE_BYTES")]);
+  const trailingDerB64 = trailingDer.toString("base64");
+  const trailingDerPath = join(certDir, "trailing-der.pem");
+  writeFileSync(trailingDerPath, `-----BEGIN CERTIFICATE-----\n${trailingDerB64}\n-----END CERTIFICATE-----\n`);
+  const trailingDerRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/trailing-der.pem" } });
+  assert.equal(trailingDerRes.status, "error");
+
+  const badPadPath = join(certDir, "bad-pad.pem");
+  writeFileSync(badPadPath, `-----BEGIN CERTIFICATE-----\n${cert1B64}===\n-----END CERTIFICATE-----\n`);
+  const badPadRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/bad-pad.pem" } });
+  assert.equal(badPadRes.status, "error");
+
+  // 9. Empty file / empty chain
+  const emptyCertPath = join(certDir, "empty.pem");
+  writeFileSync(emptyCertPath, "   \n\n  \t  \n");
+  const emptyRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/empty.pem" } });
+  assert.equal(emptyRes.status, "error");
+
+  // 10. UTF-8 BOM & CRLF handling
+  const bomCertPath = join(certDir, "bom.pem");
+  writeFileSync(bomCertPath, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(cert1Pem.replace(/\n/g, "\r\n") + "\r\n")]));
+  const bomRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/bom.pem" } });
+  assert.equal(bomRes.status, "success");
+  assert.equal(bomRes.certificate_count, 1);
+
+  // 11. NUL byte rejection
+  const nulCertPath = join(certDir, "nul.pem");
+  writeFileSync(nulCertPath, Buffer.concat([Buffer.from(cert1Pem), Buffer.from([0x00])]));
+  const nulRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/nul.pem" } });
+  assert.equal(nulRes.status, "error");
+
+  // 12. Symlink refusal
+  const symlinkCertPath = join(certDir, "symlink.pem");
+  symlinkSync(testCertPath1, symlinkCertPath);
+  const symlinkCertRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/symlink.pem" } });
+  assert.equal(symlinkCertRes.status, "error");
+  assert(symlinkCertRes.error.includes("symbolic link"));
+
+  // 13. Non-regular file
+  const dirCertPath = join(certDir, "dir.pem");
+  mkdirSync(dirCertPath, { recursive: true });
+  const dirCertRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/dir.pem" } });
+  assert.equal(dirCertRes.status, "error");
+  assert.equal(dirCertRes.error, "Target is not a regular file.");
+
+  // 14. Cancellation / abort
+  const abortCtrlCert = new AbortController();
+  abortCtrlCert.abort();
+  const abortedCertRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/cert1.pem" }, signal: abortCtrlCert.signal });
+  assert.equal(abortedCertRes.status, "error");
+  assert(abortedCertRes.error.includes("aborted"));
+
+  // 15. Context / arguments validation (strict scoped cwd/args, no glob, no default guess)
+  for (const invalidCtx of [
+    {},
+    { cwd: root },
+    { cwd: root, args: {} },
+    { cwd: root, args: { path: null } },
+    { cwd: root, args: { path: 123 } },
+    { cwd: root, args: { path: "" } },
+    { cwd: root, args: { path: "cert.crt" } },
+    { cwd: root, args: { path: "cert.key" } },
+    { cwd: root, args: { path: "cert.p12" } },
+    { cwd: root, args: { path: "cert-fixtures/cert1.pem", extra: "forbidden" } },
+    { cwd: "relative/path", args: { path: "cert-fixtures/cert1.pem" } },
+  ]) {
+    const res = await runCertificateInfo(invalidCtx);
+    assert.equal(res.status, "error");
+  }
+
+  // 16. Case-insensitive .PEM extension support
+  const upperCasePath = join(certDir, "cert.PEM");
+  writeFileSync(upperCasePath, `${cert1Pem}\n`);
+  const upperRes = await runCertificateInfo({ cwd: root, args: { path: "cert-fixtures/cert.PEM" } });
+  assert.equal(upperRes.status, "success");
+  assert.equal(upperRes.certificate_count, 1);
+
   // Approval never authorizes mutated execution arguments.
   const mutable = event("Read", { file_path: join(root, "package.json") });
   await expect(mutable, false);
@@ -690,7 +917,7 @@ repository = https://second.pypi.org
   assert.equal(diagnostics.length, 1);
   assert.equal(registrations, 2);
 
-  // Lifecycle with both permissions and tools capabilities (guard 1 permission + 3 tools = 4)
+  // Lifecycle with both permissions and tools capabilities (guard 1 permission + 4 tools = 5)
   let dualRegistrations = 0, dualUnregistrations = 0;
   const registeredTools = [];
   const dualHost = (signal) => ({
@@ -702,11 +929,11 @@ repository = https://second.pypi.org
   });
   const dualController = new AbortController();
   const dualCleanup = activate(dualHost(dualController.signal));
-  assert.equal(dualRegistrations, 4, "Both permission overlay and all three tools must be registered");
-  assert.deepEqual(registeredTools.map((t) => t.name).sort(), ["mh_env_config", "mh_npm_config", "mh_pypi_config"]);
-  const toolPendings = registeredTools.map((t) => t.run({ cwd: root, args: {} }));
+  assert.equal(dualRegistrations, 5, "Both permission overlay and all four tools must be registered");
+  assert.deepEqual(registeredTools.map((t) => t.name).sort(), ["mh_certificate_info", "mh_env_config", "mh_npm_config", "mh_pypi_config"]);
+  const toolPendings = registeredTools.map((t) => t.run({ cwd: root, args: t.name === "mh_certificate_info" ? { path: "cert-fixtures/cert1.pem" } : {} }));
   dualCleanup();
-  assert.equal(dualUnregistrations, 4, "Normal cleanup must unregister all four entries");
+  assert.equal(dualUnregistrations, 5, "Normal cleanup must unregister all five entries");
   for (const pendingRun of toolPendings) {
     assert.equal((await pendingRun).status, "error", "disposal cancels in-flight inspection");
   }
@@ -717,7 +944,7 @@ repository = https://second.pypi.org
   const abortedDualCleanup = activate(dualHost(dualController.signal));
   dualController.abort();
   abortedDualCleanup();
-  assert.equal(dualUnregistrations, 4, "Engine-aborted reload cleanup must skip redundant unregister publishes");
+  assert.equal(dualUnregistrations, 5, "Engine-aborted reload cleanup must skip redundant unregister publishes");
 
   // Cross-instance independence: no shared disposed state
   const registeredA = [];

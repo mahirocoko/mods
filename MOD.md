@@ -40,8 +40,8 @@ All three migrated hooks are automatic-only: no per-entry switches, disable envi
 ## Mahiro Secret-Read Guard
 
 `mods/mahiro-secret-read-guard.js` registers one public `permissions.register`
-overlay, `mahiro-secret-read-guard`, and three narrow `tools.register` tools:
-`mh_npm_config`, `mh_env_config`, and `mh_pypi_config`, when the tools capability is present. The permission overlay
+overlay, `mahiro-secret-read-guard`, and four narrow `tools.register` tools:
+`mh_npm_config`, `mh_env_config`, `mh_pypi_config`, and `mh_certificate_info`, when the tools capability is present. The permission overlay
 has no `isEnabled` predicate, slash command, argument transform, or approval
 cache. It evaluates `event.args` anew in both `approval` and `execution`,
 including post-transform arguments. Allowed policy results return `undefined`,
@@ -71,6 +71,17 @@ names and unknown SSH files, identity, key/PEM/P12/PFX suffixes, credentials./
 secret./secrets. prefixes, and local-backend provider-directory paths. SSH
 config, known_hosts variants, authorized_keys, and `.pub` retain their narrow
 exceptions unless another sensitive-name rule applies.
+
+The ambiguous credentials./secret./secrets. basename prefix does not deny
+ordinary JS/TS source names ending in `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs` or
+`.cjs` (case-normalized), including service/test/declaration modules. This is
+not a source-directory or test-fixture exemption: dotenv, exact auth/key names,
+SSH/provider paths and cryptographic suffixes retain priority. Prefix names
+with intervening credential-data extensions (JSON/YAML/YML/TOML/INI/CONF/CFG/
+ENV/TXT/KEY/PEM/P12/PFX) stay conservative, e.g. `secret.key.ts`. Other languages,
+credential JSON fixtures and PEM remain unchanged. This filename-only heuristic
+cannot establish that source contents lack hardcoded secrets; it performs no
+content scan and provides no malicious-renaming guarantee.
 
 Shell checks retain narrow `ls`/`stat`/`test`/`[` metadata exceptions,
 read-like command detection, `find -exec` and `find -execdir` reads, environment-dump checks,
@@ -143,7 +154,18 @@ the mod registers the narrow `mh_pypi_config` tool:
 - Security guarantees: does not synthesize missing runtime defaults or expand interpolation/env placeholders. Malformed or unsupported structures fail closed generically. Re-reading a file with changed contents remains safely filtered without cached content or approvals. Output is capped at 32 KiB.
 - Raw `.pypirc` file reads and shell accesses remain denied.
 
-For all three tools, `ctx.cwd` owns relative path resolution; an explicit absolute
+### Safe certificate metadata inspection (`mh_certificate_info`)
+
+To allow public X.509 certificate inspection without blanket raw PEM reads or private-key exposure,
+the mod registers the narrow `mh_certificate_info` tool:
+- Schema: accepts required `path` with `additionalProperties: false`. Basename must end case-insensitively in `.pem`. No default certificate guessing, `.crt`/DER/key/p12/pfx, or glob expansion.
+- Permission overlay: content-blind validation verifying tool name and required `.pem` path argument contract at both approval and execution phases. The classifier performs no filesystem read during permission checking; raw Read, shell cat, and openssl reads of `.pem` remain denied.
+- Content reading and whole-file framing: reuses internal descriptor helper `readConfigFileLines` (`O_RDONLY | O_NOFOLLOW | O_NONBLOCK`, regular-file check, 64 KiB + 1 overflow byte cap, 500 lines cap, UTF-8/NUL byte validation, snapshot recheck, signal cancellation, and descriptor closure in `finally`).
+- Certificate framing and strict validation: requires exact `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` blocks (up to 16 certificates). Rejects whole file if private/encrypted key labels, certificate requests, public keys, unsupported blocks, nonwhitespace before/between/after blocks, non-canonical base64, trailing DER garbage (`der.equals(cert.raw)` enforced), empty chain, or limit overflow are detected. Parse errors are generic and never leak raw content, keys, paths, or partial metadata.
+- Safe public metadata output: returns only `{ status: "success", certificates: [{ subject, issuer, valid_from, valid_to, fingerprint256, serial_number }], certificate_count }` capped at 32 KiB payload. Serial hex is normalized to uppercase. No PEM text, base64 DER, raw buffers, public key exports, or private keys are returned. The native `ca` inference is deliberately omitted: Node and Bun disagree for self-signed v1 certificates without basic constraints; this tool does not infer CA/trust status.
+- Trust boundaries: certificate metadata fields are untrusted certificate data, not instructions. Parsing does not verify chain trust, hostname validity, or revocation status.
+
+For all four tools, `ctx.cwd` owns relative path resolution; an explicit absolute
 or parent-relative path selecting the required basename is allowed. This is not
 cwd confinement. The shared reader uses asynchronous descriptor stat and 4 KiB
 chunks; final-component symlinks are refused, not every symlinked ancestor.
