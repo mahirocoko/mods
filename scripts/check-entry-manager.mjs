@@ -17,7 +17,7 @@ const assert = (condition, message) => {
 
 try {
   const initial = run("status");
-  assert(initial.includes("goal: enabled") && initial.split("\n").filter(Boolean).length === 11, "entry status must list eleven switchable entries");
+  assert(initial.includes("goal: enabled") && initial.split("\n").filter(Boolean).length === 12, "entry status must list twelve switchable entries");
   assert(run("disable", "goal").includes("goal: disabled"), "entry manager must disable one entry");
   const sentinel = join(root, "mahiro-goal.disabled");
   assert((lstatSync(sentinel).mode & 0o777) === 0o600, "entry sentinel must use mode 0600");
@@ -70,7 +70,11 @@ try {
       assert(rejected, `${entry} must not expose a per-entry switch`);
     }
   }
-  console.log("Per-entry mod manager valid: eleven switchable entries, three automatic-only hooks, atomic locked disable/enable, idempotence, mode, unknown-name, and symlink checks passed.");
+  assert(run("disable", "realign").includes("realign: disabled"), "entry manager must disable realign");
+  assert((lstatSync(join(root, "mahiro-realign.disabled")).mode & 0o777) === 0o600, "realign sentinel must use mode 0600");
+  assert(run("status", "realign").trim() === "realign: disabled", "realign status must reflect its sentinel");
+  assert(run("enable", "realign").includes("realign: enabled"), "entry manager must re-enable realign");
+  console.log("Per-entry mod manager valid: twelve switchable entries, three automatic-only hooks, atomic locked disable/enable, idempotence, mode, unknown-name, and symlink checks passed.");
 } finally {
   await rm(root, { recursive: true, force: true });
 }

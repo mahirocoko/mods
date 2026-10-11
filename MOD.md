@@ -5,19 +5,29 @@ description: "Mahiro's private user timestamps, model profiles, Herdr lifecycle,
 
 # Mahiro Letta Mods semantics
 
-The eleven switchable entries check their fixed local disable sentinels before reporting
+The twelve switchable entries check their fixed local disable sentinels before reporting
 diagnostics or registering commands, tools, permissions, events, or panels.
 The three migrated hooks are automatic-only and have no per-entry switches.
 `pnpm mods:entry status|disable|enable [entry]` owns those mode-`0600` sentinels
-for the eleven switchable entry names. Toggling an entry never edits the managed
+for the twelve switchable entry names. Toggling an entry never edits the managed
 package registry or deletes its durable state; active sessions require
 `/reload`.
 
 ## Package boundary
 
-This package activates fourteen independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, sockets, and persistent MCP connections.
+This package activates fifteen independent mod entry points. Each entry capability-gates its own behavior and returns cleanup for registrations, timers, panels, sockets, and persistent MCP connections.
 
 Installed package files are runtime copies. Edit this repository, validate it, reinstall/update the managed package, and run `/reload` rather than editing files below `~/.letta/mods/packages/`.
+
+## Mahiro Realign
+
+`mods/mahiro-realign.ts` registers only `/realign [focus]` under the commands capability, with default non-busy prompt behavior. Activation checks `MAHIRO_REALIGN_DISABLE_PATH` (default `~/.letta/mods/mahiro-realign.disabled`) before any registration and skips aborted generations. Normal disposal unregisters once; aborted cleanup skips registry publication and retained callbacks fail closed.
+
+The command returns a bounded agent prompt without filesystem reads/writes, shell execution, conversation forks, panels, tools, providers, or persistent state during invocation. Focus is literal JSON data: ASCII/C1 controls are stripped, whitespace is trimmed, and raw input over 500 characters returns a clear failure without silent truncation. Empty focus means the recent human correction, not a full audit.
+
+The prompt puts the latest human correction/request and authorized task scope first, then relevant existing memory and canonical current repo/skill/mod contracts, including loaded-versus-installed truth. It separates facts/hypotheses and requests one cheap permitted contract-supported disconfirming probe before blocked diagnosis or system repair; unavailable probes must be reported as limitations. It corrects the mistaken claim and resumes already-authorized work, asking one focus question only if ambiguous.
+
+This is guidance, not guaranteed repair, context reset, or cancellation of other workers. Higher-priority permissions and protected boundaries remain intact. No automatic memory/docs/rules edits, new rules, rollback, guard disabling, commits, pushes, installs, or provider/model configuration changes are authorized. In particular `memory-commit` focus requires actual ongoing permission and recovery of the actual current agent's MemFS and current mod contract, never cwd-based ownership inference.
 
 ## Commit attribution and voice boundaries
 

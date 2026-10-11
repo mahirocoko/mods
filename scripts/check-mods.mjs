@@ -6,10 +6,12 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { transform } from "esbuild";
+import { checkRealign } from "./check-realign.mjs";
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const entries = [
   "mods/mahiro-user-timestamps.ts",
+  "mods/mahiro-realign.ts",
   "mods/mahiro-model-profiles.ts",
   "mods/mahiro-herdr-lifecycle.ts",
   "mods/mahiro-goal.ts",
@@ -193,7 +195,8 @@ async function smokeActivate(activate, relativePath) {
 }
 
 async function checkRegistrationBudget(activations) {
-  const budget = 54;
+  // Existing 54 registrations plus the single plain /realign command.
+  const budget = 55;
   const deferredEntries = new Set([
     "mods/mahiro-herdr-lifecycle.ts",
     "mods/mahiro-goal.ts",
@@ -202,6 +205,7 @@ async function checkRegistrationBudget(activations) {
   ]);
   const expectedByEntry = new Map([
     ["mods/mahiro-user-timestamps.ts", 1],
+    ["mods/mahiro-realign.ts", 1],
     ["mods/mahiro-model-profiles.ts", 5],
     ["mods/mahiro-herdr-lifecycle.ts", 8],
     ["mods/mahiro-goal.ts", 7],
@@ -283,6 +287,7 @@ async function checkRegistrationBudget(activations) {
 async function checkEntryDisableSwitches(activations) {
   const paths = new Map([
     ["mods/mahiro-user-timestamps.ts", process.env.MAHIRO_USER_TIMESTAMPS_DISABLE_PATH],
+    ["mods/mahiro-realign.ts", process.env.MAHIRO_REALIGN_DISABLE_PATH],
     ["mods/mahiro-model-profiles.ts", process.env.MAHIRO_MODEL_PROFILES_DISABLE_PATH],
     ["mods/mahiro-herdr-lifecycle.ts", process.env.MAHIRO_HERDR_DISABLE_PATH],
     ["mods/mahiro-goal.ts", process.env.MAHIRO_GOAL_DISABLE_PATH],
@@ -2166,6 +2171,7 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
 
   const expectedPackageEntries = [
     "./mods/mahiro-user-timestamps.ts",
+    "./mods/mahiro-realign.ts",
     "./mods/mahiro-model-profiles.ts",
     "./mods/mahiro-herdr-lifecycle.ts",
     "./mods/mahiro-goal.ts",
@@ -2181,9 +2187,9 @@ async function checkMahiroUxWorkflowRegistration(activate, testing, testRoot) {
     "./mods/mahiro-finish-voice.js",
   ];
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-  assert(packageJson.version === "0.14.0", "Package version must be 0.14.0");
-  assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact fourteen-entry order");
-  assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact fourteen-entry package");
+  assert(packageJson.version === "0.15.0", "Package version must be 0.15.0");
+  assert(JSON.stringify(packageJson.letta.mods) === JSON.stringify(expectedPackageEntries), "Package must use the exact fifteen-entry order");
+  assert(JSON.stringify(entries.map((entry) => `./${entry}`)) === JSON.stringify(expectedPackageEntries), "source checker entries must match the exact fifteen-entry package");
 
   const missingDiagnostics = [];
   const missing = await activate({ capabilities: {}, diagnostics: { report: (item) => missingDiagnostics.push(item) } });
@@ -3264,6 +3270,7 @@ const previousHerdrTesting = process.env.MAHIRO_HERDR_TESTING;
 const previousHerdrForceEnable = process.env.MAHIRO_HERDR_FORCE_ENABLE;
 const previousHerdrDisablePath = process.env.MAHIRO_HERDR_DISABLE_PATH;
 const previousTimestampDisablePath = process.env.MAHIRO_USER_TIMESTAMPS_DISABLE_PATH;
+const previousRealignDisablePath = process.env.MAHIRO_REALIGN_DISABLE_PATH;
 const previousGoalDisablePath = process.env.MAHIRO_GOAL_DISABLE_PATH;
 const previousCodeEvidenceStatePath = process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH;
 const previousModelProfilesStatePath = process.env.MAHIRO_MODEL_PROFILES_STATE_PATH;
@@ -3300,6 +3307,7 @@ process.env.MAHIRO_HERDR_TESTING = "1";
 process.env.MAHIRO_HERDR_FORCE_ENABLE = "1";
 process.env.MAHIRO_HERDR_DISABLE_PATH = join(testRoot, "mahiro-herdr-lifecycle.disabled");
 process.env.MAHIRO_USER_TIMESTAMPS_DISABLE_PATH = join(testRoot, "mahiro-user-timestamps.disabled");
+process.env.MAHIRO_REALIGN_DISABLE_PATH = join(testRoot, "mahiro-realign.disabled");
 process.env.MAHIRO_GOAL_DISABLE_PATH = join(testRoot, "mahiro-goal.disabled");
 process.env.MAHIRO_CODE_EVIDENCE_STATE_PATH = join(testRoot, "code-evidence-state.json");
 process.env.MAHIRO_CODE_EVIDENCE_TESTING = "1";
@@ -3330,6 +3338,7 @@ try {
     await smokeActivate(activate, entry);
   }
 
+  await checkRealign();
   await checkEntryDisableSwitches(activations);
   await checkAbortDuringRegistrationYield(activations);
   await checkRegistrationBudget(activations);
@@ -3395,6 +3404,8 @@ try {
   else process.env.MAHIRO_MODEL_PROFILES_TESTING = previousModelProfilesTesting;
   if (previousModelProfilesDisablePath === undefined) delete process.env.MAHIRO_MODEL_PROFILES_DISABLE_PATH;
   else process.env.MAHIRO_MODEL_PROFILES_DISABLE_PATH = previousModelProfilesDisablePath;
+  if (previousRealignDisablePath === undefined) delete process.env.MAHIRO_REALIGN_DISABLE_PATH;
+  else process.env.MAHIRO_REALIGN_DISABLE_PATH = previousRealignDisablePath;
   if (previousTimestampTesting === undefined) delete process.env.MAHIRO_TIMESTAMPS_TESTING;
   else process.env.MAHIRO_TIMESTAMPS_TESTING = previousTimestampTesting;
   if (previousHerdrTesting === undefined) delete process.env.MAHIRO_HERDR_TESTING;

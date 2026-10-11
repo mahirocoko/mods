@@ -18,6 +18,7 @@ const errors = [];
 
 const EXPECTED_MODS = [
   "./mods/mahiro-user-timestamps.ts",
+  "./mods/mahiro-realign.ts",
   "./mods/mahiro-model-profiles.ts",
   "./mods/mahiro-herdr-lifecycle.ts",
   "./mods/mahiro-goal.ts",
@@ -285,6 +286,18 @@ if (packageJson) {
       for (const modPath of letta.mods) validateModPath(modPath);
       if (!sameArray(letta.mods, EXPECTED_MODS)) {
         addError(`letta.mods must exactly match the current bundle entries: ${EXPECTED_MODS.join(", ")}.`);
+      }
+      const installerSource = readRequiredFile("scripts/manage-local.mjs");
+      const installerEntries = installerSource?.match(/^const entries = (\[[\s\S]*?\]);/m);
+      try {
+        const parsed = installerEntries
+          ? JSON.parse(installerEntries[1].replace(/,\s*\]/g, "]"))
+          : null;
+        if (!Array.isArray(parsed) || !sameArray(parsed, letta.mods)) {
+          addError("Local installer entries must exactly match letta.mods in order.");
+        }
+      } catch {
+        addError("Local installer entries must remain a readable literal array matching letta.mods.");
       }
     }
 

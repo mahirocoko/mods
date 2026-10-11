@@ -49,6 +49,7 @@ pnpm mods:update
 | ถ้าต้องการ… | ใช้ mod |
 | --- | --- |
 | ให้ทุกข้อความมีเวลาท้องถิ่นที่เชื่อถือได้ | Mahiro User Timestamps |
+| กลับมาตามคำแก้ล่าสุดและขอบเขตงานเดิม | Mahiro Realign (`/realign [focus]`) |
 | จำ context window และ reasoning effort แยกตาม model | Mahiro Model Profiles |
 | ดูว่า Letta main/subagent ในแต่ละ Herdr Space กำลังทำงาน รอ input หรือเสร็จแล้ว | Mahiro Herdr Lifecycle |
 | ตั้งเป้าหมาย มี DoD และกำหนด human gate เมื่อต้องให้ Mahiro ตรวจรับ | Mahiro Goal |
@@ -69,6 +70,16 @@ pnpm mods:update
 - **Model tool** มีไว้ให้ agent ใช้ระหว่างทำงาน เช่น `mh_code_evidence` action `collect` หรือ `mh_execution_run` operation `update`
 
 ปกติไม่ต้องพิมพ์ JSON ของ model tool เอง บอกสิ่งที่ต้องการกับ agent ได้เลย แล้วให้ agent เรียก tool พร้อม revision และ scope ที่ถูกต้อง
+
+## Mahiro Realign
+
+ใช้ `/realign` หลัง agent เข้าใจผิดหรือหลุดจากคำแก้ล่าสุด ใส่ `/realign [focus]` เพื่อระบุเรื่องที่ต้องกลับมาดู ถ้าไม่ใส่ focus จะยึดคำแก้ล่าสุด ไม่เปิด audit ทั้งระบบ ตัว prompt ให้ตรวจ memory และ contract ปัจจุบัน แยกสิ่งที่โหลดใช้งานจริงออกจากสิ่งที่แค่ติดตั้ง แยกข้อเท็จจริงจากข้อสันนิษฐาน แล้วลองตรวจหักล้างหนึ่งครั้งแบบเบา ๆ ภายในสิทธิ์เดิม ก่อนสรุปว่างานติดขัดหรือระบบต้องซ่อม จากนั้นแก้คำกล่าวที่ผิดและทำงานที่ได้รับอนุญาตไว้ต่อ ถ้า focus กำกวมจริง ๆ ให้ถามหนึ่งคำถาม
+
+คำสั่งนี้ส่ง prompt เข้า turn ถัดไป ไม่ทำงานขณะ agent busy ไม่ reset context ไม่ยกเลิก worker อื่น และไม่รับประกันว่าจะซ่อมระบบได้ Focus เป็นข้อความใน JSON จะระบุชื่อไฟล์ก็ได้ แต่ไม่ได้เพิ่มสิทธิ์ให้อ่าน path หรือรัน shell ต้องอยู่ในขอบเขตงานที่ได้รับอนุญาตไว้ คำสั่งจะตัด control characters และปฏิเสธ input ที่เกิน 500 ตัวอักษร ไม่ตัดทิ้งเงียบ ๆ
+
+สิทธิ์และขอบเขตเดิมยังอยู่ครบ ไม่อนุญาตให้แก้ memory/docs/rules เพิ่มกฎ rollback ปิด guard commit push install หรือเปลี่ยน provider/model config อัตโนมัติ แม้ใช้ `/realign memory-commit` ก็ยังต้องมีสิทธิ์ commit จริงในงานนั้น และตรวจ MemFS ของ agent กับ mod contract ปัจจุบัน ไม่เดาจาก cwd
+
+เปิดหรือปิด entry ด้วย `pnpm mods:entry enable realign` / `pnpm mods:entry disable realign` แล้ว `/reload` หลังเปลี่ยนสถานะหรือติดตั้ง package ใหม่ Source tests ไม่ได้ยืนยันว่า host โหลดคำสั่งแล้วหรือ agent จะทำตาม prompt ทุกครั้ง
 
 ## Commit Attribution Guard
 
@@ -131,7 +142,7 @@ pnpm mods:entry disable herdr
 pnpm mods:entry enable herdr
 ```
 
-ชื่อที่ใช้ได้คือ `timestamps`, `model-profiles`, `herdr`, `goal`, `evidence`, `ux`, `code-map`,
+ชื่อที่ใช้ได้คือ `timestamps`, `realign`, `model-profiles`, `herdr`, `goal`, `evidence`, `ux`, `code-map`,
 `execution`, `rtk`, `statusline` และ `mcp` ทุกครั้งที่เปลี่ยนสถานะต้อง
 `/reload` ใน session ที่เปิดอยู่ ตัว manager จะไม่แก้ `packages.json`, ไม่ลบ
 state และไม่ปิด entry อื่นใน bundle

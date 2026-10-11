@@ -11,6 +11,7 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | Entry | Surface | Purpose |
 | --- | --- | --- |
 | `mods/mahiro-user-timestamps.ts` | `turn_start` | Adds safe local/IANA timestamp metadata and one visible block to each real user turn without timestamping synthetic workflow reminders. |
+| `mods/mahiro-realign.ts` | `/realign [focus]` | Plain bounded agent prompt to recover the latest human correction and continue authorized work; no autonomous repair or runtime state. |
 | `mods/mahiro-model-profiles.ts` | `/mh-model-profile`, `mh_*_model_profile` tools | Keeps per-model context-window and reasoning-effort preferences in agent-scoped MemFS and applies them together on model switch. |
 | `mods/mahiro-herdr-lifecycle.ts` | lifecycle/turn/tool/LLM events + bounded child-process observation | Reports one truthful Letta pane state plus bounded child-task, model, provider, and context metadata to the owning Herdr pane over its local socket. |
 | `mods/mahiro-goal.ts` | `/mh-goal`, busy-safe `/mh-goal-status`, `mh_get_goal`, `mh_create_goal`, `mh_update_goal`, `turn_start` | Structured movable conversation goal with bounded operating rules, DoD criteria, evidence, blockers, revision guards, and human verification gates. |
@@ -26,6 +27,14 @@ This repository is the canonical source. Runtime state, logs, caches, diagnostic
 | `mods/mahiro-finish-voice.js` | `turn_end` | Bounded macOS completion cue, excluding known subagent processes. |
 
 Agent Halo is not duplicated here. Its canonical mod remains in the separate [`agent-halo`](https://github.com/mahirocoko/agent-halo) repository and is installed by that project.
+
+## Bounded realignment
+
+Use `/realign [focus]` after a mistaken claim or missed human correction. With no focus it follows the recent correction, not a broad audit. It asks the agent to recover relevant memory and current canonical contracts, distinguish loaded from installed capabilities and facts from hypotheses, try one cheap permitted disconfirming probe, correct the claim, and continue already-authorized work. It asks one focus question only when ambiguous.
+
+This is a plain next-turn prompt, not busy-safe, a context reset, worker cancellation, or guaranteed autonomous repair. Focus is literal JSON data: it may describe a file but grants no authority to open a supplied path or execute shell; controls are stripped and raw input over 500 characters fails rather than truncating. Existing task permissions still apply. It grants no new permissions for memory/docs/rules edits, rollback, guard disabling, commits/pushes/installs, or provider/model changes. `/realign memory-commit` does not authorize a memory commit: actual ongoing permission and the current agent's actual MemFS/current mod contract are still required, not a cwd assumption.
+
+The `realign` entry checks `MAHIRO_REALIGN_DISABLE_PATH` (default `~/.letta/mods/mahiro-realign.disabled`) before registration. After an authorized package update, run `/reload`; source checks do not prove real-host loading or agent compliance.
 
 ## Commit and voice hook migration
 
@@ -478,7 +487,7 @@ pnpm mods:entry disable goal
 pnpm mods:entry enable goal
 ```
 
-Available names are `timestamps`, `herdr`, `goal`, `evidence`, `ux`,
+Available names are `timestamps`, `realign`, `model-profiles`, `herdr`, `goal`, `evidence`, `ux`,
 `code-map`, `execution`, `rtk`, `statusline`, and `mcp`. The three migrated hooks have no per-entry switches. The manager writes only
 fixed mode-`0600` sentinels under `~/.letta/mods/`, rejects symlinks and unknown
 names, and is idempotent. Run `/reload` after each change. This is local runtime
