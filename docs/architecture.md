@@ -2,11 +2,12 @@
 
 ## Current reality
 
-The repository root is one installable Letta package with fourteen manifest entries. This deliberately favors one-command private Git installation and one update source over independent npm publication.
+The repository root is one installable Letta package with fifteen manifest entries. This deliberately favors one-command private Git installation and one update source over independent npm publication.
 
 ```text
 package.json#letta
 ├── mods/mahiro-user-timestamps.ts
+├── mods/mahiro-realign.ts
 ├── mods/mahiro-model-profiles.ts
 ├── mods/mahiro-herdr-lifecycle.ts
 ├── mods/mahiro-goal.ts
@@ -22,7 +23,32 @@ package.json#letta
 └── mods/mahiro-finish-voice.js
 ```
 
-The declared capability list is the union of the fourteen entries. Runtime behavior still remains independent because each activation function checks the capabilities it needs.
+The declared capability list is the union of the fifteen entries. Runtime behavior still remains independent because each activation function checks the capabilities it needs.
+
+The private Pi adapter in `adapters/pi/` owns native mapping, final execution and
+node-generation/parent-abort lifecycle only. Canonical operation semantics remain
+the public default factories in `mods/mahiro-secret-read-guard.js` and
+`mods/mahiro-commit-attribution-guard.js`; the upstream permission system owns
+permission UX and node policy. Load the complete ordered package: dependency-free
+bootstrap first, index second. The bootstrap denies all dispatch when canonical
+registration/import/ownership or node health fails; index alone is unsupported.
+
+The same pinned local upstream roots must be registered as Pi packages, not a
+second engine. Child `excludedExtensionPackages` explicitly names the exact
+subagents package source, while both guard entries and permission services remain
+loaded. Unknown tools/aliases and PowerShell are denied. Missing child services or
+nodes conservatively cancel the captured parent's running/queued siblings,
+including healthy work. This bounds orchestrated spawn/resume, not trusted idle
+custom-message inference, arbitrary trusted executable extensions or a physically
+absent whole package.
+
+The package was registered and reloaded in the native Pi profile on 2026-10-17
+after independent offline fault/healthy rechecks and actual OpenAI/MCP proofs.
+The installed role completed an actual approved-source read in the existing TUI.
+This is bounded technical activation, not whole-migration/human acceptance.
+`mahiro-pi` remains the footer/status/voice and native role-source owner. See
+`adapters/pi/README.md` for configuration and evidence boundaries. The fifteen-entry
+Letta manifest and its runtime remain unchanged.
 
 `mahiro-herdr-lifecycle.ts` is a local observability adapter, not a Herdr
 controller. It activates only when Herdr injects its local socket and pane
@@ -89,7 +115,7 @@ state stay separate and are never imported or mutated.
 - The bundle matches Mahiro's current machine, where these mods are intended to be active together after each new entry passes its explicit runtime gate.
 
 Letta still installs and versions the bundle as a unit. Local troubleshooting
-and optional runtime use can disable one of the eleven switchable entries through a fixed sentinel before
+and optional runtime use can disable one of the twelve switchable entries through a fixed sentinel before
 that entry registers anything; this leaves the managed registry and state
 untouched. Split a mod into an independently versioned package only when
 separate distribution—not merely local runtime control—becomes a real
