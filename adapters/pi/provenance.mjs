@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const canonical = (value) => {
@@ -22,6 +23,34 @@ if (metadata.name !== "@gotgenes/pi-subagents" || metadata.version !== "23.4.1")
 }
 const entryPaths = new Set(metadata.pi.extensions.map((entry) => canonical(join(root, entry))));
 const metaTools = new Set(["subagent", "get_subagent_result", "steer_subagent"]);
+
+// The sole authored package checkout, not an arbitrary same-name package copy.
+const continuityRoot = fileURLToPath(new URL("../../../mahiro-pi/", import.meta.url));
+export function trustedRecallTool(tool) {
+  if (!["recall_search", "recall_read"].includes(tool?.name)) return false;
+  const source = tool.sourceInfo;
+  try {
+    const expected = canonical(continuityRoot);
+    if (
+      !expected ||
+      source?.origin !== "package" ||
+      !["user", "project", "temporary"].includes(source.scope) ||
+      // source.source is the authored package reference, relative to settings,
+      // not ctx.cwd. The SDK-resolved baseDir owns the actual package identity.
+      canonical(source.baseDir) !== expected ||
+      canonical(source.path) !== canonical(join(expected, "extensions/mahiro-continuity.ts"))
+    )
+      return false;
+    const pkg = JSON.parse(readFileSync(join(expected, "package.json"), "utf8"));
+    return (
+      pkg.name === "@mahirocoko/mahiro-pi" &&
+      pkg.version === "0.1.0" &&
+      pkg.pi?.extensions?.includes("./extensions/mahiro-continuity.ts") === true
+    );
+  } catch {
+    return false;
+  }
+}
 
 // Reads only runtime ToolInfo; a name or caller-supplied approval flag is insufficient.
 export function trustedMetaTool(tool) {

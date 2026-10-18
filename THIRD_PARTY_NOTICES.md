@@ -1,5 +1,14 @@
 # Third-party notices
 
+## Native Pi subagents compatibility patch
+
+`adapters/pi/patches/@gotgenes__pi-subagents@23.4.1.patch` modifies upstream
+`@gotgenes/pi-subagents` version `23.4.1`, copyright (c) 2026 tintinweb,
+under the MIT License. The complete notice is retained in
+`LICENSES/pi-subagents-MIT.txt`. The patch adds opt-in initial outcome ownership
+and immutable role introspection; it is not an upstream endorsement or a global
+notification-policy change. The adapter lockfile binds the patched version.
+
 ## Upstream ownership status
 
 Status checked on 2026-08-25 against `letta-ai/mods` commit

@@ -8,12 +8,36 @@ import http from "node:http";
 import https from "node:https";
 import tls from "node:tls";
 import { createGuardHost } from "./host.mjs";
-import { trustedMetaTool } from "./provenance.mjs";
+import { trustedMetaTool, trustedRecallTool } from "./provenance.mjs";
+
+test("continuity routing does not trust names, flags or foreign package ownership", () => {
+  for (const name of ["recall_search", "recall_read"]) {
+    for (const sourceInfo of [
+      undefined,
+      {
+        origin: "package",
+        scope: "user",
+        source: "/unrelated/package",
+        path: "/unrelated/package/extensions/mahiro-continuity.ts",
+      },
+      {
+        origin: "top-level",
+        scope: "temporary",
+        source: "builtin",
+        path: "builtin:mcp",
+      },
+    ]) {
+      assert.equal(trustedRecallTool({ name, sourceInfo, approved: true }), false);
+    }
+  }
+  assert.equal(trustedRecallTool({ name: "unknown_alias", sourceInfo: {} }), false);
+});
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const proof = path.resolve(root, "../../.agent-state/runtime/pi-guard-proof");
 const fixture = fs.mkdtempSync(path.join(proof, "fixture-"));
-for (const directory of ["home", "cwd", "agent", "sessions"]) fs.mkdirSync(path.join(fixture, directory));
+for (const directory of ["home", "cwd", "agent", "sessions"])
+  fs.mkdirSync(path.join(fixture, directory));
 const cwd = path.join(fixture, "cwd"),
   agentDir = path.join(fixture, "agent");
 process.env.HOME = path.join(fixture, "home");
@@ -38,7 +62,9 @@ const bin = path.join(fixture, "bin");
 fs.mkdirSync(bin);
 fs.mkdirSync(path.join(cwd, ".git")); // Synthetic directory only; never invoke real git.
 const gitArgv = path.join(fixture, "git-argv.txt");
-fs.writeFileSync(path.join(bin, "git"), `#!/bin/sh\nprintf '%s\\n' "$@" > '${gitArgv}'\n`, { mode: 0o755 });
+fs.writeFileSync(path.join(bin, "git"), `#!/bin/sh\nprintf '%s\\n' "$@" > '${gitArgv}'\n`, {
+  mode: 0o755,
+});
 process.env.PATH = `${bin}:/usr/bin:/bin`;
 process.env.BASH_ENV = "/dev/null";
 
@@ -75,14 +101,22 @@ test("canonical public factories enforce native final execution arguments", asyn
     assert.deepEqual(await host.finalArgs("bash", quoted, { cwd }), quoted);
     const heredoc = { command: "cat <<'EOF'\nliteral $(cat .env)\nEOF" };
     assert.deepEqual(await host.finalArgs("bash", heredoc, { cwd }), heredoc);
-    report.checks.push("canonical attribution transformation and literal quoted/heredoc preservation");
+    report.checks.push(
+      "canonical attribution transformation and literal quoted/heredoc preservation",
+    );
     // Exact installed package roots, not cached trial copies.
-    const permissions = fs.realpathSync(path.join(root, "node_modules/@gotgenes/pi-permission-system"));
+    const permissions = fs.realpathSync(
+      path.join(root, "node_modules/@gotgenes/pi-permission-system"),
+    );
     const permissionConfig = path.join(agentDir, "extensions/pi-permission-system");
     fs.mkdirSync(permissionConfig, { recursive: true });
     fs.writeFileSync(
       path.join(permissionConfig, "config.json"),
-      JSON.stringify({ yoloMode: false, authorizerChain: [], permission: { "*": "allow" } }),
+      JSON.stringify({
+        yoloMode: false,
+        authorizerChain: [],
+        permission: { "*": "allow" },
+      }),
     );
     fs.writeFileSync(
       path.join(agentDir, "settings.json"),
@@ -110,7 +144,10 @@ test("canonical public factories enforce native final execution arguments", asyn
           name,
           source: "offline-public-mcp-fixture",
           scope: "extension",
-          config: { command: "NEVER_EXECUTED", exposure: name === "chrome-devtools" ? "codemode" : "direct" },
+          config: {
+            command: "NEVER_EXECUTED",
+            exposure: name === "chrome-devtools" ? "codemode" : "direct",
+          },
         })),
       }),
       createTransport: (entry) => {
@@ -148,15 +185,21 @@ test("canonical public factories enforce native final execution arguments", asyn
                         inputSchema: { type: "object", properties: {} },
                       })),
                     }
-                  : { content: [{ type: "text", text: "SYNTHETIC_MCP_" + entry.name }] };
+                  : {
+                      content: [{ type: "text", text: "SYNTHETIC_MCP_" + entry.name }],
+                    };
             queueMicrotask(() => {
-              for (const listener of listeners) listener({ jsonrpc: "2.0", id: message.id, result });
+              for (const listener of listeners)
+                listener({ jsonrpc: "2.0", id: message.id, result });
             });
           },
         };
       },
     });
-    const faux = ai.fauxProvider({ provider: "pi-guard-offline", models: [{ id: "fixture" }] });
+    const faux = ai.fauxProvider({
+      provider: "pi-guard-offline",
+      models: [{ id: "fixture" }],
+    });
     faux.setResponses([
       (context) => {
         requests.push(context.messages);
@@ -235,7 +278,10 @@ test("canonical public factories enforce native final execution arguments", asyn
     assert.equal(runtimeMcp.sourceInfo.path, "builtin:mcp");
     assert.equal(trustedMetaTool(runtimeMcp), true);
     assert.equal(
-      trustedMetaTool({ ...runtimeMcp, sourceInfo: { ...runtimeMcp.sourceInfo, path: "<inline:untrusted>" } }),
+      trustedMetaTool({
+        ...runtimeMcp,
+        sourceInfo: { ...runtimeMcp.sourceInfo, path: "<inline:untrusted>" },
+      }),
       false,
     );
     report.checks.push(
@@ -246,7 +292,9 @@ test("canonical public factories enforce native final execution arguments", asyn
     assert.ok(
       results.some(
         (r) =>
-          r.toolName === "mh_env_config" && r.isError && JSON.stringify(r.content).includes("Failed to read file."),
+          r.toolName === "mh_env_config" &&
+          r.isError &&
+          JSON.stringify(r.content).includes("Failed to read file."),
       ),
     );
     const nested = results.find((result) => result.toolName === "codemode");
@@ -256,13 +304,17 @@ test("canonical public factories enforce native final execution arguments", asyn
     assert.match(JSON.stringify(nested.content), /sensitive/);
     assert.match(JSON.stringify(nested.content), /FILTERED_ERROR:.*Failed to read file/);
     assert.doesNotMatch(JSON.stringify(nested.content), /WRONG_SUCCESS/);
-    report.checks.push("native codemode nested read reaches final guarded override after late rewrite");
+    report.checks.push(
+      "native codemode nested read reaches final guarded override after late rewrite",
+    );
     assert.match(fs.readFileSync(gitArgv, "utf8"), /^commit\n-m\nSynthetic/);
     assert.doesNotMatch(fs.readFileSync(gitArgv, "utf8"), /Letta|Co-Authored-By/);
     assert.ok(
       results.some(
         (result) =>
-          result.toolName === "read" && !result.isError && JSON.stringify(result.content).includes("SYNTHETIC_SAFE"),
+          result.toolName === "read" &&
+          !result.isError &&
+          JSON.stringify(result.content).includes("SYNTHETIC_SAFE"),
       ),
     );
     assert.equal(results.filter((result) => result.isError).length, 5);
@@ -280,19 +332,357 @@ test("canonical public factories enforce native final execution arguments", asyn
   } finally {
     session?.dispose();
     host.dispose();
-    fs.writeFileSync(path.join(proof, "bootstrap-healthy-focused-result.json"), JSON.stringify(report, null, 2));
+    fs.writeFileSync(
+      path.join(proof, "bootstrap-healthy-focused-result.json"),
+      JSON.stringify(report, null, 2),
+    );
   }
+});
+
+test("native directional continuity authorization and write gates", async (t) => {
+  const sdk = await import("@earendil-works/pi-coding-agent");
+  const ai = await import("@earendil-works/pi-ai");
+  const observer = path.join(fixture, "continuity-observer.ts");
+  if (!fs.existsSync(path.join(fixture, "node_modules")))
+    fs.symlinkSync(path.join(root, "node_modules"), path.join(fixture, "node_modules"), "dir");
+  fs.writeFileSync(
+    observer,
+    `import {getPermissionsService} from '@gotgenes/pi-permission-system';
+export default pi => { pi.on('session_start', (_event, ctx) => {
+ globalThis[Symbol.for('continuity-permission-proof')] = () => getPermissionsService(ctx.sessionManager.getSessionId());
+}); };`,
+  );
+  const permissions = fs.realpathSync(
+    path.join(root, "node_modules/@gotgenes/pi-permission-system"),
+  );
+  const continuityPackage = path.resolve(root, "../../../mahiro-pi");
+  const store = path.join(process.env.HOME, ".pi/agent/continuity");
+  fs.mkdirSync(store, { recursive: true });
+  const record = path.join(store, "record.txt");
+  fs.writeFileSync(record, "SYNTHETIC_HISTORY");
+  const configPath = path.join(agentDir, "extensions/pi-permission-system/config.json");
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  const previousConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath) : undefined;
+  t.after(() => {
+    if (previousConfig) fs.writeFileSync(configPath, previousConfig);
+    else fs.rmSync(configPath, { force: true });
+  });
+  const base = {
+    "*": "deny",
+    read: "allow",
+    recall_read: "allow",
+    recall_search: "allow",
+    write: "allow",
+    edit: "allow",
+    bash: "allow",
+    external_directory_read: {
+      "*": "deny",
+      [store]: "allow",
+      [`${store}/**`]: "allow",
+    },
+    external_directory_write: "deny",
+  };
+  const runtime = await sdk.ModelRuntime.create({
+    credentials: new ai.InMemoryCredentialStore(),
+    modelsPath: null,
+    allowModelNetwork: false,
+    refreshOnCreate: false,
+  });
+  const faux = ai.fauxProvider({
+    provider: "pi-continuity-offline",
+    models: [{ id: "fixture" }],
+  });
+  runtime.registerNativeProvider(faux.provider);
+  const requests = [];
+  faux.setResponses([
+    () =>
+      ai.fauxAssistantMessage(
+        [
+          ai.fauxToolCall("write", { path: record, content: "WRONG_WRITE" }),
+          ai.fauxToolCall("edit", {
+            path: record,
+            oldText: "SYNTHETIC_HISTORY",
+            newText: "WRONG_EDIT",
+          }),
+          ai.fauxToolCall("bash", {
+            command: `printf WRONG_SHELL > '${record}'`,
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+    (context) => {
+      requests.push(...context.messages);
+      return ai.fauxAssistantMessage("Done");
+    },
+  ]);
+  async function open(overrides = {}) {
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        yoloMode: false,
+        authorizerChain: [],
+        permission: { ...base, ...overrides },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(agentDir, "settings.json"),
+      JSON.stringify({
+        packages: [permissions, root, continuityPackage],
+        extensions: [observer],
+        skills: [],
+        prompts: [],
+        themes: [],
+        cacheWarming: "off",
+        compaction: { enabled: false },
+        retry: { enabled: false },
+      }),
+    );
+    let context, tools, nativeEvents;
+    const settingsManager = sdk.SettingsManager.create(cwd, agentDir);
+    const loader = new sdk.DefaultResourceLoader({
+      cwd,
+      agentDir,
+      settingsManager,
+      noSkills: true,
+      noThemes: true,
+      noPromptTemplates: true,
+      noContextFiles: true,
+      disabledBuiltinExtensions: ["mcp"],
+      extensionFactories: [
+        (pi) =>
+          pi.on("session_start", (_event, ctx) => {
+            context = ctx;
+            tools = pi.getAllTools();
+            nativeEvents = pi.events;
+          }),
+      ],
+    });
+    await loader.reload();
+    assert.deepEqual(loader.getExtensions().errors, []);
+    const { session } = await sdk.createAgentSession({
+      cwd,
+      agentDir,
+      modelRuntime: runtime,
+      model: faux.getModel(),
+      resourceLoader: loader,
+      settingsManager,
+      sessionManager: sdk.SessionManager.create(cwd, path.join(fixture, "sessions")),
+    });
+    await session.bindExtensions({});
+    const node = globalThis[Symbol.for("@mahirocoko/pi-guards:healthy-nodes")].get(
+      session.sessionId,
+    );
+    const recall = tools.find((tool) => tool.name === "recall_read");
+    assert.equal(trustedRecallTool(recall), true);
+    return {
+      session,
+      node,
+      context,
+      recall,
+      tools,
+      service: globalThis[Symbol.for("continuity-permission-proof")](),
+      nativeEvents,
+    };
+  }
+  const a = await open();
+  try {
+    const authorize = (tool, target, ctx = a.context, signal) =>
+      a.node.continuity.authorizeRead(tool, target, ctx, signal);
+    const abi = a.node.continuity;
+    assert.equal(abi.isPrimarySession(a.context), true); // Headless SCRIPT root is native-root-user, not confirmed human.
+    assert.throws(() => abi.authorizeLearning(a.context, store), /permission/);
+    assert.throws(() => abi.authorizeLearning(a.context, `${store}-wrong`), /unavailable/);
+    assert.throws(
+      () => abi.authorizeLearning({ ...a.context, cwd: "/projects/OneDeex-frontend" }, store),
+      /unavailable/,
+    );
+    assert.equal(
+      abi.isPrimarySession({
+        ...a.context,
+        sessionManager: { getSessionId: () => a.session.sessionId },
+      }),
+      false,
+    );
+    const header = a.context.sessionManager.getHeader;
+    for (const value of [
+      null,
+      {
+        type: "session",
+        id: a.session.sessionId,
+        parentSession: "fork-parent",
+      },
+    ]) {
+      a.context.sessionManager.getHeader = () => value;
+      assert.equal(abi.isPrimarySession(a.context), false);
+    }
+    a.context.sessionManager.getHeader = header;
+    const learningKey = abi.learningPermission(store);
+    const otherKey = abi.learningPermission(`${store}-other`);
+    assert.match(learningKey, /^continuity_learning_[0-9a-f]{64}$/);
+    assert.notEqual(learningKey, otherKey);
+    assert.throws(() => abi.learningPermission(`${store}/../continuity`), /canonical/);
+    for (const override of [
+      { [learningKey]: "allow" },
+      { [otherKey]: "allow" },
+      { continuity_learning: "allow" },
+      { continuity_learning: { [store]: "allow" } },
+      { "*": "allow" },
+      { [learningKey]: "deny" },
+      { [learningKey]: "ask" },
+      { [learningKey]: "allow", path_write: { [store]: "deny" } },
+      { [learningKey]: "allow", path_write: { [store]: "ask" } },
+    ]) {
+      const learning = await open(override);
+      try {
+        if (typeof override.continuity_learning === "object") {
+          const unsupportedMap = learning.service.checkPermission("continuity_learning", store);
+          assert.equal(unsupportedMap.state, "deny");
+          assert.equal(unsupportedMap.source, "default");
+        }
+        if (override[learningKey] === "allow" && !override.path_write)
+          learning.node.continuity.authorizeLearning(learning.context, store);
+        else
+          assert.throws(
+            () => learning.node.continuity.authorizeLearning(learning.context, store),
+            /permission/,
+          );
+        assert.equal(
+          learning.service.checkPermission("external_directory_write", store).state,
+          "deny",
+        );
+      } finally {
+        learning.session.dispose();
+      }
+    }
+    for (const decision of ["deny", "ask"]) {
+      const learning = await open({
+        [learningKey]: "allow",
+        path_write: { [record]: decision },
+      });
+      try {
+        const gate = learning.node.continuity.authorizeLearning;
+        gate(learning.context, store);
+        assert.throws(() => gate(learning.context, store, record), /permission/);
+        gate(learning.context, store, path.join(store, "allowed.json"));
+        for (const target of [
+          `${store}-sibling/state.json`,
+          `${store}/../state.json`,
+          "/unrelated/state.json",
+        ]) {
+          assert.throws(() => gate(learning.context, store, target), /unavailable/);
+        }
+      } finally {
+        learning.session.dispose();
+      }
+    }
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ yoloMode: false, authorizerChain: [], permission: base }),
+    );
+    const registry = globalThis[Symbol.for("@mahirocoko/pi-guards:healthy-nodes")];
+    a.nativeEvents.emit("subagents:child:session-created", { sessionId: a.session.sessionId });
+    assert.equal(abi.isPrimarySession(a.context), false);
+    assert.throws(() => abi.authorizeLearning(a.context, store), /unavailable/);
+    registry.nativeChildren.delete(a.session.sessionId);
+    const savedGeneration = a.node.generation;
+    a.node.generation = {};
+    assert.equal(abi.isPrimarySession(a.context), false);
+    a.node.generation = savedGeneration;
+    for (const target of [store, record]) {
+      assert.equal(a.service.checkPermission("external_directory_read", target).state, "allow");
+      for (const surface of ["external_directory_write", "external_directory"])
+        assert.notEqual(a.service.checkPermission(surface, target).state, "allow");
+      await authorize(a.recall, target);
+    }
+    await authorize(
+      a.tools.find((tool) => tool.name === "recall_search"),
+      record,
+    );
+    const fallback = a.service.checkPermission("path_read", record);
+    assert.equal(fallback.state, "deny");
+    assert.equal(fallback.matchedPattern, undefined);
+    for (const target of [
+      path.dirname(store),
+      `${store}-sibling/record.txt`,
+      path.join(fixture, "trial/record.txt"),
+    ])
+      await assert.rejects(authorize(a.recall, target), /permission/);
+    await assert.rejects(
+      authorize(
+        {
+          ...a.recall,
+          sourceInfo: { ...a.recall.sourceInfo, path: "/foreign.ts" },
+        },
+        record,
+      ),
+      /unavailable/,
+    );
+    await assert.rejects(authorize(a.recall, path.join(store, ".env")), /sensitive/);
+    await assert.rejects(
+      authorize(a.recall, record, {
+        ...a.context,
+        sessionManager: { getSessionId: () => "foreign" },
+      }),
+      /unavailable/,
+    );
+    await assert.rejects(
+      authorize(a.recall, record, a.context, AbortSignal.abort()),
+      /unavailable/,
+    );
+    for (const name of ["write", "edit", "bash"])
+      assert.equal(a.service.checkPermission(name).state, "allow");
+    await a.session.prompt("Try synthetic writes");
+    const results = requests.filter((message) => message.role === "toolResult");
+    assert.equal(results.length, 3);
+    assert.ok(results.every((result) => result.isError));
+    for (const result of results)
+      assert.match(JSON.stringify(result.content), /permission|denied|outside|external/i);
+    assert.equal(fs.readFileSync(record, "utf8"), "SYNTHETIC_HISTORY");
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        yoloMode: false,
+        authorizerChain: [],
+        permission: { ...base, recall_read: "deny" },
+      }),
+    );
+    await assert.rejects(authorize(a.recall, record), /permission/);
+  } finally {
+    a.session.dispose();
+  }
+  for (const overrides of [
+    { recall_read: "deny" },
+    { recall_read: "ask" },
+    { recall_search: "deny" },
+    { read: "deny" },
+    { path_read: { [record]: "deny" } },
+    { path_read: { [record]: "ask" } },
+  ]) {
+    const b = await open(overrides);
+    try {
+      const tool = overrides.recall_search
+        ? b.tools.find((tool) => tool.name === "recall_search")
+        : b.recall;
+      await assert.rejects(b.node.continuity.authorizeRead(tool, record, b.context), /permission/);
+    } finally {
+      b.session.dispose();
+    }
+  }
+  assert.equal(networkAttempts, 0);
 });
 
 test("actual upstream parent abort latch isolates parent ownership", async () => {
   const sdk = await import("@earendil-works/pi-coding-agent");
   const ai = await import("@earendil-works/pi-ai");
   const subagents = fs.realpathSync(path.join(root, "node_modules/@gotgenes/pi-subagents"));
-  const permissions = fs.realpathSync(path.join(root, "node_modules/@gotgenes/pi-permission-system"));
+  const permissions = fs.realpathSync(
+    path.join(root, "node_modules/@gotgenes/pi-permission-system"),
+  );
   const observer = path.join(fixture, "observer.ts");
   const t = { nodes: new Map(), bounds: [], requests: [], actions: new Map() };
   globalThis[Symbol.for("pi-guard-proof")] = t;
-  fs.symlinkSync(path.join(root, "node_modules"), path.join(fixture, "node_modules"), "dir");
+  if (!fs.existsSync(path.join(fixture, "node_modules")))
+    fs.symlinkSync(path.join(root, "node_modules"), path.join(fixture, "node_modules"), "dir");
   fs.writeFileSync(
     observer,
     `import {getSubagentsService} from '@gotgenes/pi-subagents';
@@ -312,13 +702,20 @@ export default pi => {
   );
   fs.writeFileSync(
     path.join(agentDir, "subagents.json"),
-    JSON.stringify({ maxConcurrent: 2, excludedExtensionPackages: [subagents] }),
+    JSON.stringify({
+      maxConcurrent: 2,
+      excludedExtensionPackages: [subagents],
+    }),
   );
   const settings = ({ missingPermissions = false, missingGuard = false } = {}) =>
     fs.writeFileSync(
       path.join(agentDir, "settings.json"),
       JSON.stringify({
-        packages: [subagents, ...(!missingPermissions ? [permissions] : []), ...(!missingGuard ? [root] : [])],
+        packages: [
+          subagents,
+          ...(!missingPermissions ? [permissions] : []),
+          ...(!missingGuard ? [root] : []),
+        ],
         extensions: [observer],
         skills: [],
         prompts: [],
@@ -344,14 +741,20 @@ export default pi => {
     }
     if (JSON.stringify(context.messages).includes("HELD_SIBLING"))
       return ai.fauxAssistantMessage("Synthetic held output ".repeat(300));
-    if (context.messages.some((m) => m.role === "assistant" && m.content?.some?.((b) => b.type === "toolCall")))
+    if (
+      context.messages.some(
+        (m) => m.role === "assistant" && m.content?.some?.((b) => b.type === "toolCall"),
+      )
+    )
       return ai.fauxAssistantMessage("Finished");
     if (/HEALTHY|IDLE_CUSTOM/.test(JSON.stringify(context.messages)))
       return ai.fauxAssistantMessage(
         [
           ai.fauxToolCall("read", { path: "safe.txt" }),
           ai.fauxToolCall("read", { path: ".env" }),
-          ai.fauxToolCall("bash", { command: "cat .env; touch child-sentinel" }),
+          ai.fauxToolCall("bash", {
+            command: "cat .env; touch child-sentinel",
+          }),
         ],
         { stopReason: "toolUse" },
       );
@@ -416,15 +819,29 @@ export default pi => {
     const latest = () => modelParent.service.listAgents().at(-1).id;
     t.actions.set(modelParent.session.sessionId, [
       () => ai.fauxToolCall("subagent", spawnArgs),
-      () => ai.fauxToolCall("get_subagent_result", { agent_id: latest(), wait: true }),
+      () =>
+        ai.fauxToolCall("get_subagent_result", {
+          agent_id: latest(),
+          wait: true,
+        }),
       () => ai.fauxToolCall("subagent", { ...spawnArgs, resume: latest() }),
-      () => ai.fauxToolCall("subagent", { ...spawnArgs, prompt: "HELD_SIBLING", run_in_background: true }),
+      () =>
+        ai.fauxToolCall("subagent", {
+          ...spawnArgs,
+          prompt: "HELD_SIBLING",
+          run_in_background: true,
+        }),
       () =>
         ai.fauxToolCall("steer_subagent", {
-          agent_id: modelParent.service.listAgents().find((record) => record.status === "running").id,
+          agent_id: modelParent.service.listAgents().find((record) => record.status === "running")
+            .id,
           message: "Synthetic steering",
         }),
-      () => ai.fauxToolCall("get_subagent_result", { agent_id: latest(), wait: false }),
+      () =>
+        ai.fauxToolCall("get_subagent_result", {
+          agent_id: latest(),
+          wait: false,
+        }),
     ]);
     await modelParent.session.prompt("MODEL_ORCHESTRATION");
     t.actions.delete(modelParent.session.sessionId);
@@ -441,9 +858,15 @@ export default pi => {
       JSON.stringify(metaResults.find((result) => result.toolName === "steer_subagent").content),
       /Steering message (sent|queued)/,
     );
-    assert.ok(metaResults.every((r) => !r.isError && !JSON.stringify(r.content).includes("unsupported tool/alias")));
     assert.ok(
-      t.bounds.filter((b) => b.parentSessionId === modelParent.session.sessionId).every((b) => count(b.sessionId) > 0),
+      metaResults.every(
+        (r) => !r.isError && !JSON.stringify(r.content).includes("unsupported tool/alias"),
+      ),
+    );
+    assert.ok(
+      t.bounds
+        .filter((b) => b.parentSessionId === modelParent.session.sessionId)
+        .every((b) => count(b.sessionId) > 0),
     );
     for (const record of modelParent.service.listAgents())
       if (record.status === "running") modelParent.service.abort(record.id);
@@ -462,7 +885,12 @@ export default pi => {
       .flatMap((r) => r.messages)
       .filter((m) => m.role === "toolResult");
     assert.ok(
-      results.some((r) => r.toolName === "read" && !r.isError && JSON.stringify(r.content).includes("SYNTHETIC_SAFE")),
+      results.some(
+        (r) =>
+          r.toolName === "read" &&
+          !r.isError &&
+          JSON.stringify(r.content).includes("SYNTHETIC_SAFE"),
+      ),
     );
     assert.ok(results.filter((r) => r.isError).length >= 2);
     assert.doesNotMatch(JSON.stringify(results), /CANARY_DO_NOT_RETURN/);
@@ -473,7 +901,9 @@ export default pi => {
     const nodes = globalThis[Symbol.for("@mahirocoko/pi-guards:healthy-nodes")];
     nodes.get(goodKey).host.dispose();
     const beforeResume = count(goodKey);
-    const resumed = await a.service.resume(good, "RESUME_WITHDRAWN", { claimOutcome: true });
+    const resumed = await a.service.resume(good, "RESUME_WITHDRAWN", {
+      claimOutcome: true,
+    });
     assert.equal(count(goodKey), beforeResume);
     assert.equal(resumed.record.status, "stopped");
     report.checks.push(
@@ -482,7 +912,9 @@ export default pi => {
     const b = await parent();
     settings({ missingPermissions: true });
     previous = t.bounds.length;
-    t.actions.set(b.session.sessionId, [() => ai.fauxToolCall("subagent", { ...spawnArgs, prompt: "MISSING" })]);
+    t.actions.set(b.session.sessionId, [
+      () => ai.fauxToolCall("subagent", { ...spawnArgs, prompt: "MISSING" }),
+    ]);
     await b.session.prompt("MODEL_MISSING_PERMISSIONS");
     t.actions.delete(b.session.sessionId);
     const bad = b.service.listAgents().at(-1).id;
@@ -496,7 +928,9 @@ export default pi => {
     const c = await parent();
     settings({ missingGuard: true });
     previous = t.bounds.length;
-    t.actions.set(c.session.sessionId, [() => ai.fauxToolCall("subagent", { ...spawnArgs, prompt: "MISSING_GUARD" })]);
+    t.actions.set(c.session.sessionId, [
+      () => ai.fauxToolCall("subagent", { ...spawnArgs, prompt: "MISSING_GUARD" }),
+    ]);
     await c.session.prompt("MODEL_MISSING_GUARD");
     t.actions.delete(c.session.sessionId);
     const noGuard = c.service.listAgents().at(-1).id;
@@ -506,14 +940,26 @@ export default pi => {
     report.checks.push("missing own canonical guard node also aborts before provider");
     const d = await parent();
     previous = t.bounds.length;
-    const sibling = d.service.spawn("fixture", "HELD_SIBLING", { ...opts, foreground: false });
-    for (let i = 0; i < 200 && t.bounds.length === previous; i++) await new Promise((r) => setTimeout(r, 5));
+    const sibling = d.service.spawn("fixture", "HELD_SIBLING", {
+      ...opts,
+      foreground: false,
+    });
+    for (let i = 0; i < 200 && t.bounds.length === previous; i++)
+      await new Promise((r) => setTimeout(r, 5));
     assert.equal(d.service.getRecord(sibling).status, "running");
     settings({ missingPermissions: true });
-    const missing = d.service.spawn("fixture", "MISSING_CONCURRENT", { ...opts, foreground: false });
-    const queued = d.service.spawn("fixture", "QUEUED", { ...opts, foreground: false });
+    const missing = d.service.spawn("fixture", "MISSING_CONCURRENT", {
+      ...opts,
+      foreground: false,
+    });
+    const queued = d.service.spawn("fixture", "QUEUED", {
+      ...opts,
+      foreground: false,
+    });
     await d.service.waitForAll();
-    assert.ok([sibling, missing, queued].every((id) => d.service.getRecord(id).status === "stopped"));
+    assert.ok(
+      [sibling, missing, queued].every((id) => d.service.getRecord(id).status === "stopped"),
+    );
     assert.equal(a.service, identity);
     assert.equal(a.service.getRecord(good).status, "stopped");
     report.checks.push(
@@ -522,7 +968,8 @@ export default pi => {
     // Expected counterexample: trusted idle custom messages are outside orchestrated spawn/resume.
     const beforeCustom = count(badKey);
     t.nodes.get(badKey).custom();
-    for (let i = 0; i < 200 && count(badKey) - beforeCustom < 2; i++) await new Promise((r) => setTimeout(r, 10));
+    for (let i = 0; i < 200 && count(badKey) - beforeCustom < 2; i++)
+      await new Promise((r) => setTimeout(r, 10));
     report.idleCustomProviderDelta = count(badKey) - beforeCustom;
     assert.equal(report.idleCustomProviderDelta, 2);
     report.checks.push(
@@ -535,10 +982,16 @@ export default pi => {
     for (const session of sessions) session.dispose();
     report.nodes = [...t.nodes].map(([id, node]) => ({
       id,
-      tools: node.tools.map((tool) => ({ name: tool.name, sourceInfo: tool.sourceInfo })),
+      tools: node.tools.map((tool) => ({
+        name: tool.name,
+        sourceInfo: tool.sourceInfo,
+      })),
     }));
     report.bounds = t.bounds;
     report.networkAttempts = networkAttempts;
-    fs.writeFileSync(path.join(proof, "bootstrap-healthy-parent-result.json"), JSON.stringify(report, null, 2));
+    fs.writeFileSync(
+      path.join(proof, "bootstrap-healthy-parent-result.json"),
+      JSON.stringify(report, null, 2),
+    );
   }
 });
