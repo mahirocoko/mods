@@ -44,12 +44,23 @@ export function trustedRecallTool(tool) {
     const pkg = JSON.parse(readFileSync(join(expected, "package.json"), "utf8"));
     return (
       pkg.name === "@mahirocoko/mahiro-pi" &&
-      pkg.version === "0.1.0" &&
+      pkg.version === "0.2.0" &&
       pkg.pi?.extensions?.includes("./extensions/mahiro-continuity.ts") === true
     );
   } catch {
     return false;
   }
+}
+
+export function trustedMemoryTool(tool) {
+  if (!["agent_memory_read", "agent_memory_edit", "agent_memory_commit", "agent_memory_manage", "agent_memory_reflect"].includes(tool?.name)) return false;
+  const source = tool.sourceInfo;
+  try {
+    const expected = canonical(continuityRoot);
+    if (!expected || source?.origin !== "package" || !["user", "project", "temporary"].includes(source.scope) || canonical(source.baseDir) !== expected || canonical(source.path) !== canonical(join(expected, "extensions/mahiro-agent-memory.ts"))) return false;
+    const pkg = JSON.parse(readFileSync(join(expected, "package.json"), "utf8"));
+    return pkg.name === "@mahirocoko/mahiro-pi" && pkg.version === "0.2.0" && pkg.pi?.extensions?.includes("./extensions/mahiro-agent-memory.ts") === true;
+  } catch { return false; }
 }
 
 // Reads only runtime ToolInfo; a name or caller-supplied approval flag is insufficient.

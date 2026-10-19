@@ -40,7 +40,7 @@ This adapter owns the `continuity` member of each healthy-node registry entry
 version 1 and the node's generation and recheck session health before and after
 asynchronous operations. `trustedTool` accepts only actual runtime ToolInfo for
 `recall_search` / `recall_read` from the canonical sibling mahiro-pi checkout,
-package identity/version 0.1.0, and its declared continuity extension entry.
+package identity/version 0.2.0, and its declared continuity extension entry.
 Until that entry is registered in the package manifest, recall remains denied.
 Caller argument flags and same-name foreign tools convey no trust.
 
@@ -135,6 +135,55 @@ model, thinking, runInBackground, inheritContext, locked and promptMode. Arrays 
 copied/frozen too; prompts are not exposed. Controllers must check both the runtime
 initial-claim marker and query availability, then verify the expected role before
 spawning. This query reads the same existing registry; it adds no registry/manager.
+
+## Managed-memory ABI (separate version 1)
+
+Healthy nodes now expose `managedMemory` independently of `continuity`. It trusts
+only the canonical mahiro-pi 0.2.0 package's declared agent-memory extension and
+five scoped custom tools. Missing/foreign tools, obsolete generations, fake
+SessionManagers, excluded CWDs, unnormalized/escaping roots/targets and revoked
+permissions fail closed. The exact root defaults to `~/.pi/agent/memory`, with
+`MAHIRO_AGENT_MEMORY_ROOT` only an explicit controlled-store override.
+
+`permission(root)` returns `managed_memory_<sha256 exact root UTF-8>`. Operators
+must grant that scalar explicitly; defaults, path maps, generic external writes
+and old C1 learning grants are insufficient. `authorize` performs the canonical
+secret-path check; `assertAccess` synchronously rechecks health, exact root, actual
+tool grant and explicitly matched read/write target restrictions at real IO.
+The adapter owns policy; the Pi implementation owns private filesystem/CAS bounds.
+No permission is installed by this extension. Ordinary external write denial stays
+unchanged: authority is only for the root-bound authored tools, not Bash/core edits.
+
+`bindWorker` is primary-only and checks the public immutable locked system-role
+descriptor, initial claim capability and an existing native job record. A private
+view is leased to that job, not to an argument token. A child must be attested by
+native child-session events, have this generation's exact captured SessionManager,
+and match its public `getSessionFile()` to the captured parent service record's
+`outputFile` while that `managed-memory-writer` is running. The parent lease must
+still be active and its node/generation/root/permission valid. Missing binding,
+unknown role/job, sibling sessions and parent disposal/revocation do not fall back
+to primary authority. Leases are removed on completion/cancellation/disposal.
+This uses no cwd/workingDir spawn property or installed/private host imports.
+
+The native memory test uses SDK 1.3.0 and real public service/session/tool dispatch
+with injected Faux transport and a project-owned profile. HOME and real auth are
+not changed; receipts stay under mahiro-pi's ignored runtime directory. It verifies
+actual native binding, Core Git integration, next/fresh context, revoked/default/
+old-C1 authority negatives and project isolation. It exposed that native replace
+mode retains a portable parent preamble; Pi's public before_agent_start full
+worker-prompt replacement closes that privacy counterexample. `pnpm test:managed-memory`
+is offline runtime evidence, never paid-provider or human-acceptance evidence.
+
+On 2026-10-19, the separate project-owned live proof also completed native OpenAI
+Main maintenance, a real background policy revision and fresh-session use. Its
+independent receipt audit supports that controlled loop only; this offline test
+still performs zero external inference. Keep the real native agent directory for
+credentials and use project-local fixture resources: children construct a fresh
+runtime from their agent directory, while role discovery uses process cwd. A
+captured parent ModelRuntime does not transfer auth to a fixture agent directory.
+The current Pi `docs/agent-memory.md` owns the exact route, retained failures and
+remaining real-root activation/human acceptance gates. No global permission is
+installed or implied by either proof.
 
 ## Evidence boundary
 

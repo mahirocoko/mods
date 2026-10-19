@@ -6,7 +6,8 @@ import test from "node:test";
 import net from "node:net";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const proof = path.resolve(root, "../../.agent-state/runtime/pi-guard-proof");
+const proof = path.resolve(root, "../../../mahiro-pi/.agent-state/runtime/pi-guard-proof");
+fs.mkdirSync(proof, { recursive: true });
 const fixture = fs.mkdtempSync(path.join(proof, "bootstrap-fixture-"));
 process.env.HOME = path.join(fixture, "home");
 process.env.XDG_CONFIG_HOME = path.join(fixture, "home/.config");

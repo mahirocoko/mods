@@ -34,7 +34,8 @@ test("continuity routing does not trust names, flags or foreign package ownershi
 });
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const proof = path.resolve(root, "../../.agent-state/runtime/pi-guard-proof");
+const proof = path.resolve(root, "../../../mahiro-pi/.agent-state/runtime/pi-guard-proof");
+fs.mkdirSync(proof, { recursive: true });
 const fixture = fs.mkdtempSync(path.join(proof, "fixture-"));
 for (const directory of ["home", "cwd", "agent", "sessions"])
   fs.mkdirSync(path.join(fixture, directory));

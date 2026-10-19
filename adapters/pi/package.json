@@ -14,7 +14,8 @@
     ]
   },
   "scripts": {
-    "test": "node --test test.mjs bootstrap-test.mjs",
+    "test": "node --test --test-concurrency=1 test.mjs bootstrap-test.mjs managed-memory-test.mjs",
+    "test:managed-memory": "node --test --test-concurrency=1 managed-memory-test.mjs",
     "test:subagents-patch": "node --test subagents-patch-test.mjs"
   },
   "peerDependencies": {
