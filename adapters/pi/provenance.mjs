@@ -52,6 +52,89 @@ export function trustedRecallTool(tool) {
   }
 }
 
+export function trustedCodeMapTool(tool) {
+  if (tool?.name !== "mh_code_map") return false;
+  const source = tool.sourceInfo;
+  try {
+    const expected = canonical(continuityRoot);
+    const entry = "./extensions/mahiro-code-map.ts";
+    const expectedEntry = expected && canonical(join(expected, entry));
+    if (!expected || !expectedEntry || source?.origin !== "package" ||
+        !["user", "project", "temporary"].includes(source.scope) ||
+        canonical(source.baseDir) !== expected ||
+        source.path !== join(expected, entry) ||
+        canonical(source.path) !== expectedEntry) return false;
+    const pkg = JSON.parse(readFileSync(join(expected, "package.json"), "utf8"));
+    return pkg.name === "@mahirocoko/mahiro-pi" && pkg.version === "0.2.0" &&
+      pkg.pi?.extensions?.includes(entry) === true;
+  } catch { return false; }
+}
+
+export function trustedEvidenceTool(tool) {
+  if (tool?.name !== "mh_code_evidence") return false;
+  const source = tool.sourceInfo;
+  try {
+    const expected = canonical(continuityRoot), entry = "./extensions/mahiro-code-evidence.ts";
+    const expectedEntry = expected && canonical(join(expected, entry));
+    if (!expected || !expectedEntry || source?.origin !== "package" ||
+        !["user", "project", "temporary"].includes(source.scope) ||
+        canonical(source.baseDir) !== expected || source.path !== join(expected, entry) ||
+        canonical(source.path) !== expectedEntry) return false;
+    const pkg = JSON.parse(readFileSync(join(expected, "package.json"), "utf8"));
+    return pkg.name === "@mahirocoko/mahiro-pi" && pkg.version === "0.2.0" &&
+      pkg.pi?.extensions?.includes(entry) === true;
+  } catch { return false; }
+}
+
+export const uxWorkflowToolNames = Object.freeze(["mh_get_ux_workflow", "mh_create_ux_workflow", "mh_update_ux_workflow"]);
+export function trustedUXWorkflowTool(tool) {
+  if (!uxWorkflowToolNames.includes(tool?.name)) return false;
+  const source = tool.sourceInfo;
+  try {
+    const expected = canonical(continuityRoot), entry = "./extensions/mahiro-ux-workflow.ts";
+    const expectedEntry = expected && canonical(join(expected, entry));
+    if (!expected || !expectedEntry || source?.origin !== "package" ||
+        !["user", "project", "temporary"].includes(source.scope) ||
+        source.baseDir !== expected || canonical(source.baseDir) !== expected || source.path !== join(expected, entry) ||
+        canonical(source.path) !== expectedEntry) return false;
+    const pkg = JSON.parse(readFileSync(join(expected, "package.json"), "utf8"));
+    return pkg.name === "@mahirocoko/mahiro-pi" && pkg.version === "0.2.0" && pkg.pi?.extensions?.includes(entry) === true;
+  } catch { return false; }
+}
+
+export function trustedExecutionRunTool(tool) {
+  if (tool?.name !== "mh_execution_run") return false;
+  const source = tool.sourceInfo;
+  try {
+    const expected = canonical(continuityRoot), entry = "./extensions/mahiro-execution-run.ts";
+    const expectedEntry = expected && canonical(join(expected, entry));
+    if (!expected || !expectedEntry || source?.origin !== "package" ||
+        !["user", "project", "temporary"].includes(source.scope) ||
+        source.baseDir !== expected || canonical(source.baseDir) !== expected ||
+        source.path !== join(expected, entry) || canonical(source.path) !== expectedEntry) return false;
+    const pkg = JSON.parse(readFileSync(join(expected, "package.json"), "utf8"));
+    return pkg.name === "@mahirocoko/mahiro-pi" && pkg.version === "0.2.0" && pkg.pi?.extensions?.includes(entry) === true;
+  } catch { return false; }
+}
+
+export const goalToolNames = Object.freeze(["mh_get_goal", "mh_create_goal", "mh_update_goal", "mh_clear_goal"]);
+export function trustedGoalTool(tool) {
+  if (!goalToolNames.includes(tool?.name)) return false;
+  const source = tool.sourceInfo;
+  try {
+    const expected = canonical(continuityRoot);
+    const entry = "./extensions/mahiro-goal.ts";
+    const expectedEntry = expected && canonical(join(expected, entry));
+    if (!expected || !expectedEntry || source?.origin !== "package" ||
+        !["user", "project", "temporary"].includes(source.scope) ||
+        canonical(source.baseDir) !== expected || source.path !== join(expected, entry) ||
+        canonical(source.path) !== expectedEntry) return false;
+    const pkg = JSON.parse(readFileSync(join(expected, "package.json"), "utf8"));
+    return pkg.name === "@mahirocoko/mahiro-pi" && pkg.version === "0.2.0" &&
+      pkg.pi?.extensions?.includes(entry) === true;
+  } catch { return false; }
+}
+
 export function trustedMemoryTool(tool) {
   if (!["agent_memory_read", "agent_memory_edit", "agent_memory_commit", "agent_memory_manage", "agent_memory_reflect"].includes(tool?.name)) return false;
   const source = tool.sourceInfo;

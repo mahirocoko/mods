@@ -23,10 +23,12 @@ test("initial outcome claims use native queue, notifications, events and resume 
       },
     }),
   );
-  fs.copyFileSync(
-    path.join(root, "pnpm-workspace.yaml"),
-    path.join(fixture, "pnpm-workspace.yaml"),
-  );
+  // This minimal fixture contains only subagents, not the newly patched
+  // permission owner. Keep its one relevant canonical patch mapping.
+  const workspaceSource = fs.readFileSync(path.join(root, "pnpm-workspace.yaml"), "utf8");
+  const mapping = workspaceSource.match(/^  '@gotgenes\/pi-subagents@23\.4\.1': .+$/m)?.[0];
+  assert.ok(mapping);
+  fs.writeFileSync(path.join(fixture, "pnpm-workspace.yaml"), `patchedDependencies:\n${mapping}\n`);
   fs.cpSync(path.join(root, "patches"), path.join(fixture, "patches"), {
     recursive: true,
   });
@@ -45,7 +47,7 @@ test("initial outcome claims use native queue, notifications, events and resume 
   assert.equal(lock.status, 0, lock.stdout + lock.stderr);
   const canonicalHash = fs
     .readFileSync(path.join(root, "pnpm-lock.yaml"), "utf8")
-    .match(/hash: (\w+)/)[1];
+    .match(/'@gotgenes\/pi-subagents@23\.4\.1':\n\s+hash: (\w+)/)[1];
   assert.ok(
     fs
       .readFileSync(path.join(fixture, "pnpm-lock.yaml"), "utf8")

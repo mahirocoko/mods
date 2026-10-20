@@ -14,7 +14,12 @@
     ]
   },
   "scripts": {
-    "test": "node --test --test-concurrency=1 test.mjs bootstrap-test.mjs managed-memory-test.mjs",
+    "test": "node --test --test-concurrency=1 test.mjs bootstrap-test.mjs managed-memory-test.mjs permission-patch-test.mjs code-map-blocked-test.mjs goal-patch-test.mjs evidence-patch-test.mjs ux-workflow-patch-test.mjs execution-run-patch-test.mjs",
+    "test:code-map": "node --test --test-concurrency=1 permission-patch-test.mjs code-map-blocked-test.mjs",
+    "test:evidence": "node --test --test-concurrency=1 evidence-patch-test.mjs",
+    "test:execution-run": "node --test --test-concurrency=1 execution-run-patch-test.mjs",
+    "test:ux-workflow": "node --test --test-concurrency=1 ux-workflow-patch-test.mjs",
+    "test:goal": "node --test --test-concurrency=1 goal-patch-test.mjs",
     "test:managed-memory": "node --test --test-concurrency=1 managed-memory-test.mjs",
     "test:subagents-patch": "node --test subagents-patch-test.mjs"
   },
